@@ -3,6 +3,8 @@ import os
 import logging
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from geopy.distance import geodesic
 from datetime import datetime
 from aiohttp import web
@@ -14,15 +16,19 @@ LOCATIONS = [
     {"name": "Kimyo Xalqaro Universiteti", "lat": 41.257490, "lon": 69.220109},
     {"name": "78-Maktab", "lat": 41.282791, "lon": 69.173290}
 ]
-ALLOWED_DISTANCE = 150
+ALLOWED_DISTANCE = 150 # Bu masofani keyinchalik o'zgartirish mumkin
 
-# --- LOGGING ---
-logging.basicConfig(level=logging.INFO)
+# Vaqtinchalik xotira (Ma'lumotlar bazasi o'rniga)
+user_data = {} # {user_id: "Ism Sharif"}
+attendance_log = set() # {(user_id, sana)}
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# --- RENDER UCHUN WEB SERVER ---
+class Registration(StatesGroup):
+    waiting_for_name = State()
+
+# --- WEB SERVER ---
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -31,58 +37,74 @@ async def start_web_server():
     app.router.add_get('/', handle)
     runner = web.AppRunner(app)
     await runner.setup()
-    # Render avtomatik beradigan PORT-dan foydalanamiz
-    port = int(os.environ.get("PORT", 8080))
-    site = web.TCPSite(runner, '0.0.0.0', port)
+    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 8080)))
     await site.start()
-    logging.info(f"Web server started on port {port}")
 
 # --- BOT LOGIKASI ---
 @dp.message(CommandStart())
-async def cmd_start(message: types.Message):
+async def cmd_start(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    if user_id not in user_data:
+        await message.answer("Xush kelibsiz! Davomatdan oldin iltimos, to'liq ism-sharifingizni yuboring:")
+        await state.set_state(Registration.waiting_for_name)
+    else:
+        await show_main_menu(message)
+
+@dp.message(Registration.waiting_for_name)
+async def process_name(message: types.Message, state: FSMContext):
+    user_data[message.from_user.id] = message.text
+    await state.clear()
+    await message.answer(f"Rahmat, {message.text}! Endi davomat qilishingiz mumkin.")
+    await show_main_menu(message)
+
+async def show_main_menu(message: types.Message):
     button = types.KeyboardButton(text="📍 Kelganimni tasdiqlash", request_location=True)
     kb = types.ReplyKeyboardMarkup(keyboard=[[button]], resize_keyboard=True)
-    await message.answer(
-        f"Salom, {message.from_user.full_name}!\n"
-        "O'quv markazi davomat botiga xush kelibsiz.\n"
-        "Tasdiqlash uchun tugmani bosing.", 
-        reply_markup=kb
-    )
+    await message.answer("Tugmani bosing:", reply_markup=kb)
 
 @dp.message(F.location)
 async def handle_location(message: types.Message):
-    user_coords = (message.location.latitude, message.location.longitude)
-    current_time = datetime.now().strftime("%H:%M")
+    user_id = message.from_user.id
+    today = datetime.now().strftime("%Y-%m-%d")
     
-    found_branch = None
-    min_dist = 0
+    # 1. Ismni tekshirish
+    full_name = user_data.get(user_id, message.from_user.full_name)
 
+    # 2. Takroriy davomatni tekshirish
+    if (user_id, today) in attendance_log:
+        await message.answer("⚠️ Siz bugun allaqachon davomatdan o'tgansiz!")
+        return
+
+    user_coords = (message.location.latitude, message.location.longitude)
+    found_branch = None
+    
     for branch in LOCATIONS:
-        dist = geodesic((branch["lat"], branch["lon"]), user_coords).meters
-        if dist <= ALLOWED_DISTANCE:
+        if geodesic((branch["lat"], branch["lon"]), user_coords).meters <= ALLOWED_DISTANCE:
             found_branch = branch["name"]
-            min_dist = dist
             break
 
     if found_branch:
-        user_mention = f"[{message.from_user.full_name}](tg://user?id={message.from_user.id})"
+        attendance_log.add((user_id, today))
+        current_time = datetime.now().strftime("%H:%M")
+        
+        # Admin guruhiga hisobot
         report = (
-            f"🔔 **Yangi davomat!**\n\n"
-            f"👤 **O'qituvchi:** {user_mention}\n"
+            f"✅ **Yangi Davomat**\n"
+            f"👤 **O'qituvchi:** {full_name}\n"
             f"📍 **Manzil:** {found_branch}\n"
-            f"⏰ **Vaqt:** {current_time}\n"
-            f"📏 **Masofa:** {int(min_dist)} m"
+            f"⏰ **Vaqt:** {current_time}"
         )
         await bot.send_message(chat_id=ADMIN_GROUP_ID, text=report, parse_mode="Markdown")
-        await message.answer(f"✅ Tasdiqlandi! Siz {found_branch} hududidasiz.")
-    else:
-        await message.answer("❌ Siz belgilangan manzillar hududida emassiz!")
+        await message.answer(f"✅ Rahmat, {full_name}! Davomat tasdiqlandi.")
+        
+        # 3. Google Sheets (Kelajakda shu yerga yoziladi)
+        logging.info(f"Sheets Log: {full_name}, {found_branch}, {today}, {current_time}")
 
-# --- ASOSIY ISHGA TUSHIRISH ---
+    else:
+        await message.answer("❌ Xatolik! Siz belgilangan hududda emassiz.")
+
 async def main():
-    # Web serverni alohida task qilib ishga tushiramiz
     asyncio.create_task(start_web_server())
-    # Botni ishga tushiramiz
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
