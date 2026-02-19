@@ -8,6 +8,8 @@ from aiogram.fsm.state import State, StatesGroup
 from geopy.distance import geodesic
 from datetime import datetime
 from aiohttp import web
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 # --- SOZLAMALAR ---
 TOKEN = "8268187024:AAExyjArsQYeJJf1EOmy6Ho-E9H8Eoa4w_o"
@@ -16,19 +18,25 @@ LOCATIONS = [
     {"name": "Kimyo Xalqaro Universiteti", "lat": 41.257490, "lon": 69.220109},
     {"name": "78-Maktab", "lat": 41.282791, "lon": 69.173290}
 ]
-ALLOWED_DISTANCE = 150 # Bu masofani keyinchalik o'zgartirish mumkin
+ALLOWED_DISTANCE = 150 
 
-# Vaqtinchalik xotira (Ma'lumotlar bazasi o'rniga)
-user_data = {} # {user_id: "Ism Sharif"}
-attendance_log = set() # {(user_id, sana)}
+# --- GOOGLE SHEETS SOZLAMASI ---
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+client = gspread.authorize(creds)
+# Jadvalingiz nomi Google Sheets'da aynan shunday bo'lishi kerak:
+sheet = client.open("Davomat_Log").sheet1 
 
+# --- BOT VA XOTIRA ---
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
+user_names = {} # {user_id: "Ism Sharif"}
+attendance_log = set() # {(user_id, sana)}
 
 class Registration(StatesGroup):
     waiting_for_name = State()
 
-# --- WEB SERVER ---
+# --- WEB SERVER (RENDER UCHUN) ---
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -37,75 +45,61 @@ async def start_web_server():
     app.router.add_get('/', handle)
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 8080)))
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
 
-# --- BOT LOGIKASI ---
+# --- BOT KOMANDALARI ---
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    if user_id not in user_data:
-        await message.answer("Xush kelibsiz! Davomatdan oldin iltimos, to'liq ism-sharifingizni yuboring:")
+    if user_id not in user_names:
+        await message.answer("Salom! Davomat botidan foydalanish uchun to'liq ism-sharifingizni yuboring:")
         await state.set_state(Registration.waiting_for_name)
     else:
-        await show_main_menu(message)
+        await show_menu(message)
 
 @dp.message(Registration.waiting_for_name)
-async def process_name(message: types.Message, state: FSMContext):
-    user_data[message.from_user.id] = message.text
+async def get_name(message: types.Message, state: FSMContext):
+    user_names[message.from_user.id] = message.text
     await state.clear()
-    await message.answer(f"Rahmat, {message.text}! Endi davomat qilishingiz mumkin.")
-    await show_main_menu(message)
+    await message.answer(f"Rahmat, {message.text}! Endi lokatsiya orqali davomat qilishingiz mumkin.")
+    await show_menu(message)
 
-async def show_main_menu(message: types.Message):
-    button = types.KeyboardButton(text="📍 Kelganimni tasdiqlash", request_location=True)
-    kb = types.ReplyKeyboardMarkup(keyboard=[[button]], resize_keyboard=True)
-    await message.answer("Tugmani bosing:", reply_markup=kb)
+async def show_menu(message: types.Message):
+    kb = [[types.KeyboardButton(text="📍 Kelganimni tasdiqlash", request_location=True)]]
+    keyboard = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+    await message.answer("Tugmani bosing:", reply_markup=keyboard)
 
 @dp.message(F.location)
-async def handle_location(message: types.Message):
+async def handle_loc(message: types.Message):
     user_id = message.from_user.id
     today = datetime.now().strftime("%Y-%m-%d")
     
-    # 1. Ismni tekshirish
-    full_name = user_data.get(user_id, message.from_user.full_name)
-
-    # 2. Takroriy davomatni tekshirish
     if (user_id, today) in attendance_log:
-        await message.answer("⚠️ Siz bugun allaqachon davomatdan o'tgansiz!")
-        return
+        return await message.answer("⚠️ Siz bugun davomatdan o'tgansiz!")
 
     user_coords = (message.location.latitude, message.location.longitude)
     found_branch = None
-    
     for branch in LOCATIONS:
         if geodesic((branch["lat"], branch["lon"]), user_coords).meters <= ALLOWED_DISTANCE:
             found_branch = branch["name"]
             break
 
     if found_branch:
+        full_name = user_names.get(user_id, message.from_user.full_name)
+        now_time = datetime.now().strftime("%H:%M")
+        
+        # 1. Google Sheets-ga yozish
+        try:
+            sheet.append_row([full_name, found_branch, today, now_time])
+        except Exception as e:
+            logging.error(f"Sheets error: {e}")
+
+        # 2. Guruhga yozish
+        report = f"✅ **Davomat**\n👤 {full_name}\n📍 {found_branch}\n⏰ {now_time}"
+        await bot.send_message(ADMIN_GROUP_ID, report, parse_mode="Markdown")
+        
         attendance_log.add((user_id, today))
-        current_time = datetime.now().strftime("%H:%M")
-        
-        # Admin guruhiga hisobot
-        report = (
-            f"✅ **Yangi Davomat**\n"
-            f"👤 **O'qituvchi:** {full_name}\n"
-            f"📍 **Manzil:** {found_branch}\n"
-            f"⏰ **Vaqt:** {current_time}"
-        )
-        await bot.send_message(chat_id=ADMIN_GROUP_ID, text=report, parse_mode="Markdown")
-        await message.answer(f"✅ Rahmat, {full_name}! Davomat tasdiqlandi.")
-        
-        # 3. Google Sheets (Kelajakda shu yerga yoziladi)
-        logging.info(f"Sheets Log: {full_name}, {found_branch}, {today}, {current_time}")
+        await message.answer("✅ Davomat tasdiq
 
-    else:
-        await message.answer("❌ Xatolik! Siz belgilangan hududda emassiz.")
-
-async def main():
-    asyncio.create_task(start_web_server())
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
