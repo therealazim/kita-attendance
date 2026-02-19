@@ -11,6 +11,9 @@ from aiohttp import web
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+# --- LOGGING ---
+logging.basicConfig(level=logging.INFO)
+
 # --- SOZLAMALAR ---
 TOKEN = "8268187024:AAExyjArsQYeJJf1EOmy6Ho-E9H8Eoa4w_o"
 ADMIN_GROUP_ID = -1003885800610
@@ -20,23 +23,25 @@ LOCATIONS = [
 ]
 ALLOWED_DISTANCE = 150 
 
-# --- GOOGLE SHEETS SOZLAMASI ---
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
-client = gspread.authorize(creds)
-# Jadvalingiz nomi Google Sheets'da aynan shunday bo'lishi kerak:
-sheet = client.open("Davomat_Log").sheet1 
+# --- GOOGLE SHEETS ---
+try:
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+    client = gspread.authorize(creds)
+    sheet = client.open("Davomat_Log").sheet1
+except Exception as e:
+    logging.error(f"Google Sheets ulanishda xatolik: {e}")
 
-# --- BOT VA XOTIRA ---
+# --- BOT ---
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
-user_names = {} # {user_id: "Ism Sharif"}
-attendance_log = set() # {(user_id, sana)}
+user_names = {}
+attendance_log = set()
 
 class Registration(StatesGroup):
     waiting_for_name = State()
 
-# --- WEB SERVER (RENDER UCHUN) ---
+# --- WEB SERVER ---
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -49,7 +54,7 @@ async def start_web_server():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
 
-# --- BOT KOMANDALARI ---
+# --- HANDLERS ---
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -63,13 +68,13 @@ async def cmd_start(message: types.Message, state: FSMContext):
 async def get_name(message: types.Message, state: FSMContext):
     user_names[message.from_user.id] = message.text
     await state.clear()
-    await message.answer(f"Rahmat, {message.text}! Endi lokatsiya orqali davomat qilishingiz mumkin.")
+    await message.answer(f"Rahmat, {message.text}! Endi davomat qilishingiz mumkin.")
     await show_menu(message)
 
 async def show_menu(message: types.Message):
     kb = [[types.KeyboardButton(text="📍 Kelganimni tasdiqlash", request_location=True)]]
     keyboard = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
-    await message.answer("Tugmani bosing:", reply_markup=keyboard)
+    await message.answer("Davomat qilish uchun pastdagi tugmani bosing:", reply_markup=keyboard)
 
 @dp.message(F.location)
 async def handle_loc(message: types.Message):
@@ -77,7 +82,8 @@ async def handle_loc(message: types.Message):
     today = datetime.now().strftime("%Y-%m-%d")
     
     if (user_id, today) in attendance_log:
-        return await message.answer("⚠️ Siz bugun davomatdan o'tgansiz!")
+        await message.answer("⚠️ Siz bugun allaqachon davomatdan o'tgansiz!")
+        return
 
     user_coords = (message.location.latitude, message.location.longitude)
     found_branch = None
@@ -90,16 +96,22 @@ async def handle_loc(message: types.Message):
         full_name = user_names.get(user_id, message.from_user.full_name)
         now_time = datetime.now().strftime("%H:%M")
         
-        # 1. Google Sheets-ga yozish
         try:
             sheet.append_row([full_name, found_branch, today, now_time])
+            report = f"✅ **Davomat**\n👤 {full_name}\n📍 {found_branch}\n⏰ {now_time}"
+            await bot.send_message(ADMIN_GROUP_ID, report, parse_mode="Markdown")
+            attendance_log.add((user_id, today))
+            await message.answer("✅ Davomat tasdiqlandi va bazaga yozildi!")
         except Exception as e:
-            logging.error(f"Sheets error: {e}")
+            await message.answer("❌ Xatolik yuz berdi, qayta urinib ko'ring.")
+            logging.error(f"Error: {e}")
+    else:
+        await message.answer("❌ Siz belgilangan markaz hududida emassiz!")
 
-        # 2. Guruhga yozish
-        report = f"✅ **Davomat**\n👤 {full_name}\n📍 {found_branch}\n⏰ {now_time}"
-        await bot.send_message(ADMIN_GROUP_ID, report, parse_mode="Markdown")
-        
-        attendance_log.add((user_id, today))
-        await message.answer("✅ Davomat tasdiq
+async def main():
+    asyncio.create_task(start_web_server())
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
 
