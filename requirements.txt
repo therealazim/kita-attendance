@@ -1,3 +1,5 @@
 aiogram
 geopy
 aiohttp
+gspread
+oauth2client
