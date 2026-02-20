@@ -5,6 +5,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from geopy.distance import geodesic
 from datetime import datetime
 from aiohttp import web
@@ -30,7 +31,7 @@ attendance_log = set()
 class Registration(StatesGroup):
     waiting_for_name = State()
 
-# --- WEB SERVER (RENDER PORT BINDING FIX) ---
+# --- WEB SERVER (RENDER PORT FIX) ---
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -49,7 +50,7 @@ async def start_web_server():
 async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     if user_id not in user_names:
-        await message.answer("Xush kelibsiz! Ism-sharifingizni yuboring:")
+        await message.answer("Xush kelibsiz! Botdan foydalanish uchun ism-sharifingizni yuboring:")
         await state.set_state(Registration.waiting_for_name)
     else:
         await show_menu(message)
@@ -72,13 +73,12 @@ async def handle_loc(message: types.Message):
     today = datetime.now().strftime("%Y-%m-%d")
     
     if (user_id, today) in attendance_log:
-        await message.answer("⚠️ Bugun allaqachon davomatdan o'tgansiz!")
+        await message.answer("⚠️ Siz bugun allaqachon davomatdan o'tgansiz!")
         return
 
     user_coords = (message.location.latitude, message.location.longitude)
     found_branch = None
     for branch in LOCATIONS:
-        # Masofani hisoblash (bu yerda xatolik tuzatildi)
         dist = geodesic((branch["lat"], branch["lon"]), user_coords).meters
         if dist <= ALLOWED_DISTANCE:
             found_branch = branch["name"]
@@ -88,26 +88,39 @@ async def handle_loc(message: types.Message):
         full_name = user_names.get(user_id, "Noma'lum")
         now_time = datetime.now().strftime("%H:%M")
         
+        # Hisobot matni - Ism havolasiz (parse_mode Markdown ishlatiladi lekin ism link qilinmaydi)
         report = (
-            f"✅ Yangi Davomat\n"
-            f"👤 O'qituvchi: {full_name}\n"
-            f"📍 Manzil: {found_branch}\n"
-            f"📅 Sana: {today}\n"
-            f"⏰ Vaqt: {now_time}"
+            f"✅ **Yangi Davomat**\n\n"
+            f"👤 **O'qituvchi:** {full_name}\n"
+            f"📍 **Manzil:** {found_branch}\n"
+            f"📅 **Sana:** {today}\n"
+            f"⏰ **Vaqt:** {now_time}"
         )
         
+        # Profilga kirish tugmasi
+        builder = InlineKeyboardBuilder()
+        builder.row(types.InlineKeyboardButton(
+            text="👤 Profilni ko'rish", 
+            url=f"tg://user?id={user_id}")
+        )
+
         try:
-            await bot.send_message(ADMIN_GROUP_ID, report)
+            await bot.send_message(
+                chat_id=ADMIN_GROUP_ID, 
+                text=report, 
+                parse_mode="Markdown",
+                reply_markup=builder.as_markup()
+            )
             attendance_log.add((user_id, today))
             await message.answer(f"✅ Tasdiqlandi! ({found_branch})")
         except Exception as e:
-            logging.error(f"Error: {e}")
+            logging.error(f"Xabar yuborishda xato: {e}")
     else:
         await message.answer("❌ Siz belgilangan hududda emassiz!")
 
 async def main():
     asyncio.create_task(start_web_server())
-    # Konflikt xatosini kamaytirish uchun pollingni tozalab boshlaymiz
+    # Eski xabarlarni tozalash (Konfliktni oldini oladi)
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
