@@ -17,22 +17,29 @@ TOKEN = "8268187024:AAGVlMOzOUTXMyrB8ePj9vHcayshkZ4PGW4"
 ADMIN_GROUP_ID = -1003885800610 
 UZB_TZ = pytz.timezone('Asia/Tashkent') 
 
+# YANGILANGAN LOKATSIYALAR RO'YXATI
 LOCATIONS = [
     {"name": "Kimyo Xalqaro Universiteti", "lat": 41.257490, "lon": 69.220109},
-    {"name": "78-Maktab", "lat": 41.282791, "lon": 69.173290}
+    {"name": "78-Maktab", "lat": 41.282791, "lon": 69.173290},
+    {"name": "290-Maktab", "lat": 41.234736, "lon": 69.350745},
+    {"name": "348-Maktab", "lat": 41.214092, "lon": 69.340152},
+    {"name": "347-Maktab", "lat": 41.236833, "lon": 69.372048},
+    {"name": "358-Maktab", "lat": 41.240690, "lon": 69.366529},
+    {"name": "346-Maktab", "lat": 41.216158, "lon": 69.323902},
+    {"name": "293-Maktab", "lat": 41.253573, "lon": 69.377204},
+    {"name": "345-Maktab", "lat": 41.220456, "lon": 69.333441},
+    {"name": "IM.Gubkin Litseyi", "lat": 41.254183, "lon": 69.382270},
+    {"name": "Narxoz universiteti", "lat": 41.308916, "lon": 69.247496},
+    {"name": "Narxoz litseyi", "lat": 41.306951, "lon": 69.247667}
 ]
-ALLOWED_DISTANCE = 150 
+ALLOWED_DISTANCE = 150 # Metrda
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Bir kunda bitta filialda qayta davomat qilmaslik uchun log
-# Strukturasi: {(user_id, branch_name, date)}
-daily_attendance_log = set()
-
-# Oylik umumiy hisoblagich
-# Strukturasi: {(user_id, branch_name, month): count}
-attendance_counter = {}
+# Ma'lumotlarni saqlash (Eslatma: Bot o'chib yonsa bular nolga qaytadi)
+daily_attendance_log = set() # {(user_id, branch_name, date)}
+attendance_counter = {}      # {(user_id, branch_name, month): count}
 
 # --- WEB SERVER (RENDER UCHUN) ---
 async def handle(request):
@@ -53,7 +60,10 @@ async def cmd_start(message: types.Message):
     kb = [[types.KeyboardButton(text="📍 Kelganimni tasdiqlash", request_location=True)]]
     keyboard = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
     name = message.from_user.full_name
-    await message.answer(f"Xush kelibsiz, {name}!\nDavomat uchun tugmani bosing:", reply_markup=keyboard)
+    await message.answer(
+        f"Xush kelibsiz, {name}!\n\nDavomat qilish uchun pastdagi tugmani bosing:", 
+        reply_markup=keyboard
+    )
 
 @dp.message(F.location)
 async def handle_loc(message: types.Message):
@@ -73,24 +83,21 @@ async def handle_loc(message: types.Message):
             break
 
     if found_branch:
-        # Tekshiruv: Ushbu user bugun shu filialda davomat qilganmi?
+        # Kunlik va filial bo'yicha cheklov
         attendance_key = (user_id, found_branch, today_date)
-        
         if attendance_key in daily_attendance_log:
-            await message.answer(f"⚠️ Siz bugun **{found_branch}** filialida davomatdan o'tgansiz. Qayta davomat qilish mumkin emas.")
+            await message.answer(f"⚠️ Siz bugun **{found_branch}** hududida allaqachon davomatdan o'tgansiz!")
             return
 
-        # Agar o'tmagan bo'lsa, hisoblagichlarni yangilaymiz
+        # Hisoblagichni oshirish
         counter_key = (user_id, found_branch, current_month)
         attendance_counter[counter_key] = attendance_counter.get(counter_key, 0) + 1
         visit_number = attendance_counter[counter_key]
         
-        # Bugungi logga qo'shish
         daily_attendance_log.add(attendance_key)
-
         full_name = message.from_user.full_name
         
-        # Hisobot matni
+        # Admin guruhiga hisobot
         report = (
             f"✅ **Yangi Davomat**\n\n"
             f"👤 **O'qituvchi:** {full_name}\n"
@@ -110,11 +117,15 @@ async def handle_loc(message: types.Message):
                 parse_mode="Markdown",
                 reply_markup=builder.as_markup()
             )
-            await message.answer(f"✅ Tasdiqlandi!\nSiz bugun {found_branch} filialida birinchi marta davomat qildingiz.\nShu oydagi jami: {visit_number}-marta.")
+            await message.answer(
+                f"✅ Tasdiqlandi!\n\nFilial: {found_branch}\n"
+                f"Sana: {today_date}\n"
+                f"Ushbu oydagi tashrifingiz: {visit_number}-marta"
+            )
         except Exception as e:
             logging.error(f"Error: {e}")
     else:
-        await message.answer("❌ Siz markaz hududida emassiz!")
+        await message.answer("❌ Siz belgilangan maktab yoki litseylar hududida emassiz!")
 
 async def main():
     asyncio.create_task(start_web_server())
