@@ -1,7 +1,7 @@
 import asyncio
 import os
 import logging
-import pytz  # Toshkent vaqti uchun
+import pytz 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 # --- SOZLAMALAR ---
 TOKEN = "8268187024:AAGVlMOzOUTXMyrB8ePj9vHcayshkZ4PGW4"
 ADMIN_GROUP_ID = -1003885800610 
-UZB_TZ = pytz.timezone('Asia/Tashkent') # GMT+5
+UZB_TZ = pytz.timezone('Asia/Tashkent') 
 
 LOCATIONS = [
     {"name": "Kimyo Xalqaro Universiteti", "lat": 41.257490, "lon": 69.220109},
@@ -25,9 +25,8 @@ ALLOWED_DISTANCE = 150
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
-attendance_log = set()
 
-# --- WEB SERVER (RENDER PORT FIX) ---
+# --- WEB SERVER (RENDER PORT BINDING) ---
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -47,10 +46,9 @@ async def cmd_start(message: types.Message):
     kb = [[types.KeyboardButton(text="📍 Kelganimni tasdiqlash", request_location=True)]]
     keyboard = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
     
-    # Ismni profildan olish
     name = message.from_user.full_name
     await message.answer(
-        f"Xush kelibsiz, {name}!\n\nDavomat qilish uchun pastdagi tugmani bosing:", 
+        f"Xush kelibsiz, {name}!\n\nDavomat qilish uchun tugmani bosing:", 
         reply_markup=keyboard
     )
 
@@ -60,9 +58,7 @@ async def handle_loc(message: types.Message):
     now_uzb = datetime.now(UZB_TZ)
     today = now_uzb.strftime("%Y-%m-%d")
     
-    if (user_id, today) in attendance_log:
-        await message.answer("⚠️ Siz bugun allaqachon davomatdan o'tgansiz!")
-        return
+    # CHEKLOV OLIB TASHLANDI: Endi bir kunda bir necha marta o'tish mumkin
 
     user_coords = (message.location.latitude, message.location.longitude)
     found_branch = None
@@ -97,16 +93,15 @@ async def handle_loc(message: types.Message):
                 parse_mode="Markdown",
                 reply_markup=builder.as_markup()
             )
-            attendance_log.add((user_id, today))
             await message.answer(f"✅ Tasdiqlandi! ({found_branch})")
         except Exception as e:
-            logging.error(f"Error: {e}")
+            logging.error(f"Xabar yuborishda xato: {e}")
     else:
         await message.answer("❌ Siz markaz hududida emassiz!")
 
 async def main():
     asyncio.create_task(start_web_server())
-    # Eski seanslarni tozalash (Konfliktni oldini oladi)
+    # Konfliktni oldini olish uchun drop_updates
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
