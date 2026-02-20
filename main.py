@@ -17,7 +17,7 @@ TOKEN = "8268187024:AAGVlMOzOUTXMyrB8ePj9vHcayshkZ4PGW4"
 ADMIN_GROUP_ID = -1003885800610 
 UZB_TZ = pytz.timezone('Asia/Tashkent') 
 
-# YANGILANGAN LOKATSIYALAR RO'YXATI
+# BARCHA LOKATSIYALAR RO'YXATI (YANGILANGAN)
 LOCATIONS = [
     {"name": "Kimyo Xalqaro Universiteti", "lat": 41.257490, "lon": 69.220109},
     {"name": "78-Maktab", "lat": 41.282791, "lon": 69.173290},
@@ -30,14 +30,18 @@ LOCATIONS = [
     {"name": "345-Maktab", "lat": 41.220456, "lon": 69.333441},
     {"name": "IM.Gubkin Litseyi", "lat": 41.254183, "lon": 69.382270},
     {"name": "Narxoz universiteti", "lat": 41.308916, "lon": 69.247496},
-    {"name": "Narxoz litseyi", "lat": 41.306951, "lon": 69.247667}
+    {"name": "Narxoz litseyi", "lat": 41.306951, "lon": 69.247667},
+    {"name": "Tekstil litseyi", "lat": 41.284784, "lon": 69.249356},
+    {"name": "200-Maktab", "lat": 41.263860, "lon": 69.181538},
+    {"name": "Selxoz litseyi", "lat": 41.362532, "lon": 69.340768},
+    {"name": "294-Maktab", "lat": 41.281633, "lon": 69.289237}
 ]
 ALLOWED_DISTANCE = 150 # Metrda
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Ma'lumotlarni saqlash (Eslatma: Bot o'chib yonsa bular nolga qaytadi)
+# Ma'lumotlarni saqlash
 daily_attendance_log = set() # {(user_id, branch_name, date)}
 attendance_counter = {}      # {(user_id, branch_name, month): count}
 
@@ -125,7 +129,7 @@ async def handle_loc(message: types.Message):
         except Exception as e:
             logging.error(f"Error: {e}")
     else:
-        await message.answer("❌ Siz belgilangan maktab yoki litseylar hududida emassiz!")
+        await message.answer("❌ Siz belgilangan ta'lim muassasalari hududida emassiz!")
 
 async def main():
     asyncio.create_task(start_web_server())
