@@ -14,14 +14,14 @@ logging.basicConfig(level=logging.INFO)
 
 # --- ASOSIY SOZLAMALAR ---
 TOKEN = "8268187024:AAGVlMOzOUTXMyrB8ePj9vHcayshkZ4PGW4"
-ADMIN_GROUP_ID = -1003885800610 # Sizning guruh ID
+ADMIN_GROUP_ID = -1003885800610 
 
 # Manzillar
 LOCATIONS = [
     {"name": "Kimyo Xalqaro Universiteti", "lat": 41.257490, "lon": 69.220109},
     {"name": "78-Maktab", "lat": 41.282791, "lon": 69.173290}
 ]
-ALLOWED_DISTANCE = 150 # Metrda
+ALLOWED_DISTANCE = 150 
 
 # --- BOT VA XOTIRA ---
 bot = Bot(token=TOKEN)
@@ -57,6 +57,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
 
 @dp.message(Registration.waiting_for_name)
 async def get_name(message: types.Message, state: FSMContext):
+    # Foydalanuvchi kiritgan ismni saqlaymiz
     user_names[message.from_user.id] = message.text
     await state.clear()
     await message.answer(f"Rahmat, {message.text}! Endi davomat qilishingiz mumkin.")
@@ -86,25 +87,27 @@ async def handle_loc(message: types.Message):
             break
 
     if found_branch:
-        full_name = user_names.get(user_id, message.from_user.full_name)
+        # MUHIM: Bu yerda faqat o'zi yozgan ismni olamiz, profil havolasini emas
+        full_name = user_names.get(user_id, "Noma'lum foydalanuvchi")
         now_time = datetime.now().strftime("%H:%M")
         
-        # Admin guruhiga hisobot yuborish
+        # Hisobot matni (Markdown'siz, oddiy matn ko'rinishida)
         report = (
-            f"✅ **Yangi Davomat**\n"
-            f"👤 **O'qituvchi:** {full_name}\n"
-            f"📍 **Manzil:** {found_branch}\n"
-            f"📅 **Sana:** {today}\n"
-            f"⏰ **Vaqt:** {now_time}"
+            f"✅ Yangi Davomat\n"
+            f"👤 O'qituvchi: {full_name}\n"
+            f"📍 Manzil: {found_branch}\n"
+            f"📅 Sana: {today}\n"
+            f"⏰ Vaqt: {now_time}"
         )
         
         try:
-            await bot.send_message(ADMIN_GROUP_ID, report, parse_mode="Markdown")
+            # parse_mode olib tashlandi, shunda ism ko'k link bo'lib qolmaydi
+            await bot.send_message(ADMIN_GROUP_ID, report)
             attendance_log.add((user_id, today))
             await message.answer(f"✅ Tasdiqlandi! Siz {found_branch} hududidasiz.")
         except Exception as e:
-            logging.error(f"Xabar yuborishda xato: {e}")
-            await message.answer("❌ Xatolik: Guruhga hisobot yuborib bo'lmadi.")
+            logging.error(f"Xato: {e}")
+            await message.answer("❌ Xatolik yuz berdi.")
     else:
         await message.answer("❌ Siz belgilangan hududda emassiz!")
 
