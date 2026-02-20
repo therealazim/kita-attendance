@@ -12,7 +12,8 @@ from aiohttp import web
 # --- LOGGING ---
 logging.basicConfig(level=logging.INFO)
 
-# --- SOZLAMALAR ---
+# --- ASOSIY SOZLAMALAR ---
+# Siz yuborgan oxirgi API token
 TOKEN = "8268187024:AAGVlMOzOUTXMyrB8ePj9vHcayshkZ4PGW4"
 ADMIN_GROUP_ID = -1003885800610 
 
@@ -22,7 +23,6 @@ LOCATIONS = [
 ]
 ALLOWED_DISTANCE = 150 
 
-# --- BOT VA XOTIRA ---
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 user_names = {}
@@ -31,7 +31,7 @@ attendance_log = set()
 class Registration(StatesGroup):
     waiting_for_name = State()
 
-# --- WEB SERVER (RENDER PORT MUAMMOSINI YECHISH) ---
+# --- WEB SERVER (RENDER PORT FIX) ---
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -40,11 +40,11 @@ async def start_web_server():
     app.router.add_get('/', handle)
     runner = web.AppRunner(app)
     await runner.setup()
-    # Render'da "Failed" bo'lmasligi uchun aynan PORT olinadi
+    # Render'da "No open ports detected" chiqmasligi uchun:
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
-    logging.info(f"Server started on port {port}")
+    logging.info(f"Server {port}-portda ishga tushdi")
 
 # --- HANDLERS ---
 @dp.message(CommandStart())
@@ -58,6 +58,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
 
 @dp.message(Registration.waiting_for_name)
 async def get_name(message: types.Message, state: FSMContext):
+    # O'qituvchi yozgan ismni saqlaymiz
     user_names[message.from_user.id] = message.text
     await state.clear()
     await message.answer(f"Rahmat, {message.text}! Endi davomat qilishingiz mumkin.")
@@ -66,7 +67,7 @@ async def get_name(message: types.Message, state: FSMContext):
 async def show_menu(message: types.Message):
     kb = [[types.KeyboardButton(text="📍 Kelganimni tasdiqlash", request_location=True)]]
     keyboard = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
-    await message.answer("Tugmani bosing:", reply_markup=keyboard)
+    await message.answer("Davomat qilish uchun pastdagi tugmani bosing:", reply_markup=keyboard)
 
 @dp.message(F.location)
 async def handle_loc(message: types.Message):
@@ -77,46 +78,4 @@ async def handle_loc(message: types.Message):
         await message.answer("⚠️ Siz bugun allaqachon davomatdan o'tgansiz!")
         return
 
-    user_coords = (message.location.latitude, message.location.longitude)
-    found_branch = None
-    
-    for branch in LOCATIONS:
-        dist = geodesic((branch["lat"], branch["lon"]), user_coords).meters
-        if dist <= ALLOWED_DISTANCE:
-            found_branch = branch["name"]
-            break
-
-    if found_branch:
-        full_name = user_names.get(user_id, "Noma'lum")
-        now_time = datetime.now().strftime("%H:%M")
-        
-        # Ism ustiga bosib bo'lmasligi uchun oddiy matn formatida yuboramiz
-        report = (
-            f"✅ Yangi Davomat\n"
-            f"👤 O'qituvchi: {full_name}\n"
-            f"📍 Manzil: {found_branch}\n"
-            f"📅 Sana: {today}\n"
-            f"⏰ Vaqt: {now_time}"
-        )
-        
-        try:
-            # Parse_mode ishlatilmaydi - shunda Telegram ismni linkka aylantirmaydi
-            await bot.send_message(ADMIN_GROUP_ID, report)
-            attendance_log.add((user_id, today))
-            await message.answer(f"✅ Tasdiqlandi! Siz {found_branch} hududidasiz.")
-        except Exception as e:
-            logging.error(f"Error: {e}")
-            await message.answer("❌ Xatolik yuz berdi.")
-    else:
-        await message.answer("❌ Siz belgilangan hududda emassiz!")
-
-async def main():
-    # Web server va botni parallel ishga tushiramiz
-    asyncio.create_task(start_web_server())
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logging.info("Bot stopped")
+    user_coords = (message.location.latitude, message
