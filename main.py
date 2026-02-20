@@ -26,7 +26,15 @@ ALLOWED_DISTANCE = 150
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# --- WEB SERVER (RENDER PORT BINDING) ---
+# Bir kunda bitta filialda qayta davomat qilmaslik uchun log
+# Strukturasi: {(user_id, branch_name, date)}
+daily_attendance_log = set()
+
+# Oylik umumiy hisoblagich
+# Strukturasi: {(user_id, branch_name, month): count}
+attendance_counter = {}
+
+# --- WEB SERVER (RENDER UCHUN) ---
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -38,30 +46,26 @@ async def start_web_server():
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
-    logging.info(f"Server {port}-portda ishga tushdi")
 
 # --- HANDLERS ---
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
     kb = [[types.KeyboardButton(text="📍 Kelganimni tasdiqlash", request_location=True)]]
     keyboard = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
-    
     name = message.from_user.full_name
-    await message.answer(
-        f"Xush kelibsiz, {name}!\n\nDavomat qilish uchun tugmani bosing:", 
-        reply_markup=keyboard
-    )
+    await message.answer(f"Xush kelibsiz, {name}!\nDavomat uchun tugmani bosing:", reply_markup=keyboard)
 
 @dp.message(F.location)
 async def handle_loc(message: types.Message):
     user_id = message.from_user.id
     now_uzb = datetime.now(UZB_TZ)
-    today = now_uzb.strftime("%Y-%m-%d")
-    
-    # CHEKLOV OLIB TASHLANDI: Endi bir kunda bir necha marta o'tish mumkin
+    today_date = now_uzb.strftime("%Y-%m-%d")
+    current_month = now_uzb.strftime("%Y-%m")
+    now_time = now_uzb.strftime("%H:%M:%S")
 
     user_coords = (message.location.latitude, message.location.longitude)
     found_branch = None
+    
     for branch in LOCATIONS:
         dist = geodesic((branch["lat"], branch["lon"]), user_coords).meters
         if dist <= ALLOWED_DISTANCE:
@@ -69,22 +73,35 @@ async def handle_loc(message: types.Message):
             break
 
     if found_branch:
-        full_name = message.from_user.full_name
-        now_time = now_uzb.strftime("%H:%M:%S")
+        # Tekshiruv: Ushbu user bugun shu filialda davomat qilganmi?
+        attendance_key = (user_id, found_branch, today_date)
         
+        if attendance_key in daily_attendance_log:
+            await message.answer(f"⚠️ Siz bugun **{found_branch}** filialida davomatdan o'tgansiz. Qayta davomat qilish mumkin emas.")
+            return
+
+        # Agar o'tmagan bo'lsa, hisoblagichlarni yangilaymiz
+        counter_key = (user_id, found_branch, current_month)
+        attendance_counter[counter_key] = attendance_counter.get(counter_key, 0) + 1
+        visit_number = attendance_counter[counter_key]
+        
+        # Bugungi logga qo'shish
+        daily_attendance_log.add(attendance_key)
+
+        full_name = message.from_user.full_name
+        
+        # Hisobot matni
         report = (
             f"✅ **Yangi Davomat**\n\n"
             f"👤 **O'qituvchi:** {full_name}\n"
             f"📍 **Manzil:** {found_branch}\n"
-            f"📅 **Sana:** {today}\n"
-            f"⏰ **Vaqt:** {now_time} (Toshkent vaqti)"
+            f"📅 **Sana:** {today_date}\n"
+            f"⏰ **Vaqt:** {now_time}\n"
+            f"🔢 **Shu oydagi tashrif:** {visit_number}-marta"
         )
         
         builder = InlineKeyboardBuilder()
-        builder.row(types.InlineKeyboardButton(
-            text="👤 Profilni ko'rish", 
-            url=f"tg://user?id={user_id}")
-        )
+        builder.row(types.InlineKeyboardButton(text="👤 Profilni ko'rish", url=f"tg://user?id={user_id}"))
 
         try:
             await bot.send_message(
@@ -93,15 +110,14 @@ async def handle_loc(message: types.Message):
                 parse_mode="Markdown",
                 reply_markup=builder.as_markup()
             )
-            await message.answer(f"✅ Tasdiqlandi! ({found_branch})")
+            await message.answer(f"✅ Tasdiqlandi!\nSiz bugun {found_branch} filialida birinchi marta davomat qildingiz.\nShu oydagi jami: {visit_number}-marta.")
         except Exception as e:
-            logging.error(f"Xabar yuborishda xato: {e}")
+            logging.error(f"Error: {e}")
     else:
         await message.answer("❌ Siz markaz hududida emassiz!")
 
 async def main():
     asyncio.create_task(start_web_server())
-    # Konfliktni oldini olish uchun drop_updates
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
