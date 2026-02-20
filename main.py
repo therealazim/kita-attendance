@@ -1,10 +1,9 @@
 import asyncio
 import os
 import logging
+import pytz  # Vaqt zonasi uchun
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from geopy.distance import geodesic
 from datetime import datetime
@@ -13,9 +12,10 @@ from aiohttp import web
 # --- LOGGING ---
 logging.basicConfig(level=logging.INFO)
 
-# --- ASOSIY SOZLAMALAR ---
+# --- SOZLAMALAR ---
 TOKEN = "8268187024:AAGVlMOzOUTXMyrB8ePj9vHcayshkZ4PGW4"
 ADMIN_GROUP_ID = -1003885800610 
+UZB_TZ = pytz.timezone('Asia/Tashkent') # GMT+5 sozlamasi
 
 LOCATIONS = [
     {"name": "Kimyo Xalqaro Universiteti", "lat": 41.257490, "lon": 69.220109},
@@ -25,13 +25,9 @@ ALLOWED_DISTANCE = 150
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
-user_names = {}
 attendance_log = set()
 
-class Registration(StatesGroup):
-    waiting_for_name = State()
-
-# --- WEB SERVER (RENDER PORT FIX) ---
+# --- WEB SERVER (RENDER UCHUN) ---
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -43,34 +39,24 @@ async def start_web_server():
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
-    logging.info(f"Server started on port {port}")
 
 # --- HANDLERS ---
 @dp.message(CommandStart())
-async def cmd_start(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-    if user_id not in user_names:
-        await message.answer("Xush kelibsiz! Botdan foydalanish uchun ism-sharifingizni yuboring:")
-        await state.set_state(Registration.waiting_for_name)
-    else:
-        await show_menu(message)
-
-@dp.message(Registration.waiting_for_name)
-async def get_name(message: types.Message, state: FSMContext):
-    user_names[message.from_user.id] = message.text
-    await state.clear()
-    await message.answer(f"Rahmat, {message.text}!")
-    await show_menu(message)
-
-async def show_menu(message: types.Message):
+async def cmd_start(message: types.Message):
     kb = [[types.KeyboardButton(text="📍 Kelganimni tasdiqlash", request_location=True)]]
     keyboard = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
-    await message.answer("Tugmani bosing:", reply_markup=keyboard)
+    await message.answer(
+        f"Xush kelibsiz, {message.from_user.full_name}!\n"
+        f"Davomat qilish uchun pastdagi tugmani bosing:", 
+        reply_markup=keyboard
+    )
 
 @dp.message(F.location)
 async def handle_loc(message: types.Message):
     user_id = message.from_user.id
-    today = datetime.now().strftime("%Y-%m-%d")
+    # O'zbekiston vaqti bilan hozirgi sana va vaqt
+    now_uzb = datetime.now(UZB_TZ)
+    today = now_uzb.strftime("%Y-%m-%d")
     
     if (user_id, today) in attendance_log:
         await message.answer("⚠️ Siz bugun allaqachon davomatdan o'tgansiz!")
@@ -85,19 +71,18 @@ async def handle_loc(message: types.Message):
             break
 
     if found_branch:
-        full_name = user_names.get(user_id, "Noma'lum")
-        now_time = datetime.now().strftime("%H:%M")
+        # Telegram profildagi ism-familiya
+        full_name = message.from_user.full_name
+        now_time = now_uzb.strftime("%H:%M:%S")
         
-        # Hisobot matni - Ism havolasiz (parse_mode Markdown ishlatiladi lekin ism link qilinmaydi)
         report = (
             f"✅ **Yangi Davomat**\n\n"
             f"👤 **O'qituvchi:** {full_name}\n"
             f"📍 **Manzil:** {found_branch}\n"
             f"📅 **Sana:** {today}\n"
-            f"⏰ **Vaqt:** {now_time}"
+            f"⏰ **Vaqt:** {now_time} (GMT+5)"
         )
         
-        # Profilga kirish tugmasi
         builder = InlineKeyboardBuilder()
         builder.row(types.InlineKeyboardButton(
             text="👤 Profilni ko'rish", 
@@ -114,13 +99,12 @@ async def handle_loc(message: types.Message):
             attendance_log.add((user_id, today))
             await message.answer(f"✅ Tasdiqlandi! ({found_branch})")
         except Exception as e:
-            logging.error(f"Xabar yuborishda xato: {e}")
+            logging.error(f"Error: {e}")
     else:
         await message.answer("❌ Siz belgilangan hududda emassiz!")
 
 async def main():
     asyncio.create_task(start_web_server())
-    # Eski xabarlarni tozalash (Konfliktni oldini oladi)
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
