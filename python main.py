@@ -1,7 +1,7 @@
 import asyncio
 import os
 import logging
-import pytz  # Vaqt zonasi uchun
+import pytz  # Toshkent vaqti uchun
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 # --- SOZLAMALAR ---
 TOKEN = "8268187024:AAGVlMOzOUTXMyrB8ePj9vHcayshkZ4PGW4"
 ADMIN_GROUP_ID = -1003885800610 
-UZB_TZ = pytz.timezone('Asia/Tashkent') # GMT+5 sozlamasi
+UZB_TZ = pytz.timezone('Asia/Tashkent') # GMT+5
 
 LOCATIONS = [
     {"name": "Kimyo Xalqaro Universiteti", "lat": 41.257490, "lon": 69.220109},
@@ -27,7 +27,7 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 attendance_log = set()
 
-# --- WEB SERVER (RENDER UCHUN) ---
+# --- WEB SERVER (RENDER PORT FIX) ---
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -39,22 +39,24 @@ async def start_web_server():
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
+    logging.info(f"Server {port}-portda ishga tushdi")
 
 # --- HANDLERS ---
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
     kb = [[types.KeyboardButton(text="📍 Kelganimni tasdiqlash", request_location=True)]]
     keyboard = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+    
+    # Ismni profildan olish
+    name = message.from_user.full_name
     await message.answer(
-        f"Xush kelibsiz, {message.from_user.full_name}!\n"
-        f"Davomat qilish uchun pastdagi tugmani bosing:", 
+        f"Xush kelibsiz, {name}!\n\nDavomat qilish uchun pastdagi tugmani bosing:", 
         reply_markup=keyboard
     )
 
 @dp.message(F.location)
 async def handle_loc(message: types.Message):
     user_id = message.from_user.id
-    # O'zbekiston vaqti bilan hozirgi sana va vaqt
     now_uzb = datetime.now(UZB_TZ)
     today = now_uzb.strftime("%Y-%m-%d")
     
@@ -71,7 +73,6 @@ async def handle_loc(message: types.Message):
             break
 
     if found_branch:
-        # Telegram profildagi ism-familiya
         full_name = message.from_user.full_name
         now_time = now_uzb.strftime("%H:%M:%S")
         
@@ -80,7 +81,7 @@ async def handle_loc(message: types.Message):
             f"👤 **O'qituvchi:** {full_name}\n"
             f"📍 **Manzil:** {found_branch}\n"
             f"📅 **Sana:** {today}\n"
-            f"⏰ **Vaqt:** {now_time} (GMT+5)"
+            f"⏰ **Vaqt:** {now_time} (Toshkent vaqti)"
         )
         
         builder = InlineKeyboardBuilder()
@@ -101,10 +102,11 @@ async def handle_loc(message: types.Message):
         except Exception as e:
             logging.error(f"Error: {e}")
     else:
-        await message.answer("❌ Siz belgilangan hududda emassiz!")
+        await message.answer("❌ Siz markaz hududida emassiz!")
 
 async def main():
     asyncio.create_task(start_web_server())
+    # Eski seanslarni tozalash (Konfliktni oldini oladi)
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
