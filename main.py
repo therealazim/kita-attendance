@@ -660,4 +660,133 @@ async def admin_callbacks(callback: types.CallbackQuery):
         
         # Oylik statistika
         monthly_stats = defaultdict(lambda: defaultdict(int))
-        for (uid, branch, date) in daily
+        for (uid, branch, date) in daily_attendance_log:
+            if date.startswith(current_month):
+                monthly_stats[branch][uid] += 1
+        
+        report = f"📊 **{month_name} oyi uchun hisobot**\n\n"
+        
+        for branch, users in monthly_stats.items():
+            total = sum(users.values())
+            unique_users = len(users)
+            report += f"📍 **{branch}**\n"
+            report += f"   Jami: {total} ta davomat\n"
+            report += f"   O'qituvchilar: {unique_users} ta\n\n"
+        
+        await callback.message.answer(report, parse_mode="Markdown")
+    
+    elif action == "excel":
+        # Excel export qilish
+        try:
+            # Excel fayl yaratish
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Davomat"
+            
+            # Sarlavhalar
+            headers = ["Sana", "Filial", "O'qituvchi ID", "O'qituvchi Ismi"]
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=header)
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal="center")
+            
+            # Ma'lumotlarni yozish
+            row = 2
+            for (uid, branch, date) in sorted(daily_attendance_log):
+                try:
+                    user = await bot.get_chat(uid)
+                    user_name = user.full_name
+                except:
+                    user_name = f"User_{uid}"
+                
+                ws.cell(row=row, column=1, value=date)
+                ws.cell(row=row, column=2, value=branch)
+                ws.cell(row=row, column=3, value=uid)
+                ws.cell(row=row, column=4, value=user_name)
+                row += 1
+            
+            # Faylni saqlash va yuborish
+            excel_file = io.BytesIO()
+            wb.save(excel_file)
+            excel_file.seek(0)
+            
+            await callback.message.answer_document(
+                types.BufferedInputFile(
+                    excel_file.getvalue(),
+                    filename=f"davomat_{now_uzb.strftime('%Y%m')}.xlsx"
+                ),
+                caption="📊 Oylik davomat hisoboti"
+            )
+        except Exception as e:
+            logging.error(f"Excel export error: {e}")
+            await callback.message.answer("❌ Excel fayl yaratishda xatolik yuz berdi.")
+    
+    elif action == "users":
+        user_count = len(user_ids)
+        active_today = len([k for k in daily_attendance_log if k[2] == now_uzb.strftime("%Y-%m-%d")])
+        
+        await callback.message.answer(
+            f"👥 **Foydalanuvchilar statistikasi**\n\n"
+            f"Jami foydalanuvchilar: {user_count}\n"
+            f"Bugun faol: {active_today}",
+            parse_mode="Markdown"
+        )
+    
+    elif action == "stats":
+        total_attendances = len(daily_attendance_log)
+        monthly_attendances = len([k for k in daily_attendance_log if k[2].startswith(now_uzb.strftime("%Y-%m"))])
+        
+        await callback.message.answer(
+            f"📈 **Umumiy statistika**\n\n"
+            f"Jami davomatlar: {total_attendances}\n"
+            f"Shu oyda: {monthly_attendances}\n"
+            f"Faol filiallar: {len(set(k[1] for k in daily_attendance_log))}\n"
+            f"Faol foydalanuvchilar: {len(set(k[0] for k in daily_attendance_log))}",
+            parse_mode="Markdown"
+        )
+    
+    await callback.answer()
+
+# --- REMINDER LOOP ---
+async def send_daily_reminders():
+    """Har kuni soat 08:00 da eslatma yuborish"""
+    now_uzb = datetime.now(UZB_TZ)
+    today = now_uzb.strftime("%Y-%m-%d")
+    
+    # Bugun davomat qilmagan foydalanuvchilarga eslatma
+    sent_count = 0
+    for user_id in user_ids:
+        user_attended = any(k[0] == user_id and k[2] == today for k in daily_attendance_log)
+        if not user_attended:
+            try:
+                await bot.send_message(
+                    user_id,
+                    get_text(user_id, 'daily_reminder'),
+                    parse_mode="Markdown"
+                )
+                sent_count += 1
+                await asyncio.sleep(0.05)
+            except Exception as e:
+                logging.error(f"Reminder error for {user_id}: {e}")
+    
+    logging.info(f"Daily reminders sent: {sent_count} users")
+
+async def reminder_loop():
+    """Eslatmalar uchun doimiy loop"""
+    while True:
+        now_uzb = datetime.now(UZB_TZ)
+        if now_uzb.hour == 8 and now_uzb.minute == 0:
+            await send_daily_reminders()
+            await asyncio.sleep(60)
+        await asyncio.sleep(30)
+
+# --- MAIN ---
+async def main():
+    asyncio.create_task(start_web_server())
+    asyncio.create_task(reminder_loop())
+    
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
