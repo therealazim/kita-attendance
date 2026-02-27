@@ -2,10 +2,8 @@ import asyncio
 import os
 import logging
 import pytz 
-import csv
 import io
 import aiohttp
-import math
 from datetime import datetime, timedelta
 from collections import defaultdict
 from aiogram import Bot, Dispatcher, types, F
@@ -185,7 +183,10 @@ def get_text(user_id: int, key: str, **kwargs):
     lang = user_languages.get(user_id, 'uz')
     text = TRANSLATIONS[lang].get(key, TRANSLATIONS['uz'].get(key, ''))
     if kwargs:
-        text = text.format(**kwargs)
+        try:
+            text = text.format(**kwargs)
+        except:
+            pass
     return text
 
 def get_button_text(user_id: int, button_key: str):
@@ -252,13 +253,7 @@ def get_weather_emoji(weather_condition: str) -> str:
         "Snow": "❄️",
         "Mist": "🌫️",
         "Fog": "🌫️",
-        "Haze": "🌫️",
-        "Smoke": "💨",
-        "Dust": "💨",
-        "Sand": "💨",
-        "Ash": "🌋",
-        "Squall": "💨",
-        "Tornado": "🌪️"
+        "Haze": "🌫️"
     }
     return emoji_map.get(weather_condition, "🌡️")
 
@@ -286,8 +281,9 @@ def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
     emoji = get_weather_emoji(condition)
     
     # Asosiy tavsiya
-    recommendation = WEATHER_RECOMMENDATIONS.get(condition, {}).get(lang, 
-        WEATHER_RECOMMENDATIONS.get('Clear', {}).get(lang, ''))
+    recommendation = WEATHER_RECOMMENDATIONS.get(condition, {}).get(lang, "")
+    if not recommendation:
+        recommendation = WEATHER_RECOMMENDATIONS.get('Clear', {}).get(lang, "")
     
     # Harorat tavsiyasi
     temp_recommendation = get_temperature_recommendation(temp, lang)
@@ -421,7 +417,7 @@ async def my_stats(message: types.Message):
     user_attendances = defaultdict(lambda: defaultdict(int))
     for (uid, branch, date) in daily_attendance_log:
         if uid == user_id:
-            month = date[:7]  # YYYY-MM
+            month = date[:7]
             user_attendances[branch][month] += 1
     
     if not user_attendances:
@@ -498,17 +494,10 @@ async def weekly_top(message: types.Message):
     
     # Haftalik statistikani hisoblash
     weekly_stats = defaultdict(int)
-    user_names = {}
     
     for (uid, branch, date) in daily_attendance_log:
         if date >= week_ago_str:
             weekly_stats[uid] += 1
-            if uid not in user_names:
-                try:
-                    user = await bot.get_chat(uid)
-                    user_names[uid] = user.full_name
-                except:
-                    user_names[uid] = f"Foydalanuvchi {uid}"
     
     if not weekly_stats:
         await message.answer("📭 Bu hafta hali davomat yo'q")
@@ -519,7 +508,12 @@ async def weekly_top(message: types.Message):
     
     top_list = ""
     for i, (uid, count) in enumerate(top_users, 1):
-        name = user_names.get(uid, f"Foydalanuvchi {uid}")
+        try:
+            user = await bot.get_chat(uid)
+            name = user.full_name
+        except:
+            name = f"Foydalanuvchi {uid}"
+        
         medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
         top_list += f"{medal} {name}: **{count}** marta\n"
     
@@ -661,4 +655,10 @@ async def admin_callbacks(callback: types.CallbackQuery):
             total = sum(users.values())
             unique_users = len(users)
             report += f"📍 **{branch}**\n"
-           
+            report += f"   Jami: {total} ta davomat\n"
+            report += f"   O'qituvchilar: {unique_users} ta\n\n"
+        
+        await callback.message.answer(report, parse_mode="Markdown")
+    
+    elif action == "excel":
+        # Excel fay
