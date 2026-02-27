@@ -57,35 +57,43 @@ ALLOWED_DISTANCE = 500
 WEATHER_RECOMMENDATIONS = {
     "Clear": {
         "uz": "☀️ Bugun havo ochiq. Sayr qilish uchun ajoyib kun!",
-        "ru": "☀️ Сегодня ясно. Отличный день для прогулки!"
+        "ru": "☀️ Сегодня ясно. Отличный день для прогулки!",
+        "kr": "☀️ 오늘은 맑은 날씨입니다. 산책하기 좋은 날이에요!"
     },
     "Clouds": {
         "uz": "☁️ Bugun havo bulutli. Salqin havo bilan ish kuningiz samarali o'tsin!",
-        "ru": "☁️ Сегодня облачно. Пусть прохладная погода сделает ваш рабочий день продуктивным!"
+        "ru": "☁️ Сегодня облачно. Пусть прохладная погода сделает ваш рабочий день продуктивным!",
+        "kr": "☁️ 오늘은 흐린 날씨입니다. 시원한 날씨와 함께 즐거운 하루 되세요!"
     },
     "Rain": {
         "uz": "🌧️ Bugun yomg'ir yog'moqda. Soyabon olishni unutmang!",
-        "ru": "🌧️ Сегодня идет дождь. Не забудьте взять зонтик!"
+        "ru": "🌧️ Сегодня идет дождь. Не забудьте взять зонтик!",
+        "kr": "🌧️ 오늘은 비가 옵니다. 우산 챙기는 것 잊지마세요!"
     },
     "Thunderstorm": {
         "uz": "⛈️ Momaqaldiroq bo'lmoqda. Ehtiyot bo'ling!",
-        "ru": "⛈️ Гроза. Будьте осторожны!"
+        "ru": "⛈️ Гроза. Будьте осторожны!",
+        "kr": "⛈️ 천둥번개가 칩니다. 조심하세요!"
     },
     "Snow": {
         "uz": "❄️ Qor yog'moqda. Issiq kiyining!",
-        "ru": "❄️ Идет снег. Одевайтесь теплее!"
+        "ru": "❄️ Идет снег. Одевайтесь теплее!",
+        "kr": "❄️ 눈이 옵니다. 따뜻하게 입으세요!"
     },
     "Mist": {
         "uz": "🌫️ Tuman tushgan. Haydovchilar ehtiyot bo'ling!",
-        "ru": "🌫️ Туман. Водители, будьте осторожны!"
+        "ru": "🌫️ Туман. Водители, будьте осторожны!",
+        "kr": "🌫️ 안개가 끼었습니다. 운전자분들 조심하세요!"
     },
     "Fog": {
         "uz": "🌫️ Tuman tushgan. Haydovchilar ehtiyot bo'ling!",
-        "ru": "🌫️ Туман. Водители, будьте осторожны!"
+        "ru": "🌫️ Туман. Водители, будьте осторожны!",
+        "kr": "🌫️ 안개가 끼었습니다. 운전자분들 조심하세요!"
     },
     "Haze": {
         "uz": "🌫️ Havo tumanli. Ehtiyot bo'ling!",
-        "ru": "🌫️ Дымка. Будьте осторожны!"
+        "ru": "🌫️ Дымка. Будьте осторожны!",
+        "kr": "🌫️ 연무가 끼었습니다. 조심하세요!"
     }
 }
 
@@ -136,13 +144,36 @@ TRANSLATIONS = {
             'top_week': "🏆 Топ недели",
             'language': "🌐 Язык"
         }
+    },
+    'kr': {
+        'welcome': "🌟 **HANCOM ACADEMY 교사용 출석 체크 봇에 오신 것을 환영합니다, {name}!**\n\n아래 버튼을 통해:\n• 출석 체크하기\n• 내 통계 보기\n• 지점 목록 보기\n\n시작하려면 아래 버튼을 사용하세요!",
+        'stats': "📊 **내 통계:**",
+        'no_stats': "📭 아직 출석 체크하지 않았습니다",
+        'branches': "🏢 **등록된 지점:**",
+        'distance_info': "📍 모든 지점은 {distance}미터 반경 내에서 확인됩니다",
+        'help': "🤖 **사용 설명서:**\n\n📍 **출석 체크 방법:**\n• 하단의 \"📍 출석 확인\" 버튼을 누르세요\n• 위치를 전송하세요\n\n📊 **통계:**\n• \"📊 내 통계\" - 개인 출석 기록\n• \"🏢 지점\" - 모든 지점 목록\n\n⚠️ **참고사항:**\n• 하루에 한 번만 출석 체크 가능\n• 지점에서 {distance}미터 이내에 있어야 함\n• 출석은 타슈켄트 시간 기준으로 기록됨",
+        'attendance_success': "✅ **출석이 확인되었습니다!**\n\n🏫 **지점:** {branch}\n📅 **날짜:** {date}\n⏰ **시간:** {time}\n📊 **이번 달 출석:** {count}회\n📏 **거리:** {distance:.1f}미터",
+        'already_attended': "⚠️ 오늘 이미 **{branch}** 지점에서 출석 체크하셨습니다!",
+        'not_in_area': "❌ 지정된 교육 기관 구역 내에 있지 않습니다!",
+        'daily_reminder': "⏰ **알림!** 오늘 아직 출석 체크하지 않으셨습니다. 업무 시작을 위해 출석을 확인하세요!",
+        'weekly_top': "🏆 **이번 주 가장 활발한 교사:**\n\n{top_list}",
+        'monthly_report': "📊 **{month}월 보고서**\n\n{report}",
+        'language_changed': "✅ 언어가 변경되었습니다: 한국어",
+        'buttons': {
+            'attendance': "📍 출석 확인",
+            'my_stats': "📊 내 통계",
+            'branches': "🏢 지점",
+            'help': "❓ 도움말",
+            'top_week': "🏆 주간 TOP",
+            'language': "🌐 언어"
+        }
     }
 }
 
 # Ma'lumotlarni saqlash
-daily_attendance_log = set()  # {(user_id, branch_name, date)}
+daily_attendance_log = set()  # {(user_id, branch_name, date, time)}
 attendance_counter = {}       # {(user_id, branch_name, month): count}
-user_languages = {}           # {user_id: 'uz' or 'ru'}
+user_languages = {}           # {user_id: 'uz' or 'ru' or 'kr'}
 user_ids = set()              # Barcha foydalanuvchilar ID si
 
 # --- YORDAMCHI FUNKSIYALAR ---
@@ -246,19 +277,28 @@ def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
     # Bosimni mmHg ga o'tkazish
     pressure_mmhg = pressure * 0.750062
     
+    # Tilga mos ravishda matnlar
+    temp_text = "Harorat" if lang == 'uz' else "Температура" if lang == 'ru' else "기온"
+    feels_text = "his qilinadi" if lang == 'uz' else "ощущается" if lang == 'ru' else "체감"
+    humidity_text = "Namlik" if lang == 'uz' else "Влажность" if lang == 'ru' else "습도"
+    wind_text = "Shamol" if lang == 'uz' else "Ветер" if lang == 'ru' else "바람"
+    pressure_text = "Bosim" if lang == 'uz' else "Давление" if lang == 'ru' else "기압"
+    recommendation_title = "Tavsiya" if lang == 'uz' else "Рекомендация" if lang == 'ru' else "추천"
+    time_text = "Vaqt" if lang == 'uz' else "Время" if lang == 'ru' else "시간"
+    
     message = f"""
 {emoji} **Ob-havo ma'lumoti**
 
 📍 **Joy:** {city}
-🌡️ **Harorat:** {temp:.1f}°C (his qilinadi: {feels_like:.1f}°C)
-💧 **Namlik:** {humidity}%
-💨 **Shamol:** {wind_speed:.1f} m/s
-📊 **Bosim:** {pressure_mmhg:.1f} mmHg
+🌡️ **{temp_text}:** {temp:.1f}°C ({feels_text}: {feels_like:.1f}°C)
+💧 **{humidity_text}:** {humidity}%
+💨 **{wind_text}:** {wind_speed:.1f} m/s
+📊 **{pressure_text}:** {pressure_mmhg:.1f} mmHg
 
-💡 **Tavsiya:**
+💡 **{recommendation_title}:**
 {recommendation}
 
-📅 **Vaqt:** {datetime.now(UZB_TZ).strftime('%H:%M')}
+📅 **{time_text}:** {datetime.now(UZB_TZ).strftime('%H:%M')}
 """
     return message
 
@@ -307,15 +347,16 @@ async def cmd_start(message: types.Message):
         parse_mode="Markdown"
     )
 
-@dp.message(F.text.in_({'🌐 Til', '🌐 Язык'}))
+@dp.message(F.text.in_({'🌐 Til', '🌐 Язык', '🌐 언어'}))
 async def change_language(message: types.Message):
     user_id = message.from_user.id
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="🇺🇿 O'zbekcha", callback_data="lang_uz"),
-        InlineKeyboardButton(text="🇷🇺 Русский", callback_data="lang_ru")
+        InlineKeyboardButton(text="🇷🇺 Русский", callback_data="lang_ru"),
+        InlineKeyboardButton(text="🇰🇷 한국어", callback_data="lang_kr")
     )
-    await message.answer("Tilni tanlang / Выберите язык:", reply_markup=builder.as_markup())
+    await message.answer("Tilni tanlang / Выберите язык / 언어를 선택하세요:", reply_markup=builder.as_markup())
 
 @dp.callback_query(F.data.startswith("lang_"))
 async def set_language(callback: types.CallbackQuery):
@@ -333,36 +374,108 @@ async def set_language(callback: types.CallbackQuery):
         parse_mode="Markdown"
     )
 
-@dp.message(F.text.in_({'📊 Mening statistikam', '📊 Моя статистика'}))
+@dp.message(F.text.in_({'📊 Mening statistikam', '📊 Моя статистика', '📊 내 통계'}))
 async def my_stats(message: types.Message):
     user_id = message.from_user.id
     now_uzb = datetime.now(UZB_TZ)
     current_month = now_uzb.strftime("%Y-%m")
     
-    # Foydalanuvchining barcha davomatlarini topish
-    user_attendances = defaultdict(lambda: defaultdict(int))
-    for (uid, branch, date) in daily_attendance_log:
+    # Foydalanuvchining barcha davomatlarini sanalar bilan saqlash
+    user_attendances = defaultdict(list)  # {branch: [(date, time), ...]}
+    
+    for (uid, branch, date, time) in daily_attendance_log:
         if uid == user_id:
-            month = date[:7]
-            user_attendances[branch][month] += 1
+            user_attendances[branch].append((date, time))
     
     if not user_attendances:
         await message.answer(get_text(user_id, 'no_stats'), parse_mode="Markdown")
         return
     
+    # Oylar bo'yicha saralash uchun
+    month_names_uz = {
+        "01": "Yanvar", "02": "Fevral", "03": "Mart", "04": "Aprel",
+        "05": "May", "06": "Iyun", "07": "Iyul", "08": "Avgust",
+        "09": "Sentabr", "10": "Oktabr", "11": "Noyabr", "12": "Dekabr"
+    }
+    
+    month_names_ru = {
+        "01": "Январь", "02": "Февраль", "03": "Март", "04": "Апрель",
+        "05": "Май", "06": "Июнь", "07": "Июль", "08": "Август",
+        "09": "Сентябрь", "10": "Октябрь", "11": "Ноябрь", "12": "Декабрь"
+    }
+    
+    month_names_kr = {
+        "01": "1월", "02": "2월", "03": "3월", "04": "4월",
+        "05": "5월", "06": "6월", "07": "7월", "08": "8월",
+        "09": "9월", "10": "10월", "11": "11월", "12": "12월"
+    }
+    
+    lang = user_languages.get(user_id, 'uz')
+    if lang == 'uz':
+        month_names = month_names_uz
+        weekdays = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
+        current_month_text = "(joriy oy)"
+        date_format = "{day:02d}.{month:02d}.{year}"
+    elif lang == 'ru':
+        month_names = month_names_ru
+        weekdays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+        current_month_text = "(текущий месяц)"
+        date_format = "{day:02d}.{month:02d}.{year}"
+    else:  # kr
+        month_names = month_names_kr
+        weekdays = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
+        current_month_text = "(이번 달)"
+        date_format = "{year}년 {month:02d}월 {day:02d}일"
+    
     text = get_text(user_id, 'stats') + "\n\n"
-    for branch, months in user_attendances.items():
+    
+    # Har bir filial uchun
+    for branch, date_time_list in user_attendances.items():
         text += f"📍 **{branch}**\n"
-        for month, count in months.items():
-            if month == current_month:
-                text += f"   • {month}: **{count}** marta (joriy oy)\n"
-            else:
-                text += f"   • {month}: {count} marta\n"
+        
+        # Sanalarni yil-oy bo'yicha guruhlash
+        dates_by_month = defaultdict(list)
+        for date_str, time_str in date_time_list:
+            year_month = date_str[:7]  # YYYY-MM
+            dates_by_month[year_month].append((date_str, time_str))
+        
+        # Oylar bo'yicha chiqarish
+        for year_month, month_data in sorted(dates_by_month.items(), reverse=True):
+            year, month = year_month.split('-')
+            month_name = month_names.get(month, month)
+            
+            # Agar joriy oy bo'lsa, maxsus belgi
+            month_display = f"{month_name} {year}"
+            if year_month == current_month:
+                month_display += f" {current_month_text}"
+            
+            text += f"   📅 **{month_display}**\n"
+            
+            # Kunlar bo'yicha saralash (eng yangi birinchi)
+            for date_str, time_str in sorted(month_data, reverse=True):
+                date_parts = date_str.split('-')
+                year, month, day = date_parts
+                
+                # Hafta kunini aniqlash
+                date_obj = datetime(int(year), int(month), int(day), tzinfo=UZB_TZ)
+                weekday = date_obj.weekday()
+                weekday_name = weekdays[weekday]
+                
+                # Formatlash
+                if lang == 'kr':
+                    formatted_date = f"{year}년 {int(month):02d}월 {int(day):02d}일"
+                else:
+                    formatted_date = f"{int(day):02d}.{int(month):02d}.{year}"
+                
+                text += f"      • {formatted_date} ({weekday_name}) - ⏰ {time_str}\n"
+            
+            text += "\n"
+        
         text += "\n"
     
     await message.answer(text, parse_mode="Markdown")
 
-@dp.message(F.text.in_({'🏢 Filiallar', '🏢 Филиалы'}))
+@dp.message(F.text.in_({'🏢 Filiallar', '🏢 Филиалы', '🏢 지점'}))
 async def show_branches(message: types.Message):
     user_id = message.from_user.id
     
@@ -381,20 +494,35 @@ async def show_branches(message: types.Message):
         else:
             lyceums.append(branch['name'])
     
+    # Tilga mos sarlavhalar
+    lang = user_languages.get(user_id, 'uz')
+    if lang == 'uz':
+        uni_title = "**🏛 Universitetlar:**"
+        lyceum_title = "**📚 Litseylar:**"
+        school_title = "**🏫 Maktablar:**"
+    elif lang == 'ru':
+        uni_title = "**🏛 Университеты:**"
+        lyceum_title = "**📚 Лицеи:**"
+        school_title = "**🏫 Школы:**"
+    else:  # kr
+        uni_title = "**🏛 대학교:**"
+        lyceum_title = "**📚 고등학교:**"
+        school_title = "**🏫 초중학교:**"
+    
     if universities:
-        text += "**🏛 Universitetlar:**\n"
+        text += f"{uni_title}\n"
         for uni in universities:
             text += f"• {uni}\n"
         text += "\n"
     
     if lyceums:
-        text += "**📚 Litseylar:**\n"
+        text += f"{lyceum_title}\n"
         for lyceum in lyceums:
             text += f"• {lyceum}\n"
         text += "\n"
     
     if schools:
-        text += "**🏫 Maktablar:**\n"
+        text += f"{school_title}\n"
         for school in schools:
             text += f"• {school}\n"
         text += "\n"
@@ -403,7 +531,7 @@ async def show_branches(message: types.Message):
     
     await message.answer(text, parse_mode="Markdown")
 
-@dp.message(F.text.in_({'❓ Yordam', '❓ Помощь'}))
+@dp.message(F.text.in_({'❓ Yordam', '❓ Помощь', '❓ 도움말'}))
 async def help_command(message: types.Message):
     user_id = message.from_user.id
     await message.answer(
@@ -411,7 +539,7 @@ async def help_command(message: types.Message):
         parse_mode="Markdown"
     )
 
-@dp.message(F.text.in_({'🏆 Hafta topi', '🏆 Топ недели'}))
+@dp.message(F.text.in_({'🏆 Hafta topi', '🏆 Топ недели', '🏆 주간 TOP'}))
 async def weekly_top(message: types.Message):
     user_id = message.from_user.id
     now_uzb = datetime.now(UZB_TZ)
@@ -421,12 +549,21 @@ async def weekly_top(message: types.Message):
     # Haftalik statistikani hisoblash
     weekly_stats = defaultdict(int)
     
-    for (uid, branch, date) in daily_attendance_log:
+    for (uid, branch, date, time) in daily_attendance_log:
         if date >= week_ago_str:
             weekly_stats[uid] += 1
     
     if not weekly_stats:
-        await message.answer("📭 Bu hafta hali davomat yo'q")
+        # Tilga mos "ma'lumot yo'q" xabari
+        lang = user_languages.get(user_id, 'uz')
+        if lang == 'uz':
+            no_data_msg = "📭 Bu hafta hali davomat yo'q"
+        elif lang == 'ru':
+            no_data_msg = "📭 На этой неделе еще нет отметок"
+        else:  # kr
+            no_data_msg = "📭 이번 주에는 아직 출석 기록이 없습니다"
+        
+        await message.answer(no_data_msg)
         return
     
     # Top 10 foydalanuvchini saralash
@@ -448,7 +585,7 @@ async def weekly_top(message: types.Message):
         parse_mode="Markdown"
     )
 
-# ASOSIY LOKATSIYA HANDLERI (faqat davomat uchun, ob-havo qo'shimcha)
+# ASOSIY LOKATSIYA HANDLERI
 @dp.message(F.location)
 async def handle_location(message: types.Message):
     user_id = message.from_user.id
@@ -473,7 +610,15 @@ async def handle_location(message: types.Message):
     # DAVOMAT QISMI
     if found_branch:
         attendance_key = (user_id, found_branch, today_date)
-        if attendance_key in daily_attendance_log:
+        
+        # Tekshirish uchun (vaqtni hisobga olmasdan)
+        already_attended = False
+        for (uid, branch, date, time) in daily_attendance_log:
+            if uid == user_id and branch == found_branch and date == today_date:
+                already_attended = True
+                break
+        
+        if already_attended:
             # Bugun allaqachon davomat qilgan
             await message.answer(
                 get_text(user_id, 'already_attended', branch=found_branch),
@@ -486,7 +631,8 @@ async def handle_location(message: types.Message):
         attendance_counter[counter_key] = attendance_counter.get(counter_key, 0) + 1
         visit_number = attendance_counter[counter_key]
         
-        daily_attendance_log.add(attendance_key)
+        # Vaqt bilan saqlash
+        daily_attendance_log.add((user_id, found_branch, today_date, now_time))
         full_name = message.from_user.full_name
         
         # Admin guruhiga hisobot
@@ -533,7 +679,7 @@ async def handle_location(message: types.Message):
         except Exception as e:
             logging.error(f"Error: {e}")
     else:
-        # Filial topilmadi - faqat xato xabari (ob-havo yo'q)
+        # Filial topilmadi - faqat xato xabari
         await message.answer(
             get_text(user_id, 'not_in_area'),
             parse_mode="Markdown"
@@ -576,7 +722,7 @@ async def admin_callbacks(callback: types.CallbackQuery):
         
         # Oylik statistika
         monthly_stats = defaultdict(lambda: defaultdict(int))
-        for (uid, branch, date) in daily_attendance_log:
+        for (uid, branch, date, time) in daily_attendance_log:
             if date.startswith(current_month):
                 monthly_stats[branch][uid] += 1
         
@@ -600,7 +746,7 @@ async def admin_callbacks(callback: types.CallbackQuery):
             ws.title = "Davomat"
             
             # Sarlavhalar
-            headers = ["Sana", "Filial", "O'qituvchi ID", "O'qituvchi Ismi"]
+            headers = ["Sana", "Filial", "O'qituvchi ID", "O'qituvchi Ismi", "Vaqt"]
             for col, header in enumerate(headers, 1):
                 cell = ws.cell(row=1, column=col, value=header)
                 cell.font = Font(bold=True)
@@ -608,7 +754,7 @@ async def admin_callbacks(callback: types.CallbackQuery):
             
             # Ma'lumotlarni yozish
             row = 2
-            for (uid, branch, date) in sorted(daily_attendance_log):
+            for (uid, branch, date, time) in sorted(daily_attendance_log):
                 try:
                     user = await bot.get_chat(uid)
                     user_name = user.full_name
@@ -619,6 +765,7 @@ async def admin_callbacks(callback: types.CallbackQuery):
                 ws.cell(row=row, column=2, value=branch)
                 ws.cell(row=row, column=3, value=uid)
                 ws.cell(row=row, column=4, value=user_name)
+                ws.cell(row=row, column=5, value=time)
                 row += 1
             
             # Faylni saqlash va yuborish
