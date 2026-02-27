@@ -4,6 +4,8 @@ import logging
 import pytz 
 import csv
 import io
+import aiohttp
+import math
 from datetime import datetime, timedelta
 from collections import defaultdict
 from aiogram import Bot, Dispatcher, types, F
@@ -22,6 +24,10 @@ logging.basicConfig(level=logging.INFO)
 TOKEN = "8268187024:AAGVlMOzOUTXMyrB8ePj9vHcayshkZ4PGW4"
 ADMIN_GROUP_ID = -1003885800610 
 UZB_TZ = pytz.timezone('Asia/Tashkent') 
+
+# --- OB-HAVO SOZLAMALARI ---
+WEATHER_API_KEY = "2b7818365e4ac19cebd34c34a135a669"
+WEATHER_API_URL = "http://api.openweathermap.org/data/2.5/weather"
 
 # BARCHA LOKATSIYALAR RO'YXATI
 LOCATIONS = [
@@ -42,7 +48,71 @@ LOCATIONS = [
     {"name": "Selxoz litseyi", "lat": 41.362532, "lon": 69.340768},
     {"name": "294-Maktab", "lat": 41.281633, "lon": 69.289237}
 ]
-ALLOWED_DISTANCE = 500  # 500 metrga o'zgartirildi
+ALLOWED_DISTANCE = 500
+
+# Ob-havo shartlariga mos tavsiyalar
+WEATHER_RECOMMENDATIONS = {
+    "Clear": {
+        "uz": "☀️ Bugun havo ochiq. Sayr qilish uchun ajoyib kun! Quyoshdan saqlanish uchun soyabon olishni unutmang.",
+        "ru": "☀️ Сегодня ясно. Отличный день для прогулки! Не забудьте взять зонтик от солнца."
+    },
+    "Clouds": {
+        "uz": "☁️ Bugun havo bulutli. Salqin havo bilan ish kuningiz samarali o'tsin!",
+        "ru": "☁️ Сегодня облачно. Пусть прохладная погода сделает ваш рабочий день продуктивным!"
+    },
+    "Rain": {
+        "uz": "🌧️ Bugun yomg'ir yog'moqda. Soyabon olishni unutmang va issiq choy iching!",
+        "ru": "🌧️ Сегодня идет дождь. Не забудьте взять зонтик и выпейте горячего чая!"
+    },
+    "Thunderstorm": {
+        "uz": "⛈️ Momaqaldiroq bo'lmoqda. Ehtiyot bo'ling va imkon qadar uyda qoling!",
+        "ru": "⛈️ Гроза. Будьте осторожны и по возможности оставайтесь дома!"
+    },
+    "Snow": {
+        "uz": "❄️ Qor yog'moqda. Issiq kiyining va yo'llarda ehtiyot bo'ling!",
+        "ru": "❄️ Идет снег. Одевайтесь теплее и будьте осторожны на дорогах!"
+    },
+    "Mist": {
+        "uz": "🌫️ Tuman tushgan. Haydovchilar ehtiyot bo'ling!",
+        "ru": "🌫️ Туман. Водители, будьте осторожны!"
+    },
+    "Fog": {
+        "uz": "🌫️ Tuman tushgan. Haydovchilar ehtiyot bo'ling!",
+        "ru": "🌫️ Туман. Водители, будьте осторожны!"
+    },
+    "Haze": {
+        "uz": "🌫️ Havo tumanli. Ehtiyot bo'ling!",
+        "ru": "🌫️ Дымка. Будьте осторожны!"
+    }
+}
+
+# Haroratga mos tavsiyalar
+TEMPERATURE_RECOMMENDATIONS = {
+    "uz": [
+        (35, "🥵 Juda issiq! Ko'p suv iching va soyada qoling. Engil kiyimlar tanlang."),
+        (30, "🥵 Issiq! Quyoshdan saqlaning va ko'p suv iching."),
+        (25, "😊 Issiq, ammo qulay. Yengil kiyining."),
+        (20, "😊 Ajoyib harorat! Sayr qilish uchun ideal."),
+        (15, "😌 Ob-havo mo''tadil. Yengil ko'ylagi olsangiz bo'ladi."),
+        (10, "🥶 Salqin. Ko'ylagi kiyishni tavsiya qilaman."),
+        (5, "🥶 Sovuq. Ko'ylagi olgan ma'qul."),
+        (0, "🧥 Juda sovuq! Qalin kiyining."),
+        (-10, "🧥 Qahraton! Qalin kiyining va qo'lqop taqing."),
+        (-float('inf'), "🥶 Juda sovuq! Qalin kiyining, qo'lqop va sharf taqing.")
+    ],
+    "ru": [
+        (35, "🥵 Очень жарко! Пейте больше воды и оставайтесь в тени."),
+        (30, "🥵 Жарко! Избегайте солнца и пейте много воды."),
+        (25, "😊 Тепло и комфортно. Одевайтесь легко."),
+        (20, "😊 Прекрасная температура! Идеально для прогулки."),
+        (15, "😌 Умеренная погода. Можно надеть легкую куртку."),
+        (10, "🥶 Прохладно. Рекомендую надеть куртку."),
+        (5, "🥶 Холодно. Лучше надеть куртку."),
+        (0, "🧥 Очень холодно! Одевайтесь теплее."),
+        (-10, "🧥 Мороз! Одевайтесь тепло и носите перчатки."),
+        (-float('inf'), "🥶 Сильный мороз! Одевайтесь очень тепло, носите перчатки и шарф.")
+    ]
+}
 
 # Tillar uchun matnlar
 TRANSLATIONS = {
@@ -60,6 +130,9 @@ TRANSLATIONS = {
         'weekly_top': "🏆 **Haftaning eng faol o'qituvchilari:**\n\n{top_list}",
         'monthly_report': "📊 **{month} oyi uchun hisobot**\n\n{report}",
         'language_changed': "✅ Til o'zgartirildi: O'zbek tili",
+        'weather_info': "🌤️ **Ob-havo ma'lumoti**\n\n{weather}",
+        'weather_error': "❌ Ob-havo ma'lumotini olishda xatolik yuz berdi. Qaytadan urinib ko'ring.",
+        'weather_button': "🌤️ Ob-havo",
         'buttons': {
             'attendance': "📍 Kelganimni tasdiqlash",
             'my_stats': "📊 Mening statistikam",
@@ -83,6 +156,9 @@ TRANSLATIONS = {
         'weekly_top': "🏆 **Самые активные учителя недели:**\n\n{top_list}",
         'monthly_report': "📊 **Отчет за {month}**\n\n{report}",
         'language_changed': "✅ Язык изменен: Русский язык",
+        'weather_info': "🌤️ **Информация о погоде**\n\n{weather}",
+        'weather_error': "❌ Ошибка при получении данных о погоде. Попробуйте снова.",
+        'weather_button': "🌤️ Погода",
         'buttons': {
             'attendance': "📍 Подтвердить прибытие",
             'my_stats': "📊 Моя статистика",
@@ -125,11 +201,118 @@ async def main_keyboard(user_id: int):
         KeyboardButton(text=get_button_text(user_id, 'my_stats')),
         KeyboardButton(text=get_button_text(user_id, 'branches')),
         KeyboardButton(text=get_button_text(user_id, 'top_week')),
+        KeyboardButton(text="🌤️ Ob-havo"),
         KeyboardButton(text=get_button_text(user_id, 'help')),
         KeyboardButton(text=get_button_text(user_id, 'language'))
     )
-    builder.adjust(1, 2, 2, 1)  # Tugmalarni joylashtirish
+    builder.adjust(1, 2, 2, 2)
     return builder.as_markup(resize_keyboard=True)
+
+# --- OB-HAVO FUNKSIYALARI ---
+async def get_weather_by_coords(lat: float, lon: float):
+    """Koordinatalar bo'yicha ob-havo ma'lumotini olish"""
+    params = {
+        "lat": lat,
+        "lon": lon,
+        "appid": WEATHER_API_KEY,
+        "units": "metric",
+        "lang": "uz"
+    }
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(WEATHER_API_URL, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data
+                else:
+                    logging.error(f"Weather API error: {response.status}")
+                    return None
+    except Exception as e:
+        logging.error(f"Error fetching weather: {e}")
+        return None
+
+def get_temperature_recommendation(temp: float, lang: str = 'uz'):
+    """Haroratga mos tavsiya qaytarish"""
+    recommendations = TEMPERATURE_RECOMMENDATIONS.get(lang, TEMPERATURE_RECOMMENDATIONS['uz'])
+    
+    for threshold, message in recommendations:
+        if temp >= threshold:
+            return message
+    return f"🌡️ Harorat: {temp:.1f}°C"
+
+def get_weather_emoji(weather_condition: str) -> str:
+    """Ob-havo holatiga mos emoji qaytarish"""
+    emoji_map = {
+        "Clear": "☀️",
+        "Clouds": "☁️",
+        "Rain": "🌧️",
+        "Drizzle": "🌦️",
+        "Thunderstorm": "⛈️",
+        "Snow": "❄️",
+        "Mist": "🌫️",
+        "Fog": "🌫️",
+        "Haze": "🌫️",
+        "Smoke": "💨",
+        "Dust": "💨",
+        "Sand": "💨",
+        "Ash": "🌋",
+        "Squall": "💨",
+        "Tornado": "🌪️"
+    }
+    return emoji_map.get(weather_condition, "🌡️")
+
+def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
+    """Ob-havo ma'lumotlarini formatlash"""
+    if not weather_data:
+        return "❌ Ob-havo ma'lumotini olishda xatolik yuz berdi."
+    
+    city = weather_data.get('name', 'Noma\'lum')
+    if city == "" or city is None:
+        city = "Toshkent"
+        
+    main = weather_data.get('main', {})
+    weather = weather_data.get('weather', [{}])[0]
+    wind = weather_data.get('wind', {})
+    
+    temp = main.get('temp', 0)
+    feels_like = main.get('feels_like', 0)
+    humidity = main.get('humidity', 0)
+    pressure = main.get('pressure', 0)
+    condition = weather.get('main', 'Unknown')
+    description = weather.get('description', '')
+    wind_speed = wind.get('speed', 0)
+    
+    emoji = get_weather_emoji(condition)
+    
+    # Asosiy tavsiya
+    recommendation = WEATHER_RECOMMENDATIONS.get(condition, {}).get(lang, 
+        WEATHER_RECOMMENDATIONS.get('Clear', {}).get(lang, ''))
+    
+    # Harorat tavsiyasi
+    temp_recommendation = get_temperature_recommendation(temp, lang)
+    
+    # Bosimni mmHg ga o'tkazish
+    pressure_mmhg = pressure * 0.750062
+    
+    message = f"""
+{emoji} **Ob-havo ma'lumoti**
+
+📍 **Joy:** {city}
+🌡️ **Harorat:** {temp:.1f}°C (his qilinadi: {feels_like:.1f}°C)
+☁️ **Holat:** {description.title()}
+💧 **Namlik:** {humidity}%
+💨 **Shamol:** {wind_speed:.1f} m/s
+📊 **Bosim:** {pressure_mmhg:.1f} mmHg
+
+💡 **Tavsiya:**
+{recommendation}
+
+{temp_recommendation}
+
+📅 **Vaqt:** {datetime.now(UZB_TZ).strftime('%H:%M')}
+"""
+    return message
 
 # --- WEB SERVER ---
 async def handle(request):
@@ -200,6 +383,32 @@ async def set_language(callback: types.CallbackQuery):
         get_text(user_id, 'language_changed'),
         reply_markup=keyboard,
         parse_mode="Markdown"
+    )
+
+@dp.message(F.text == "🌤️ Ob-havo")
+async def weather_button(message: types.Message):
+    """Ob-havo tugmasi bosilganda"""
+    user_id = message.from_user.id
+    await message.answer(
+        "📍 Ob-havo ma'lumotini olish uchun joylashuvingizni yuboring:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="📍 Joylashuvni yuborish", request_location=True)]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+    )
+
+@dp.message(Command("weather"))
+async def cmd_weather(message: types.Message):
+    """Joriy ob-havo ma'lumotini olish"""
+    user_id = message.from_user.id
+    await message.answer(
+        "📍 Ob-havo ma'lumotini olish uchun joylashuvingizni yuboring:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="📍 Joylashuvni yuborish", request_location=True)]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
     )
 
 @dp.message(F.text.in_({'📊 Mening statistikam', '📊 Моя статистика'}))
@@ -340,6 +549,10 @@ async def handle_loc(message: types.Message):
                 min_distance = dist
                 found_branch = branch["name"]
 
+    # Ob-havo ma'lumotini olish
+    weather_data = await get_weather_by_coords(user_coords[0], user_coords[1])
+    weather_message = format_weather_message(weather_data, user_languages.get(user_id, 'uz'))
+
     if found_branch:
         attendance_key = (user_id, found_branch, today_date)
         if attendance_key in daily_attendance_log:
@@ -378,24 +591,30 @@ async def handle_loc(message: types.Message):
                 reply_markup=builder.as_markup()
             )
             
-            await message.answer(
-                get_text(
-                    user_id, 
-                    'attendance_success',
-                    branch=found_branch,
-                    date=today_date,
-                    time=now_time,
-                    count=visit_number,
-                    distance=min_distance
-                ),
-                parse_mode="Markdown"
+            # Foydalanuvchiga davomat va ob-havo ma'lumotini yuborish
+            success_text = get_text(
+                user_id, 
+                'attendance_success',
+                branch=found_branch,
+                date=today_date,
+                time=now_time,
+                count=visit_number,
+                distance=min_distance
             )
+            
+            full_response = f"{success_text}\n\n{weather_message}"
+            await message.answer(full_response, parse_mode="Markdown")
+            
         except Exception as e:
             logging.error(f"Error: {e}")
     else:
-        await message.answer(get_text(user_id, 'not_in_area'), parse_mode="Markdown")
+        # Agar davomat qilmasa ham ob-havo ma'lumotini berish
+        await message.answer(
+            f"{get_text(user_id, 'not_in_area')}\n\n{weather_message}",
+            parse_mode="Markdown"
+        )
 
-# --- ADMIN PANEL (faqat adminlar uchun) ---
+# --- ADMIN PANEL ---
 @dp.message(Command("admin"))
 async def admin_panel(message: types.Message):
     if message.chat.id != ADMIN_GROUP_ID:
@@ -441,122 +660,4 @@ async def admin_callbacks(callback: types.CallbackQuery):
         for branch, users in monthly_stats.items():
             total = sum(users.values())
             unique_users = len(users)
-            report += f"📍 **{branch}**\n"
-            report += f"   Jami: {total} ta davomat\n"
-            report += f"   O'qituvchilar: {unique_users} ta\n\n"
-        
-        await callback.message.answer(report, parse_mode="Markdown")
-    
-    elif action == "excel":
-        # Excel fayl yaratish
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Davomat"
-        
-        # Sarlavhalar
-        headers = ["Sana", "Filial", "O'qituvchi ID", "O'qituvchi Ismi", "Vaqt", "Masofa"]
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
-            cell.font = Font(bold=True)
-            cell.alignment = Alignment(horizontal="center")
-        
-        # Ma'lumotlarni yozish
-        row = 2
-        for (uid, branch, date) in sorted(daily_attendance_log):
-            try:
-                user = await bot.get_chat(uid)
-                user_name = user.full_name
-            except:
-                user_name = f"User_{uid}"
-            
-            ws.cell(row=row, column=1, value=date)
-            ws.cell(row=row, column=2, value=branch)
-            ws.cell(row=row, column=3, value=uid)
-            ws.cell(row=row, column=4, value=user_name)
-            ws.cell(row=row, column=5, value="09:00")  # Vaqt ma'lumoti saqlanmagan
-            ws.cell(row=row, column=6, value="<500m")
-            row += 1
-        
-        # Faylni saqlash va yuborish
-        excel_file = io.BytesIO()
-        wb.save(excel_file)
-        excel_file.seek(0)
-        
-        await callback.message.answer_document(
-            types.BufferedInputFile(
-                excel_file.getvalue(),
-                filename=f"davomat_{now_uzb.strftime('%Y%m')}.xlsx"
-            ),
-            caption="📊 Oylik davomat hisoboti"
-        )
-    
-    elif action == "users":
-        user_count = len(user_ids)
-        active_today = len([k for k in daily_attendance_log if k[2] == now_uzb.strftime("%Y-%m-%d")])
-        
-        await callback.message.answer(
-            f"👥 **Foydalanuvchilar statistikasi**\n\n"
-            f"Jami foydalanuvchilar: {user_count}\n"
-            f"Bugun faol: {active_today}\n"
-            f"Bugun davomat qilganlar: {active_today}",
-            parse_mode="Markdown"
-        )
-    
-    elif action == "stats":
-        total_attendances = len(daily_attendance_log)
-        monthly_attendances = len([k for k in daily_attendance_log if k[2].startswith(now_uzb.strftime("%Y-%m"))])
-        
-        await callback.message.answer(
-            f"📈 **Umumiy statistika**\n\n"
-            f"Jami davomatlar: {total_attendances}\n"
-            f"Shu oyda: {monthly_attendances}\n"
-            f"Faol filiallar: {len(set(k[1] for k in daily_attendance_log))}\n"
-            f"Faol foydalanuvchilar: {len(set(k[0] for k in daily_attendance_log))}",
-            parse_mode="Markdown"
-        )
-    
-    await callback.answer()
-
-# --- Eslatmalar (cron-job orqali) ---
-async def send_daily_reminders():
-    """Har kuni soat 08:00 da eslatma yuborish"""
-    now_uzb = datetime.now(UZB_TZ)
-    today = now_uzb.strftime("%Y-%m-%d")
-    
-    # Bugun davomat qilmagan foydalanuvchilarga eslatma
-    sent_count = 0
-    for user_id in user_ids:
-        user_attended = any(k[0] == user_id and k[2] == today for k in daily_attendance_log)
-        if not user_attended:
-            try:
-                await bot.send_message(
-                    user_id,
-                    get_text(user_id, 'daily_reminder'),
-                    parse_mode="Markdown"
-                )
-                sent_count += 1
-                await asyncio.sleep(0.05)  # Rate limiting
-            except Exception as e:
-                logging.error(f"Reminder error for {user_id}: {e}")
-    
-    logging.info(f"Daily reminders sent: {sent_count} users")
-
-async def reminder_loop():
-    """Eslatmalar uchun doimiy loop"""
-    while True:
-        now_uzb = datetime.now(UZB_TZ)
-        # Har kuni soat 08:00 da eslatma
-        if now_uzb.hour == 8 and now_uzb.minute == 0:
-            await send_daily_reminders()
-            await asyncio.sleep(60)  # 1 daqiqa kutib, qayta yubormaslik
-        await asyncio.sleep(30)  # Har 30 sekundda tekshirish
-
-async def main():
-    asyncio.create_task(start_web_server())
-    asyncio.create_task(reminder_loop())
-    
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+            report += f"📍 **{branch}**\n
