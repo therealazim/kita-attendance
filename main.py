@@ -31,13 +31,11 @@ WEATHER_API_URL = "http://api.openweathermap.org/data/2.5/weather"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Foydalanuvchi holatlarini saqlash uchun
-user_states = {}
-
 # BARCHA LOKATSIYALAR RO'YXATI
 LOCATIONS = [
     {"name": "Kimyo Xalqaro Universiteti", "lat": 41.257490, "lon": 69.220109},
     {"name": "78-Maktab", "lat": 41.282791, "lon": 69.173290},
+    {"name": "126-Maktab", "lat": 41.260249, "lon": 69.153216},
     {"name": "290-Maktab", "lat": 41.234736, "lon": 69.350745},
     {"name": "348-Maktab", "lat": 41.214092, "lon": 69.340152},
     {"name": "347-Maktab", "lat": 41.236833, "lon": 69.372048},
@@ -58,24 +56,24 @@ ALLOWED_DISTANCE = 500
 # Ob-havo shartlariga mos tavsiyalar
 WEATHER_RECOMMENDATIONS = {
     "Clear": {
-        "uz": "☀️ Bugun havo ochiq. Sayr qilish uchun ajoyib kun! Quyoshdan saqlanish uchun soyabon olishni unutmang.",
-        "ru": "☀️ Сегодня ясно. Отличный день для прогулки! Не забудьте взять зонтик от солнца."
+        "uz": "☀️ Bugun havo ochiq. Sayr qilish uchun ajoyib kun!",
+        "ru": "☀️ Сегодня ясно. Отличный день для прогулки!"
     },
     "Clouds": {
         "uz": "☁️ Bugun havo bulutli. Salqin havo bilan ish kuningiz samarali o'tsin!",
         "ru": "☁️ Сегодня облачно. Пусть прохладная погода сделает ваш рабочий день продуктивным!"
     },
     "Rain": {
-        "uz": "🌧️ Bugun yomg'ir yog'moqda. Soyabon olishni unutmang va issiq choy iching!",
-        "ru": "🌧️ Сегодня идет дождь. Не забудьте взять зонтик и выпейте горячего чая!"
+        "uz": "🌧️ Bugun yomg'ir yog'moqda. Soyabon olishni unutmang!",
+        "ru": "🌧️ Сегодня идет дождь. Не забудьте взять зонтик!"
     },
     "Thunderstorm": {
-        "uz": "⛈️ Momaqaldiroq bo'lmoqda. Ehtiyot bo'ling va imkon qadar uyda qoling!",
-        "ru": "⛈️ Гроза. Будьте осторожны и по возможности оставайтесь дома!"
+        "uz": "⛈️ Momaqaldiroq bo'lmoqda. Ehtiyot bo'ling!",
+        "ru": "⛈️ Гроза. Будьте осторожны!"
     },
     "Snow": {
-        "uz": "❄️ Qor yog'moqda. Issiq kiyining va yo'llarda ehtiyot bo'ling!",
-        "ru": "❄️ Идет снег. Одевайтесь теплее и будьте осторожны на дорогах!"
+        "uz": "❄️ Qor yog'moqda. Issiq kiyining!",
+        "ru": "❄️ Идет снег. Одевайтесь теплее!"
     },
     "Mist": {
         "uz": "🌫️ Tuman tushgan. Haydovchilar ehtiyot bo'ling!",
@@ -91,53 +89,22 @@ WEATHER_RECOMMENDATIONS = {
     }
 }
 
-# Haroratga mos tavsiyalar
-TEMPERATURE_RECOMMENDATIONS = {
-    "uz": [
-        (35, "🥵 Juda issiq! Ko'p suv iching va soyada qoling. Engil kiyimlar tanlang."),
-        (30, "🥵 Issiq! Quyoshdan saqlaning va ko'p suv iching."),
-        (25, "😊 Issiq, ammo qulay. Yengil kiyining."),
-        (20, "😊 Ajoyib harorat! Sayr qilish uchun ideal."),
-        (15, "😌 Ob-havo mo''tadil. Yengil ko'ylagi olsangiz bo'ladi."),
-        (10, "🥶 Salqin. Ko'ylagi kiyishni tavsiya qilaman."),
-        (5, "🥶 Sovuq. Ko'ylagi olgan ma'qul."),
-        (0, "🧥 Juda sovuq! Qalin kiyining."),
-        (-10, "🧥 Qahraton! Qalin kiyining va qo'lqop taqing."),
-        (-float('inf'), "🥶 Juda sovuq! Qalin kiyining, qo'lqop va sharf taqing.")
-    ],
-    "ru": [
-        (35, "🥵 Очень жарко! Пейте больше воды и оставайтесь в тени."),
-        (30, "🥵 Жарко! Избегайте солнца и пейте много воды."),
-        (25, "😊 Тепло и комфортно. Одевайтесь легко."),
-        (20, "😊 Прекрасная температура! Идеально для прогулки."),
-        (15, "😌 Умеренная погода. Можно надеть легкую куртку."),
-        (10, "🥶 Прохладно. Рекомендую надеть куртку."),
-        (5, "🥶 Холодно. Лучше надеть куртку."),
-        (0, "🧥 Очень холодно! Одевайтесь теплее."),
-        (-10, "🧥 Мороз! Одевайтесь тепло и носите перчатки."),
-        (-float('inf'), "🥶 Сильный мороз! Одевайтесь очень тепло, носите перчатки и шарф.")
-    ]
-}
-
 # Tillar uchun matnlar
 TRANSLATIONS = {
     'uz': {
-        'welcome': "🌟 **Xush kelibsiz, {name}!**\n\nMen davomat botiman. Quyidagi tugmalar orqali:\n• Davomat qilishingiz\n• Statistikangizni ko'rishingiz\n• Filiallar bilan tanishishingiz mumkin\n\nBoshlash uchun pastdagi tugmalardan foydalaning!",
+        'welcome': "🌟 **HANCOM ACADEMYning o'qituvchilar uchun davomat botiga hush kelibsiz, {name}!**\n\nQuyidagi tugmalar orqali:\n• Davomat qilishingiz\n• Statistikangizni ko'rishingiz\n• Filiallar bilan tanishishingiz mumkin\n\nBoshlash uchun pastdagi tugmalardan foydalaning!",
         'stats': "📊 **Sizning statistikangiz:**",
         'no_stats': "📭 Hali davomat qilmagansiz",
         'branches': "🏢 **Mavjud filiallar:**",
         'distance_info': "📍 Barcha filiallar {distance} metr masofada aniqlanadi",
         'help': "🤖 **Botdan foydalanish qo'llanmasi:**\n\n📍 **Davomat qilish uchun:**\n• Pastdagi \"📍 Kelganimni tasdiqlash\" tugmasini bosing\n• Joylashuvingizni yuboring\n\n📊 **Statistika:**\n• \"📊 Mening statistikam\" - shaxsiy davomat tarixingiz\n• \"🏢 Filiallar\" - barcha mavjud filiallar ro'yxati\n\n⚠️ **Eslatmalar:**\n• Kuniga faqat 1 marta davomat qilish mumkin\n• Filialdan {distance} metr masofada bo'lishingiz kerak\n• Davomat faqat Toshkent vaqti bilan hisoblanadi",
-        'attendance_success': "✅ **Davomat tasdiqlandi!**\n\n🏫 **Filial:** {branch}\n📅 **Sana:** {date}\n⏰ **Vaqt:** {time}\n📊 **Bu oydagi tashriflar:** {count} marta\n📏 **Masofa:** {distance:.1f} metr\n\nEslatma: Ertaga yana davomat qilishingiz mumkin!",
+        'attendance_success': "✅ **Davomat tasdiqlandi!**\n\n🏫 **Filial:** {branch}\n📅 **Sana:** {date}\n⏰ **Vaqt:** {time}\n📊 **Bu oydagi tashriflar:** {count} marta\n📏 **Masofa:** {distance:.1f} metr",
         'already_attended': "⚠️ Siz bugun **{branch}** hududida allaqachon davomatdan o'tgansiz!",
         'not_in_area': "❌ Siz belgilangan ta'lim muassasalari hududida emassiz!",
         'daily_reminder': "⏰ **Eslatma!** Bugun hali davomat qilmagansiz. Ish kuningizni boshlash uchun davomatni tasdiqlang!",
         'weekly_top': "🏆 **Haftaning eng faol o'qituvchilari:**\n\n{top_list}",
         'monthly_report': "📊 **{month} oyi uchun hisobot**\n\n{report}",
         'language_changed': "✅ Til o'zgartirildi: O'zbek tili",
-        'weather_info': "🌤️ **Ob-havo ma'lumoti**\n\n{weather}",
-        'weather_error': "❌ Ob-havo ma'lumotini olishda xatolik yuz berdi. Qaytadan urinib ko'ring.",
-        'weather_button': "🌤️ Ob-havo",
         'buttons': {
             'attendance': "📍 Kelganimni tasdiqlash",
             'my_stats': "📊 Mening statistikam",
@@ -148,22 +115,19 @@ TRANSLATIONS = {
         }
     },
     'ru': {
-        'welcome': "🌟 **Добро пожаловать, {name}!**\n\nЯ бот для отметок. С помощью кнопок ниже вы можете:\n• Отметиться\n• Посмотреть статистику\n• Ознакомиться с филиалами\n\nИспользуйте кнопки ниже для начала!",
+        'welcome': "🌟 **Добро пожаловать в бот для отметок HANCOM ACADEMY для учителей, {name}!**\n\nС помощью кнопок ниже вы можете:\n• Отметиться\n• Посмотреть статистику\n• Ознакомиться с филиалами\n\nИспользуйте кнопки ниже для начала!",
         'stats': "📊 **Ваша статистика:**",
         'no_stats': "📭 Вы еще не отмечались",
         'branches': "🏢 **Доступные филиалы:**",
         'distance_info': "📍 Все филиалы определяются в радиусе {distance} метров",
         'help': "🤖 **Руководство по использованию:**\n\n📍 **Для отметки:**\n• Нажмите кнопку \"📍 Подтвердить прибытие\"\n• Отправьте свою геолокацию\n\n📊 **Статистика:**\n• \"📊 Моя статистика\" - история отметок\n• \"🏢 Филиалы\" - список всех филиалов\n\n⚠️ **Примечания:**\n• Можно отмечаться только 1 раз в день\n• Вы должны находиться в радиусе {distance} метров от филиала",
-        'attendance_success': "✅ **Отметка подтверждена!**\n\n🏫 **Филиал:** {branch}\n📅 **Дата:** {date}\n⏰ **Время:** {time}\n📊 **Посещений в этом месяце:** {count}\n📏 **Расстояние:** {distance:.1f} м\n\nПримечание: Завтра вы сможете отметиться снова!",
+        'attendance_success': "✅ **Отметка подтверждена!**\n\n🏫 **Филиал:** {branch}\n📅 **Дата:** {date}\n⏰ **Время:** {time}\n📊 **Посещений в этом месяце:** {count}\n📏 **Расстояние:** {distance:.1f} м",
         'already_attended': "⚠️ Вы уже отмечались сегодня в филиале **{branch}**!",
         'not_in_area': "❌ Вы не находитесь в зоне учебных заведений!",
         'daily_reminder': "⏰ **Напоминание!** Вы еще не отметились сегодня. Подтвердите свое прибытие для начала рабочего дня!",
         'weekly_top': "🏆 **Самые активные учителя недели:**\n\n{top_list}",
         'monthly_report': "📊 **Отчет за {month}**\n\n{report}",
         'language_changed': "✅ Язык изменен: Русский язык",
-        'weather_info': "🌤️ **Информация о погоде**\n\n{weather}",
-        'weather_error': "❌ Ошибка при получении данных о погоде. Попробуйте снова.",
-        'weather_button': "🌤️ Погода",
         'buttons': {
             'attendance': "📍 Подтвердить прибытие",
             'my_stats': "📊 Моя статистика",
@@ -206,11 +170,10 @@ async def main_keyboard(user_id: int):
         KeyboardButton(text=get_button_text(user_id, 'my_stats')),
         KeyboardButton(text=get_button_text(user_id, 'branches')),
         KeyboardButton(text=get_button_text(user_id, 'top_week')),
-        KeyboardButton(text="🌤️ Ob-havo"),
         KeyboardButton(text=get_button_text(user_id, 'help')),
         KeyboardButton(text=get_button_text(user_id, 'language'))
     )
-    builder.adjust(1, 2, 2, 2)
+    builder.adjust(1, 2, 2, 1)
     return builder.as_markup(resize_keyboard=True)
 
 # --- OB-HAVO FUNKSIYALAR ---
@@ -237,15 +200,6 @@ async def get_weather_by_coords(lat: float, lon: float):
         logging.error(f"Error fetching weather: {e}")
         return None
 
-def get_temperature_recommendation(temp: float, lang: str = 'uz'):
-    """Haroratga mos tavsiya qaytarish"""
-    recommendations = TEMPERATURE_RECOMMENDATIONS.get(lang, TEMPERATURE_RECOMMENDATIONS['uz'])
-    
-    for threshold, message in recommendations:
-        if temp >= threshold:
-            return message
-    return f"🌡️ Harorat: {temp:.1f}°C"
-
 def get_weather_emoji(weather_condition: str) -> str:
     """Ob-havo holatiga mos emoji qaytarish"""
     emoji_map = {
@@ -264,7 +218,7 @@ def get_weather_emoji(weather_condition: str) -> str:
 def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
     """Ob-havo ma'lumotlarini formatlash"""
     if not weather_data:
-        return "❌ Ob-havo ma'lumotini olishda xatolik yuz berdi."
+        return ""
     
     city = weather_data.get('name', 'Noma\'lum')
     if city == "" or city is None:
@@ -289,9 +243,6 @@ def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
     if not recommendation:
         recommendation = WEATHER_RECOMMENDATIONS.get('Clear', {}).get(lang, "")
     
-    # Harorat tavsiyasi
-    temp_recommendation = get_temperature_recommendation(temp, lang)
-    
     # Bosimni mmHg ga o'tkazish
     pressure_mmhg = pressure * 0.750062
     
@@ -300,15 +251,12 @@ def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
 
 📍 **Joy:** {city}
 🌡️ **Harorat:** {temp:.1f}°C (his qilinadi: {feels_like:.1f}°C)
-☁️ **Holat:** {description.title()}
 💧 **Namlik:** {humidity}%
 💨 **Shamol:** {wind_speed:.1f} m/s
 📊 **Bosim:** {pressure_mmhg:.1f} mmHg
 
 💡 **Tavsiya:**
 {recommendation}
-
-{temp_recommendation}
 
 📅 **Vaqt:** {datetime.now(UZB_TZ).strftime('%H:%M')}
 """
@@ -383,34 +331,6 @@ async def set_language(callback: types.CallbackQuery):
         get_text(user_id, 'language_changed'),
         reply_markup=keyboard,
         parse_mode="Markdown"
-    )
-
-@dp.message(F.text == "🌤️ Ob-havo")
-async def weather_button(message: types.Message):
-    """Ob-havo tugmasi bosilganda"""
-    user_id = message.from_user.id
-    user_states[user_id] = "waiting_weather"
-    await message.answer(
-        "📍 Ob-havo ma'lumotini olish uchun joylashuvingizni yuboring:",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="📍 Joylashuvni yuborish", request_location=True)]],
-            resize_keyboard=True,
-            one_time_keyboard=True
-        )
-    )
-
-@dp.message(Command("weather"))
-async def cmd_weather(message: types.Message):
-    """Joriy ob-havo ma'lumotini olish"""
-    user_id = message.from_user.id
-    user_states[user_id] = "waiting_weather"
-    await message.answer(
-        "📍 Ob-havo ma'lumotini olish uchun joylashuvingizni yuboring:",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="📍 Joylashuvni yuborish", request_location=True)]],
-            resize_keyboard=True,
-            one_time_keyboard=True
-        )
     )
 
 @dp.message(F.text.in_({'📊 Mening statistikam', '📊 Моя статистика'}))
@@ -528,6 +448,7 @@ async def weekly_top(message: types.Message):
         parse_mode="Markdown"
     )
 
+# ASOSIY LOKATSIYA HANDLERI (faqat davomat uchun, ob-havo qo'shimcha)
 @dp.message(F.location)
 async def handle_location(message: types.Message):
     user_id = message.from_user.id
@@ -549,17 +470,15 @@ async def handle_location(message: types.Message):
                 min_distance = dist
                 found_branch = branch["name"]
 
-    # Ob-havo ma'lumotini olish
-    weather_data = await get_weather_by_coords(user_coords[0], user_coords[1])
-    weather_message = format_weather_message(weather_data, user_languages.get(user_id, 'uz'))
-
     # DAVOMAT QISMI
     if found_branch:
         attendance_key = (user_id, found_branch, today_date)
         if attendance_key in daily_attendance_log:
             # Bugun allaqachon davomat qilgan
-            response = f"{get_text(user_id, 'already_attended', branch=found_branch)}\n\n{weather_message}"
-            await message.answer(response, parse_mode="Markdown")
+            await message.answer(
+                get_text(user_id, 'already_attended', branch=found_branch),
+                parse_mode="Markdown"
+            )
             return
 
         # Yangi davomat
@@ -593,7 +512,7 @@ async def handle_location(message: types.Message):
                 reply_markup=builder.as_markup()
             )
             
-            # Foydalanuvchiga davomat + ob-havo
+            # Foydalanuvchiga davomat xabari
             success_text = get_text(
                 user_id, 
                 'attendance_success',
@@ -604,21 +523,21 @@ async def handle_location(message: types.Message):
                 distance=min_distance
             )
             
+            # Ob-havo ma'lumotini olish va qo'shish
+            weather_data = await get_weather_by_coords(user_coords[0], user_coords[1])
+            weather_message = format_weather_message(weather_data, user_languages.get(user_id, 'uz'))
+            
             full_response = f"{success_text}\n\n{weather_message}"
             await message.answer(full_response, parse_mode="Markdown")
             
         except Exception as e:
             logging.error(f"Error: {e}")
     else:
-        # Filial topilmadi - faqat ob-havo
+        # Filial topilmadi - faqat xato xabari (ob-havo yo'q)
         await message.answer(
-            f"{get_text(user_id, 'not_in_area')}\n\n{weather_message}",
+            get_text(user_id, 'not_in_area'),
             parse_mode="Markdown"
         )
-    
-    # Asosiy menyuga qaytish
-    keyboard = await main_keyboard(user_id)
-    await message.answer("Asosiy menyu:", reply_markup=keyboard)
 
 # --- ADMIN PANEL ---
 @dp.message(Command("admin"))
