@@ -407,6 +407,21 @@ async def cmd_weather(message: types.Message):
         )
     )
 
+@dp.message(F.location)
+async def handle_weather_location(message: types.Message):
+    """Faqat ob-havo so'ralganda lokatsiya yuborilganda"""
+    user_id = message.from_user.id
+    user_coords = (message.location.latitude, message.location.longitude)
+    
+    weather_data = await get_weather_by_coords(user_coords[0], user_coords[1])
+    weather_message = format_weather_message(weather_data, user_languages.get(user_id, 'uz'))
+    
+    await message.answer(weather_message, parse_mode="Markdown")
+    
+    # Asosiy menyuga qaytish
+    keyboard = await main_keyboard(user_id)
+    await message.answer("Asosiy menyu:", reply_markup=keyboard)
+
 @dp.message(F.text.in_({'📊 Mening statistikam', '📊 Моя статистика'}))
 async def my_stats(message: types.Message):
     user_id = message.from_user.id
@@ -645,23 +660,4 @@ async def admin_callbacks(callback: types.CallbackQuery):
         
         # Oylik statistika
         monthly_stats = defaultdict(lambda: defaultdict(int))
-        for (uid, branch, date) in daily_attendance_log:
-            if date.startswith(current_month):
-                monthly_stats[branch][uid] += 1
-        
-        report = f"📊 **{month_name} oyi uchun hisobot**\n\n"
-        
-        for branch, users in monthly_stats.items():
-            total = sum(users.values())
-            unique_users = len(users)
-            report += f"📍 **{branch}**\n"
-            report += f"   Jami: {total} ta davomat\n"
-            report += f"   O'qituvchilar: {unique_users} ta\n\n"
-        
-        await callback.message.answer(report, parse_mode="Markdown")
-    
-    elif action == "excel":
-        # Excel export qilish
-        try:
-            # Excel fayl yaratish
-            wb = openpyxl.Work
+        for (uid, branch, date) in daily
