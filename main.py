@@ -208,7 +208,7 @@ async def main_keyboard(user_id: int):
     builder.adjust(1, 2, 2, 2)
     return builder.as_markup(resize_keyboard=True)
 
-# --- OB-HAVO FUNKSIYALARI ---
+# --- OB-HAVO FUNKSIYALAR ---
 async def get_weather_by_coords(lat: float, lon: float):
     """Koordinatalar bo'yicha ob-havo ma'lumotini olish"""
     params = {
@@ -660,4 +660,5 @@ async def admin_callbacks(callback: types.CallbackQuery):
         for branch, users in monthly_stats.items():
             total = sum(users.values())
             unique_users = len(users)
-            report += f"📍 **{branch}**\n
+            report += f"📍 **{branch}**\n"
+           
