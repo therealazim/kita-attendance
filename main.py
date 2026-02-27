@@ -655,4 +655,13 @@ async def admin_callbacks(callback: types.CallbackQuery):
             total = sum(users.values())
             unique_users = len(users)
             report += f"📍 **{branch}**\n"
-            report += f"   Jami
+            report += f"   Jami: {total} ta davomat\n"
+            report += f"   O'qituvchilar: {unique_users} ta\n\n"
+        
+        await callback.message.answer(report, parse_mode="Markdown")
+    
+    elif action == "excel":
+        # Excel export qilish
+        try:
+            # Excel fayl yaratish
+            wb = openpyxl.Work
