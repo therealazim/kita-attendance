@@ -113,6 +113,7 @@ TRANSLATIONS = {
         'weekly_top': "🏆 **Haftaning eng faol o'qituvchilari:**\n\n{top_list}",
         'monthly_report': "📊 **{month} oyi uchun hisobot**\n\n{report}",
         'language_changed': "✅ Til o'zgartirildi: O'zbek tili",
+        'language_prompt': "Iltimos, tilni tanlang:",
         'buttons': {
             'attendance': "📍 Kelganimni tasdiqlash",
             'my_stats': "📊 Mening statistikam",
@@ -136,6 +137,7 @@ TRANSLATIONS = {
         'weekly_top': "🏆 **Самые активные учителя недели:**\n\n{top_list}",
         'monthly_report': "📊 **Отчет за {month}**\n\n{report}",
         'language_changed': "✅ Язык изменен: Русский язык",
+        'language_prompt': "Пожалуйста, выберите язык:",
         'buttons': {
             'attendance': "📍 Подтвердить прибытие",
             'my_stats': "📊 Моя статистика",
@@ -159,6 +161,7 @@ TRANSLATIONS = {
         'weekly_top': "🏆 **이번 주 가장 활발한 교사:**\n\n{top_list}",
         'monthly_report': "📊 **{month}월 보고서**\n\n{report}",
         'language_changed': "✅ 언어가 변경되었습니다: 한국어",
+        'language_prompt': "언어를 선택하세요:",
         'buttons': {
             'attendance': "📍 출석 확인",
             'my_stats': "📊 내 통계",
@@ -206,6 +209,16 @@ async def main_keyboard(user_id: int):
     )
     builder.adjust(1, 2, 2, 1)
     return builder.as_markup(resize_keyboard=True)
+
+async def language_selection_keyboard():
+    """Til tanlash uchun keyboard"""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="🇺🇿 O'zbekcha", callback_data="lang_uz"),
+        InlineKeyboardButton(text="🇷🇺 Русский", callback_data="lang_ru"),
+        InlineKeyboardButton(text="🇰🇷 한국어", callback_data="lang_kr")
+    )
+    return builder.as_markup()
 
 # --- OB-HAVO FUNKSIYALAR ---
 async def get_weather_by_coords(lat: float, lon: float):
@@ -333,15 +346,44 @@ async def start_web_server():
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id
-    user_ids.add(user_id)
     
+    # Yangi foydalanuvchi bo'lsa, til tanlashni so'raymiz
     if user_id not in user_languages:
-        user_languages[user_id] = 'uz'
+        keyboard = await language_selection_keyboard()
+        await message.answer(
+            "Iltimos, tilni tanlang:\nПожалуйста, выберите язык:\n언어를 선택하세요:",
+            reply_markup=keyboard
+        )
+        return
     
+    # Eski foydalanuvchi bo'lsa, to'g'ridan-to'g'ri menyuga o'tamiz
+    user_ids.add(user_id)
     keyboard = await main_keyboard(user_id)
     name = message.from_user.full_name
     
     await message.answer(
+        get_text(user_id, 'welcome', name=name),
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
+
+@dp.callback_query(F.data.startswith("lang_"))
+async def set_initial_language(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    lang = callback.data.split("_")[1]
+    
+    # Tilni saqlash
+    user_languages[user_id] = lang
+    user_ids.add(user_id)
+    
+    await callback.answer()
+    await callback.message.delete()
+    
+    # Asosiy menyuni ko'rsatish
+    keyboard = await main_keyboard(user_id)
+    name = callback.from_user.full_name
+    
+    await callback.message.answer(
         get_text(user_id, 'welcome', name=name),
         reply_markup=keyboard,
         parse_mode="Markdown"
@@ -352,16 +394,16 @@ async def change_language(message: types.Message):
     user_id = message.from_user.id
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="🇺🇿 O'zbekcha", callback_data="lang_uz"),
-        InlineKeyboardButton(text="🇷🇺 Русский", callback_data="lang_ru"),
-        InlineKeyboardButton(text="🇰🇷 한국어", callback_data="lang_kr")
+        InlineKeyboardButton(text="🇺🇿 O'zbekcha", callback_data="change_lang_uz"),
+        InlineKeyboardButton(text="🇷🇺 Русский", callback_data="change_lang_ru"),
+        InlineKeyboardButton(text="🇰🇷 한국어", callback_data="change_lang_kr")
     )
     await message.answer("Tilni tanlang / Выберите язык / 언어를 선택하세요:", reply_markup=builder.as_markup())
 
-@dp.callback_query(F.data.startswith("lang_"))
-async def set_language(callback: types.CallbackQuery):
+@dp.callback_query(F.data.startswith("change_lang_"))
+async def set_changed_language(callback: types.CallbackQuery):
     user_id = callback.from_user.id
-    lang = callback.data.split("_")[1]
+    lang = callback.data.split("_")[2]
     user_languages[user_id] = lang
     
     await callback.answer()
