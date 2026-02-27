@@ -1,4 +1,5 @@
-aiogram
-geopy
-aiohttp
-pytz
+aiogram==3.0.0
+geopy==2.4.0
+aiohttp==3.8.6
+pytz==2023.3
+openpyxl==3.1.2
