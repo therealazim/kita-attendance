@@ -54,17 +54,33 @@ LOCATIONS = [
 ]
 ALLOWED_DISTANCE = 500
 
-# DARS JADVALI UCHUN MA'LUMOTLAR
+# DARS TURLARI
+LESSON_TYPES = [
+    {"uz": "Koreys Tili", "ru": "Корейский язык", "kr": "한국어"},
+    {"uz": "IT", "ru": "IT", "kr": "IT"},
+    {"uz": "Ingliz Tili", "ru": "Английский язык", "kr": "영어"},
+    {"uz": "Matematika", "ru": "Математика", "kr": "수학"},
+    {"uz": "Fizika", "ru": "Физика", "kr": "물리학"},
+    {"uz": "Kimyo", "ru": "Химия", "kr": "화학"},
+    {"uz": "Biologiya", "ru": "Биология", "kr": "생물학"},
+    {"uz": "Tarix", "ru": "История", "kr": "역사"}
+]
+
+# HAFTA KUNLARI
 WEEKDAYS_UZ = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
 WEEKDAYS_RU = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
 WEEKDAYS_KR = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
 
-# Soatlar ro'yxati (08:00 dan 20:00 gacha)
-HOURS_LIST = [f"{h:02d}:00" for h in range(8, 21)]
+# Soatlar va daqiqalar
+HOURS = [f"{i:02d}" for i in range(0, 24)]
+MINUTES = [f"{i:02d}" for i in range(0, 60, 5)]  # 5 daqiqalik interval
 
 # Foydalanuvchi dars jadvallari
-# {user_id: {branch: {weekday: [hours]}}}
-user_schedules = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+# {user_id: {branch: {lesson_type: {weekday: [time_strings]}}}}
+user_schedules = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list))))
+
+# Eslatmalar uchun
+user_reminders = {}  # {reminder_id: {"user_id": user_id, "branch": branch, "lesson_type": lesson_type, "time": datetime}}
 
 # Ob-havo shartlariga mos tavsiyalar
 WEATHER_RECOMMENDATIONS = {
@@ -113,12 +129,12 @@ WEATHER_RECOMMENDATIONS = {
 # Tillar uchun matnlar
 TRANSLATIONS = {
     'uz': {
-        'welcome': "🌟 **HANCOM ACADEMYning o'qituvchilar uchun davomat botiga hush kelibsiz, {name}!**\n\nQuyidagi tugmalar orqali:\n• Davomat qilishingiz\n• Statistikangizni ko'rishingiz\n• Dars jadvalingizni kiritishingiz\n• Filiallar bilan tanishishingiz mumkin",
+        'welcome': "🌟 **HANCOM ACADEMYning o'qituvchilar uchun davomat botiga hush kelibsiz, {name}!**\n\nQuyidagi tugmalar orqali:\n• Davomat qilishingiz\n• Statistikangizni ko'rishingiz\n• Dars jadvali qo'shishingiz\n• Filiallar bilan tanishishingiz mumkin",
         'stats': "📊 **Sizning statistikangiz:**",
         'no_stats': "📭 Hali davomat qilmagansiz",
         'branches': "🏢 **Mavjud filiallar:**",
         'distance_info': "📍 Barcha filiallar {distance} metr masofada aniqlanadi",
-        'help': "🤖 **Botdan foydalanish qo'llanmasi:**\n\n📍 **Davomat qilish uchun:**\n• Pastdagi \"📍 Kelganimni tasdiqlash\" tugmasini bosing\n• Joylashuvingizni yuboring\n\n📊 **Statistika:**\n• \"📊 Mening statistikam\" - shaxsiy davomat tarixingiz\n\n📅 **Dars jadvali:**\n• \"📅 Dars jadvali\" - dars vaqtlaringizni kiritish\n• \"📋 Mening jadvalim\" - kiritilgan jadvallarni ko'rish\n\n🏢 **Filiallar:**\n• \"🏢 Filiallar\" - barcha mavjud filiallar ro'yxati",
+        'help': "🤖 **Botdan foydalanish qo'llanmasi:**\n\n📍 **Davomat qilish uchun:**\n• Pastdagi \"📍 Kelganimni tasdiqlash\" tugmasini bosing\n• Joylashuvingizni yuboring\n\n📊 **Statistika:**\n• \"📊 Mening statistikam\" - shaxsiy davomat tarixingiz\n\n📅 **Dars jadvali:**\n• \"📅 Dars jadvali qo'shish\" - dars vaqtlaringizni kiritish\n• \"📋 Mening jadvalim\" - kiritilgan jadvallarni ko'rish\n\n🏢 **Filiallar:**\n• \"🏢 Filiallar\" - barcha mavjud filiallar ro'yxati",
         'attendance_success': "✅ **Davomat tasdiqlandi!**\n\n🏫 **Filial:** {branch}\n📅 **Sana:** {date}\n⏰ **Vaqt:** {time}\n📊 **Bu oydagi tashriflar:** {count} marta\n📏 **Masofa:** {distance:.1f} metr",
         'already_attended': "⚠️ Siz bugun **{branch}** hududida allaqachon davomatdan o'tgansiz!",
         'not_in_area': "❌ Siz belgilangan ta'lim muassasalari hududida emassiz!",
@@ -127,12 +143,16 @@ TRANSLATIONS = {
         'monthly_report': "📊 **{month} oyi uchun hisobot**\n\n{report}",
         'language_changed': "✅ Til o'zgartirildi: O'zbek tili",
         'language_prompt': "Iltimos, tilni tanlang:",
-        'schedule': "📅 **Dars jadvali**\n\nQaysi filial uchun jadval kiritmoqchisiz?",
+        'schedule_add': "📅 **Dars jadvali qo'shish**\n\nQaysi filial uchun jadval kiritmoqchisiz?",
+        'select_lesson_type': "📚 **Dars turini tanlang:**",
         'select_weekday': "📅 **Kunni tanlang:**",
-        'select_hours': "⏰ **Soatlarni tanlang:**\n\n{hours_text}\n\nTanlagan soatlaringiz: {selected}\n\nTugatish uchun ✅ Yakunlash tugmasini bosing.",
+        'select_hours': "⏰ **Soatni tanlang:**",
+        'select_minutes': "⏰ **Daqiqani tanlang:**",
         'my_schedule': "📋 **Mening dars jadvallarim:**\n\n{schedule_text}",
         'no_schedule': "📭 Hali dars jadvali kiritilmagan",
         'schedule_saved': "✅ Dars jadvali saqlandi!",
+        'reminder_15min': "⏰ **15 daqiqadan keyin dars boshlanadi!**\n\n📍 Filial: {branch}\n📚 Dars: {lesson_type}\n⏱️ Vaqt: {time}\n\n✅ Davomat qilishni unutmang!",
+        'view_on_map': "🗺️ Yandex Maps orqali ko'rish",
         'buttons': {
             'attendance': "📍 Kelganimni tasdiqlash",
             'my_stats': "📊 Mening statistikam",
@@ -140,17 +160,17 @@ TRANSLATIONS = {
             'help': "❓ Yordam",
             'top_week': "🏆 Hafta topi",
             'language': "🌐 Til",
-            'schedule': "📅 Dars jadvali",
+            'schedule_add': "📅 Dars jadvali qo'shish",
             'my_schedule': "📋 Mening jadvalim"
         }
     },
     'ru': {
-        'welcome': "🌟 **Добро пожаловать в бот для отметок HANCOM ACADEMY для учителей, {name}!**\n\nС помощью кнопок ниже вы можете:\n• Отметиться\n• Посмотреть статистику\n• Ввести расписание\n• Ознакомиться с филиалами",
+        'welcome': "🌟 **Добро пожаловать в бот для отметок HANCOM ACADEMY для учителей, {name}!**\n\nС помощью кнопок ниже вы можете:\n• Отметиться\n• Посмотреть статистику\n• Добавить расписание\n• Ознакомиться с филиалами",
         'stats': "📊 **Ваша статистика:**",
         'no_stats': "📭 Вы еще не отмечались",
         'branches': "🏢 **Доступные филиалы:**",
         'distance_info': "📍 Все филиалы определяются в радиусе {distance} метров",
-        'help': "🤖 **Руководство по использованию:**\n\n📍 **Для отметки:**\n• Нажмите кнопку \"📍 Подтвердить прибытие\"\n• Отправьте свою геолокацию\n\n📊 **Статистика:**\n• \"📊 Моя статистика\" - история отметок\n\n📅 **Расписание:**\n• \"📅 Расписание\" - ввести время занятий\n• \"📋 Мое расписание\" - посмотреть расписание\n\n🏢 **Филиалы:**\n• \"🏢 Филиалы\" - список всех филиалов",
+        'help': "🤖 **Руководство по использованию:**\n\n📍 **Для отметки:**\n• Нажмите кнопку \"📍 Подтвердить прибытие\"\n• Отправьте свою геолокацию\n\n📊 **Статистика:**\n• \"📊 Моя статистика\" - история отметок\n\n📅 **Расписание:**\n• \"📅 Добавить расписание\" - ввести время занятий\n• \"📋 Мое расписание\" - посмотреть расписание\n\n🏢 **Филиалы:**\n• \"🏢 Филиалы\" - список всех филиалов",
         'attendance_success': "✅ **Отметка подтверждена!**\n\n🏫 **Филиал:** {branch}\n📅 **Дата:** {date}\n⏰ **Время:** {time}\n📊 **Посещений в этом месяце:** {count}\n📏 **Расстояние:** {distance:.1f} м",
         'already_attended': "⚠️ Вы уже отмечались сегодня в филиале **{branch}**!",
         'not_in_area': "❌ Вы не находитесь в зоне учебных заведений!",
@@ -159,12 +179,16 @@ TRANSLATIONS = {
         'monthly_report': "📊 **Отчет за {month}**\n\n{report}",
         'language_changed': "✅ Язык изменен: Русский язык",
         'language_prompt': "Пожалуйста, выберите язык:",
-        'schedule': "📅 **Расписание**\n\nДля какого филиала хотите ввести расписание?",
+        'schedule_add': "📅 **Добавить расписание**\n\nДля какого филиала хотите ввести расписание?",
+        'select_lesson_type': "📚 **Выберите тип урока:**",
         'select_weekday': "📅 **Выберите день:**",
-        'select_hours': "⏰ **Выберите часы:**\n\n{hours_text}\n\nВыбранные часы: {selected}\n\nНажмите ✅ Готово для завершения.",
+        'select_hours': "⏰ **Выберите час:**",
+        'select_minutes': "⏰ **Выберите минуты:**",
         'my_schedule': "📋 **Мое расписание:**\n\n{schedule_text}",
         'no_schedule': "📭 Расписание еще не введено",
         'schedule_saved': "✅ Расписание сохранено!",
+        'reminder_15min': "⏰ **Через 15 минут начнется урок!**\n\n📍 Филиал: {branch}\n📚 Урок: {lesson_type}\n⏱️ Время: {time}\n\n✅ Не забудьте отметиться!",
+        'view_on_map': "🗺️ Посмотреть на Yandex Maps",
         'buttons': {
             'attendance': "📍 Подтвердить прибытие",
             'my_stats': "📊 Моя статистика",
@@ -172,17 +196,17 @@ TRANSLATIONS = {
             'help': "❓ Помощь",
             'top_week': "🏆 Топ недели",
             'language': "🌐 Язык",
-            'schedule': "📅 Расписание",
+            'schedule_add': "📅 Добавить расписание",
             'my_schedule': "📋 Мое расписание"
         }
     },
     'kr': {
-        'welcome': "🌟 **HANCOM ACADEMY 교사용 출석 체크 봇에 오신 것을 환영합니다, {name}!**\n\n아래 버튼을 통해:\n• 출석 체크하기\n• 내 통계 보기\n• 시간표 입력하기\n• 지점 목록 보기",
+        'welcome': "🌟 **HANCOM ACADEMY 교사용 출석 체크 봇에 오신 것을 환영합니다, {name}!**\n\n아래 버튼을 통해:\n• 출석 체크하기\n• 내 통계 보기\n• 시간표 추가하기\n• 지점 목록 보기",
         'stats': "📊 **내 통계:**",
         'no_stats': "📭 아직 출석 체크하지 않았습니다",
         'branches': "🏢 **등록된 지점:**",
         'distance_info': "📍 모든 지점은 {distance}미터 반경 내에서 확인됩니다",
-        'help': "🤖 **사용 설명서:**\n\n📍 **출석 체크 방법:**\n• 하단의 \"📍 출석 확인\" 버튼을 누르세요\n• 위치를 전송하세요\n\n📊 **통계:**\n• \"📊 내 통계\" - 개인 출석 기록\n\n📅 **시간표:**\n• \"📅 시간표\" - 수업 시간 입력\n• \"📋 내 시간표\" - 시간표 보기\n\n🏢 **지점:**\n• \"🏢 지점\" - 모든 지점 목록",
+        'help': "🤖 **사용 설명서:**\n\n📍 **출석 체크 방법:**\n• 하단의 \"📍 출석 확인\" 버튼을 누르세요\n• 위치를 전송하세요\n\n📊 **통계:**\n• \"📊 내 통계\" - 개인 출석 기록\n\n📅 **시간표:**\n• \"📅 시간표 추가\" - 수업 시간 입력\n• \"📋 내 시간표\" - 시간표 보기\n\n🏢 **지점:**\n• \"🏢 지점\" - 모든 지점 목록",
         'attendance_success': "✅ **출석이 확인되었습니다!**\n\n🏫 **지점:** {branch}\n📅 **날짜:** {date}\n⏰ **시간:** {time}\n📊 **이번 달 출석:** {count}회\n📏 **거리:** {distance:.1f}미터",
         'already_attended': "⚠️ 오늘 이미 **{branch}** 지점에서 출석 체크하셨습니다!",
         'not_in_area': "❌ 지정된 교육 기관 구역 내에 있지 않습니다!",
@@ -191,12 +215,16 @@ TRANSLATIONS = {
         'monthly_report': "📊 **{month}월 보고서**\n\n{report}",
         'language_changed': "✅ 언어가 변경되었습니다: 한국어",
         'language_prompt': "언어를 선택하세요:",
-        'schedule': "📅 **시간표**\n\n어느 지점의 시간표를 입력하시겠습니까?",
+        'schedule_add': "📅 **시간표 추가**\n\n어느 지점의 시간표를 입력하시겠습니까?",
+        'select_lesson_type': "📚 **수업 유형을 선택하세요:**",
         'select_weekday': "📅 **요일을 선택하세요:**",
-        'select_hours': "⏰ **시간을 선택하세요:**\n\n{hours_text}\n\n선택한 시간: {selected}\n\n완료하려면 ✅ 완료 버튼을 누르세요.",
+        'select_hours': "⏰ **시간을 선택하세요:**",
+        'select_minutes': "⏰ **분을 선택하세요:**",
         'my_schedule': "📋 **내 시간표:**\n\n{schedule_text}",
         'no_schedule': "📭 아직 시간표가 없습니다",
         'schedule_saved': "✅ 시간표가 저장되었습니다!",
+        'reminder_15min': "⏰ **15분 후 수업이 시작됩니다!**\n\n📍 지점: {branch}\n📚 수업: {lesson_type}\n⏱️ 시간: {time}\n\n✅ 출석 체크를 잊지 마세요!",
+        'view_on_map': "🗺️ Yandex Maps에서 보기",
         'buttons': {
             'attendance': "📍 출석 확인",
             'my_stats': "📊 내 통계",
@@ -204,7 +232,7 @@ TRANSLATIONS = {
             'help': "❓ 도움말",
             'top_week': "🏆 주간 TOP",
             'language': "🌐 언어",
-            'schedule': "📅 시간표",
+            'schedule_add': "📅 시간표 추가",
             'my_schedule': "📋 내 시간표"
         }
     }
@@ -217,7 +245,7 @@ user_languages = {}           # {user_id: 'uz' or 'ru' or 'kr'}
 user_ids = set()              # Barcha foydalanuvchilar ID si
 
 # Foydalanuvchi holati (dars jadvali kiritish uchun)
-user_states = {}  # {user_id: {'branch': branch, 'weekday': weekday, 'hours': []}}
+user_states = {}  # {user_id: {'branch': branch, 'lesson_type': lesson_type, 'weekday': weekday, 'time': []}}
 
 # --- YORDAMCHI FUNKSIYALAR ---
 def get_text(user_id: int, key: str, **kwargs):
@@ -246,13 +274,17 @@ def get_weekdays(user_id: int):
     else:
         return WEEKDAYS_KR
 
+def get_lesson_type_name(lesson_type: dict, lang: str):
+    """Dars turi nomini tilga mos qaytarish"""
+    return lesson_type.get(lang, lesson_type.get('uz', ''))
+
 async def main_keyboard(user_id: int):
     """Asosiy menyu tugmalarini yaratish"""
     builder = ReplyKeyboardBuilder()
     builder.add(
         KeyboardButton(text=get_button_text(user_id, 'attendance'), request_location=True),
         KeyboardButton(text=get_button_text(user_id, 'my_stats')),
-        KeyboardButton(text=get_button_text(user_id, 'schedule')),
+        KeyboardButton(text=get_button_text(user_id, 'schedule_add')),
         KeyboardButton(text=get_button_text(user_id, 'my_schedule')),
         KeyboardButton(text=get_button_text(user_id, 'branches')),
         KeyboardButton(text=get_button_text(user_id, 'top_week')),
@@ -278,146 +310,442 @@ def format_schedule_text(user_id: int):
         return None
     
     weekdays = get_weekdays(user_id)
+    lang = user_languages.get(user_id, 'uz')
     text = ""
     
     for branch, branch_data in user_schedules[user_id].items():
         text += f"\n📍 **{branch}**\n"
-        for weekday_idx, hours in branch_data.items():
-            if hours:
-                weekday_name = weekdays[int(weekday_idx)]
-                hours_str = ", ".join(hours)
-                text += f"   📅 {weekday_name}: ⏰ {hours_str}\n"
+        for lesson_type_dict, lesson_data in branch_data.items():
+            # Dars turi nomini olish
+            lesson_name = lesson_type_dict.get(lang, lesson_type_dict.get('uz', ''))
+            text += f"   📚 **{lesson_name}**\n"
+            
+            for weekday_idx, times in lesson_data.items():
+                if times:
+                    weekday_name = weekdays[int(weekday_idx)]
+                    times_str = ", ".join(times)
+                    text += f"      📅 {weekday_name}: ⏰ {times_str}\n"
     
     return text
 
-# --- OB-HAVO FUNKSIYALAR ---
-async def get_weather_by_coords(lat: float, lon: float):
-    """Koordinatalar bo'yicha ob-havo ma'lumotini olish"""
-    params = {
-        "lat": lat,
-        "lon": lon,
-        "appid": WEATHER_API_KEY,
-        "units": "metric",
-        "lang": "uz"
-    }
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(WEATHER_API_URL, params=params) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data
-                else:
-                    logging.error(f"Weather API error: {response.status}")
-                    return None
-    except Exception as e:
-        logging.error(f"Error fetching weather: {e}")
-        return None
-
-def get_weather_emoji(weather_condition: str) -> str:
-    """Ob-havo holatiga mos emoji qaytarish"""
-    emoji_map = {
-        "Clear": "☀️",
-        "Clouds": "☁️",
-        "Rain": "🌧️",
-        "Drizzle": "🌦️",
-        "Thunderstorm": "⛈️",
-        "Snow": "❄️",
-        "Mist": "🌫️",
-        "Fog": "🌫️",
-        "Haze": "🌫️"
-    }
-    return emoji_map.get(weather_condition, "🌡️")
-
-def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
-    """Ob-havo ma'lumotlarini formatlash"""
-    if not weather_data:
-        return ""
-    
-    city = weather_data.get('name', 'Noma\'lum')
-    if city == "" or city is None:
-        city = "Toshkent"
+# --- ESLATMA FUNKSIYALARI ---
+async def schedule_reminders():
+    """Darslar uchun eslatmalarni rejalashtirish"""
+    while True:
+        now = datetime.now(UZB_TZ)
         
-    main = weather_data.get('main', {})
-    weather = weather_data.get('weather', [{}])[0]
-    wind = weather_data.get('wind', {})
-    
-    temp = main.get('temp', 0)
-    feels_like = main.get('feels_like', 0)
-    humidity = main.get('humidity', 0)
-    pressure = main.get('pressure', 0)
-    condition = weather.get('main', 'Unknown')
-    description = weather.get('description', '')
-    wind_speed = wind.get('speed', 0)
-    
-    emoji = get_weather_emoji(condition)
-    
-    # Asosiy tavsiya
-    recommendation = WEATHER_RECOMMENDATIONS.get(condition, {}).get(lang, "")
-    if not recommendation:
-        recommendation = WEATHER_RECOMMENDATIONS.get('Clear', {}).get(lang, "")
-    
-    # Bosimni mmHg ga o'tkazish
-    pressure_mmhg = pressure * 0.750062
-    
-    # Tilga mos ravishda matnlar
-    temp_text = "Harorat" if lang == 'uz' else "Температура" if lang == 'ru' else "기온"
-    feels_text = "his qilinadi" if lang == 'uz' else "ощущается" if lang == 'ru' else "체감"
-    humidity_text = "Namlik" if lang == 'uz' else "Влажность" if lang == 'ru' else "습도"
-    wind_text = "Shamol" if lang == 'uz' else "Ветер" if lang == 'ru' else "바람"
-    pressure_text = "Bosim" if lang == 'uz' else "Давление" if lang == 'ru' else "기압"
-    recommendation_title = "Tavsiya" if lang == 'uz' else "Рекомендация" if lang == 'ru' else "추천"
-    time_text = "Vaqt" if lang == 'uz' else "Время" if lang == 'ru' else "시간"
-    
-    message = f"""
-{emoji} **Ob-havo ma'lumoti**
+        # Barcha foydalanuvchilarning jadvallarini tekshirish
+        for user_id, user_data in user_schedules.items():
+            for branch, branch_data in user_data.items():
+                for lesson_type_dict, lesson_data in branch_data.items():
+                    for weekday_idx, times in lesson_data.items():
+                        # Hozirgi hafta kuni
+                        current_weekday = now.weekday()
+                        
+                        # Agar bugungi kun uchun darslar bo'lsa
+                        if int(weekday_idx) == current_weekday:
+                            for time_str in times:
+                                # Dars vaqtini parse qilish
+                                hour, minute = map(int, time_str.split(':'))
+                                lesson_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                                
+                                # 15 daqiqa oldin eslatma
+                                reminder_time = lesson_time - timedelta(minutes=15)
+                                
+                                # Agar eslatma vaqti hozir bo'lsa
+                                if now >= reminder_time and now < lesson_time:
+                                    # Eslatma yuborish (har 5 daqiqada bir marta)
+                                    reminder_key = f"{user_id}_{branch}_{lesson_type_dict}_{weekday_idx}_{time_str}"
+                                    
+                                    if reminder_key not in user_reminders:
+                                        user_reminders[reminder_key] = now
+                                        
+                                        # Tilga mos dars nomi
+                                        lang = user_languages.get(user_id, 'uz')
+                                        lesson_name = lesson_type_dict.get(lang, lesson_type_dict.get('uz', ''))
+                                        
+                                        # Eslatma xabari
+                                        reminder_text = get_text(
+                                            user_id, 
+                                            'reminder_15min',
+                                            branch=branch,
+                                            lesson_type=lesson_name,
+                                            time=time_str
+                                        )
+                                        
+                                        try:
+                                            await bot.send_message(
+                                                user_id,
+                                                reminder_text,
+                                                parse_mode="Markdown"
+                                            )
+                                            logging.info(f"Reminder sent to user {user_id} for {branch} at {time_str}")
+                                        except Exception as e:
+                                            logging.error(f"Failed to send reminder: {e}")
+        
+        # Eski eslatmalarni tozalash (24 soatdan eski)
+        current_time = datetime.now(UZB_TZ)
+        to_delete = []
+        for key, reminder_time in user_reminders.items():
+            if current_time - reminder_time > timedelta(hours=24):
+                to_delete.append(key)
+        
+        for key in to_delete:
+            del user_reminders[key]
+        
+        # Har daqiqada tekshirish
+        await asyncio.sleep(60)
 
-📍 **Joy:** {city}
-🌡️ **{temp_text}:** {temp:.1f}°C ({feels_text}: {feels_like:.1f}°C)
-💧 **{humidity_text}:** {humidity}%
-💨 **{wind_text}:** {wind_speed:.1f} m/s
-📊 **{pressure_text}:** {pressure_mmhg:.1f} mmHg
-
-💡 **{recommendation_title}:**
-{recommendation}
-
-📅 **{time_text}:** {datetime.now(UZB_TZ).strftime('%H:%M')}
-"""
-    return message
-
-# --- WEB SERVER ---
-async def handle(request):
-    now_uzb = datetime.now(UZB_TZ)
-    return web.Response(
-        text=f"Bot is running! ✅\n\n"
-             f"📅 Sana: {now_uzb.strftime('%Y-%m-%d')}\n"
-             f"⏰ Vaqt: {now_uzb.strftime('%H:%M:%S')}\n"
-             f"👥 Foydalanuvchilar: {len(user_ids)} ta\n"
-             f"📊 Bugungi davomatlar: {len([k for k in daily_attendance_log if k[2] == now_uzb.strftime('%Y-%m-%d')])} ta"
+# --- DARS JADVALI HANDLERLARI ---
+@dp.message(F.text.in_({'📅 Dars jadvali qo'shish', '📅 Добавить расписание', '📅 시간표 추가'}))
+async def schedule_start(message: types.Message):
+    """Dars jadvali qo'shishni boshlash"""
+    user_id = message.from_user.id
+    
+    # Filial tanlash uchun tugmalar
+    builder = InlineKeyboardBuilder()
+    for branch in LOCATIONS:
+        # Yandex Maps orqali ko'rish tugmasi
+        maps_url = f"https://yandex.com/maps/?pt={branch['lon']},{branch['lat']}&z=17&l=map"
+        builder.row(
+            InlineKeyboardButton(
+                text=branch['name'],
+                callback_data=f"sch_branch_{branch['name']}"
+            ),
+            InlineKeyboardButton(
+                text="🗺️",
+                url=maps_url
+            )
+        )
+    builder.row(InlineKeyboardButton(
+        text="✅ Yakunlash" if user_languages.get(user_id) == 'uz' else 
+             "✅ Готово" if user_languages.get(user_id) == 'ru' else "✅ 완료",
+        callback_data="sch_done"
+    ))
+    
+    await message.answer(
+        get_text(user_id, 'schedule_add'),
+        reply_markup=builder.as_markup()
     )
 
-async def health_check(request):
-    now_uzb = datetime.now(UZB_TZ)
-    logging.info(f"Cron-job.org tomonidan tekshirildi: {now_uzb.strftime('%Y-%m-%d %H:%M:%S')}")
-    return web.Response(text=f"Bot healthy - {now_uzb.strftime('%H:%M:%S')}", status=200)
+@dp.callback_query(F.data.startswith("sch_branch_"))
+async def schedule_select_branch(callback: types.CallbackQuery):
+    """Filial tanlanganda"""
+    user_id = callback.from_user.id
+    branch = callback.data.replace("sch_branch_", "")
+    
+    # Holatni saqlash
+    if user_id not in user_states:
+        user_states[user_id] = {}
+    user_states[user_id]['branch'] = branch
+    
+    # Dars turini tanlash
+    lang = user_languages.get(user_id, 'uz')
+    builder = InlineKeyboardBuilder()
+    for lesson in LESSON_TYPES:
+        lesson_name = lesson.get(lang, lesson.get('uz', ''))
+        builder.row(InlineKeyboardButton(
+            text=lesson_name,
+            callback_data=f"sch_lesson_{json.dumps(lesson)}"
+        ))
+    builder.row(InlineKeyboardButton(
+        text="🔙 Orqaga" if lang == 'uz' else 
+             "🔙 Назад" if lang == 'ru' else "🔙 뒤로",
+        callback_data="sch_back_to_branches"
+    ))
+    
+    await callback.message.edit_text(
+        get_text(user_id, 'select_lesson_type'),
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
 
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get('/', handle)
-    app.router.add_get('/health', health_check)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    port = int(os.environ.get("PORT", 10000))
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
-    logging.info(f"Web server started on port {port}")
+@dp.callback_query(F.data.startswith("sch_lesson_"))
+async def select_lesson_type(callback: types.CallbackQuery):
+    """Dars turi tanlanganda"""
+    user_id = callback.from_user.id
+    lesson_json = callback.data.replace("sch_lesson_", "")
+    lesson_type = json.loads(lesson_json)
+    
+    # Holatni saqlash
+    if user_id not in user_states:
+        user_states[user_id] = {}
+    user_states[user_id]['lesson_type'] = lesson_type
+    
+    # Kun tanlash uchun tugmalar
+    weekdays = get_weekdays(user_id)
+    builder = InlineKeyboardBuilder()
+    for i, day in enumerate(weekdays):
+        builder.row(InlineKeyboardButton(
+            text=day,
+            callback_data=f"sch_weekday_{i}"
+        ))
+    builder.row(InlineKeyboardButton(
+        text="🔙 Orqaga" if user_languages.get(user_id) == 'uz' else 
+             "🔙 Назад" if user_languages.get(user_id) == 'ru' else "🔙 뒤로",
+        callback_data="sch_back_to_lesson_types"
+    ))
+    
+    await callback.message.edit_text(
+        get_text(user_id, 'select_weekday'),
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
 
-# --- HANDLERS ---
+@dp.callback_query(F.data.startswith("sch_weekday_"))
+async def schedule_select_weekday(callback: types.CallbackQuery):
+    """Kun tanlanganda"""
+    user_id = callback.from_user.id
+    weekday = callback.data.replace("sch_weekday_", "")
+    
+    # Holatni saqlash
+    if user_id not in user_states:
+        user_states[user_id] = {}
+    user_states[user_id]['weekday'] = weekday
+    
+    # Soat tanlash
+    builder = InlineKeyboardBuilder()
+    for hour in HOURS:
+        builder.row(InlineKeyboardButton(
+            text=hour,
+            callback_data=f"sch_hour_{hour}"
+        ))
+    
+    await callback.message.edit_text(
+        get_text(user_id, 'select_hours'),
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("sch_hour_"))
+async def select_hour(callback: types.CallbackQuery):
+    """Soat tanlanganda"""
+    user_id = callback.from_user.id
+    hour = callback.data.replace("sch_hour_", "")
+    
+    # Holatni saqlash
+    if user_id not in user_states:
+        user_states[user_id] = {}
+    user_states[user_id]['hour'] = hour
+    
+    # Daqiqa tanlash
+    builder = InlineKeyboardBuilder()
+    for minute in MINUTES:
+        builder.row(InlineKeyboardButton(
+            text=minute,
+            callback_data=f"sch_minute_{hour}:{minute}"
+        ))
+    builder.row(InlineKeyboardButton(
+        text="🔙 Orqaga" if user_languages.get(user_id) == 'uz' else 
+             "🔙 Назад" if user_languages.get(user_id) == 'ru' else "🔙 뒤로",
+        callback_data="sch_back_to_hours"
+    ))
+    
+    await callback.message.edit_text(
+        get_text(user_id, 'select_minutes'),
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("sch_minute_"))
+async def save_time(callback: types.CallbackQuery):
+    """Vaqtni saqlash"""
+    user_id = callback.from_user.id
+    time_str = callback.data.replace("sch_minute_", "")
+    
+    if user_id not in user_states:
+        await callback.answer("Xatolik yuz berdi")
+        return
+    
+    state = user_states[user_id]
+    branch = state['branch']
+    lesson_type = state['lesson_type']
+    weekday = state['weekday']
+    
+    # Vaqtni saqlash
+    lesson_type_key = json.dumps(lesson_type, sort_keys=True)
+    if time_str not in user_schedules[user_id][branch][lesson_type_key][weekday]:
+        user_schedules[user_id][branch][lesson_type_key][weekday].append(time_str)
+        user_schedules[user_id][branch][lesson_type_key][weekday].sort()
+    
+    # Yangi soat tanlash uchun qaytish
+    builder = InlineKeyboardBuilder()
+    for hour in HOURS:
+        builder.row(InlineKeyboardButton(
+            text=hour,
+            callback_data=f"sch_hour_{hour}"
+        ))
+    builder.row(InlineKeyboardButton(
+        text="✅ Tugatish" if user_languages.get(user_id) == 'uz' else 
+             "✅ Готово" if user_languages.get(user_id) == 'ru' else "✅ 완료",
+        callback_data="sch_finish_weekday"
+    ))
+    
+    await callback.message.edit_text(
+        get_text(user_id, 'select_hours'),
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer(get_text(user_id, 'schedule_saved'))
+
+@dp.callback_query(F.data == "sch_finish_weekday")
+async def finish_weekday(callback: types.CallbackQuery):
+    """Kun uchun vaqtlarni saqlashni tugatish"""
+    user_id = callback.from_user.id
+    
+    # Yangi kun tanlash
+    weekdays = get_weekdays(user_id)
+    builder = InlineKeyboardBuilder()
+    for i, day in enumerate(weekdays):
+        builder.row(InlineKeyboardButton(
+            text=day,
+            callback_data=f"sch_weekday_{i}"
+        ))
+    builder.row(InlineKeyboardButton(
+        text="🔙 Orqaga" if user_languages.get(user_id) == 'uz' else 
+             "🔙 Назад" if user_languages.get(user_id) == 'ru' else "🔙 뒤로",
+        callback_data="sch_back_to_lesson_types"
+    ))
+    
+    await callback.message.edit_text(
+        get_text(user_id, 'select_weekday'),
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data == "sch_back_to_hours")
+async def back_to_hours(callback: types.CallbackQuery):
+    """Soat tanlashga qaytish"""
+    user_id = callback.from_user.id
+    
+    builder = InlineKeyboardBuilder()
+    for hour in HOURS:
+        builder.row(InlineKeyboardButton(
+            text=hour,
+            callback_data=f"sch_hour_{hour}"
+        ))
+    
+    await callback.message.edit_text(
+        get_text(user_id, 'select_hours'),
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data == "sch_back_to_lesson_types")
+async def back_to_lesson_types(callback: types.CallbackQuery):
+    """Dars turi tanlashga qaytish"""
+    user_id = callback.from_user.id
+    
+    lang = user_languages.get(user_id, 'uz')
+    builder = InlineKeyboardBuilder()
+    for lesson in LESSON_TYPES:
+        lesson_name = lesson.get(lang, lesson.get('uz', ''))
+        builder.row(InlineKeyboardButton(
+            text=lesson_name,
+            callback_data=f"sch_lesson_{json.dumps(lesson)}"
+        ))
+    builder.row(InlineKeyboardButton(
+        text="🔙 Orqaga" if lang == 'uz' else 
+             "🔙 Назад" if lang == 'ru' else "🔙 뒤로",
+        callback_data="sch_back_to_branches"
+    ))
+    
+    await callback.message.edit_text(
+        get_text(user_id, 'select_lesson_type'),
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data == "sch_back_to_branches")
+async def schedule_back_to_branches(callback: types.CallbackQuery):
+    """Filial tanlashga qaytish"""
+    user_id = callback.from_user.id
+    
+    builder = InlineKeyboardBuilder()
+    for branch in LOCATIONS:
+        maps_url = f"https://yandex.com/maps/?pt={branch['lon']},{branch['lat']}&z=17&l=map"
+        builder.row(
+            InlineKeyboardButton(
+                text=branch['name'],
+                callback_data=f"sch_branch_{branch['name']}"
+            ),
+            InlineKeyboardButton(
+                text="🗺️",
+                url=maps_url
+            )
+        )
+    builder.row(InlineKeyboardButton(
+        text="✅ Yakunlash" if user_languages.get(user_id) == 'uz' else 
+             "✅ Готово" if user_languages.get(user_id) == 'ru' else "✅ 완료",
+        callback_data="sch_done"
+    ))
+    
+    await callback.message.edit_text(
+        get_text(user_id, 'schedule_add'),
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data == "sch_done")
+async def schedule_done(callback: types.CallbackQuery):
+    """Dars jadvali kiritishni tugatish"""
+    user_id = callback.from_user.id
+    
+    # Holatni tozalash
+    if user_id in user_states:
+        del user_states[user_id]
+    
+    await callback.message.delete()
+    await callback.message.answer(
+        get_text(user_id, 'schedule_saved'),
+        reply_markup=await main_keyboard(user_id)
+    )
+    await callback.answer()
+
+@dp.message(F.text.in_({'📋 Mening jadvalim', '📋 Мое расписание', '📋 내 시간표'}))
+async def my_schedule(message: types.Message):
+    """Mening jadvallarimni ko'rish"""
+    user_id = message.from_user.id
+    
+    schedule_text = format_schedule_text(user_id)
+    
+    if schedule_text:
+        await message.answer(
+            get_text(user_id, 'my_schedule', schedule_text=schedule_text),
+            parse_mode="Markdown"
+        )
+    else:
+        await message.answer(get_text(user_id, 'no_schedule'))
+
+# --- FILIALLAR HANDLERI (Yandex Maps bilan) ---
+@dp.message(F.text.in_({'🏢 Filiallar', '🏢 Филиалы', '🏢 지점'}))
+async def show_branches(message: types.Message):
+    user_id = message.from_user.id
+    
+    text = get_text(user_id, 'branches') + "\n\n"
+    
+    # Har bir filial uchun Yandex Maps tugmasi
+    builder = InlineKeyboardBuilder()
+    for branch in LOCATIONS:
+        maps_url = f"https://yandex.com/maps/?pt={branch['lon']},{branch['lat']}&z=17&l=map"
+        text += f"• {branch['name']}\n"
+        builder.row(InlineKeyboardButton(
+            text=f"🗺️ {branch['name']} - Yandex Maps",
+            url=maps_url
+        ))
+    
+    text += f"\n{get_text(user_id, 'distance_info', distance=ALLOWED_DISTANCE)}"
+    
+    await message.answer(
+        text,
+        reply_markup=builder.as_markup(),
+        parse_mode="Markdown"
+    )
+
+# --- QOLGAN HANDLERLAR (avvalgidek) ---
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id
     
-    # Yangi foydalanuvchi bo'lsa, til tanlashni so'raymiz
     if user_id not in user_languages:
         keyboard = await language_selection_keyboard()
         await message.answer(
@@ -426,7 +754,6 @@ async def cmd_start(message: types.Message):
         )
         return
     
-    # Eski foydalanuvchi bo'lsa, to'g'ridan-to'g'ri menyuga o'tamiz
     user_ids.add(user_id)
     keyboard = await main_keyboard(user_id)
     name = message.from_user.full_name
@@ -442,14 +769,12 @@ async def set_initial_language(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     lang = callback.data.split("_")[1]
     
-    # Tilni saqlash
     user_languages[user_id] = lang
     user_ids.add(user_id)
     
     await callback.answer()
     await callback.message.delete()
     
-    # Asosiy menyuni ko'rsatish
     keyboard = await main_keyboard(user_id)
     name = callback.from_user.full_name
     
@@ -486,292 +811,13 @@ async def set_changed_language(callback: types.CallbackQuery):
         parse_mode="Markdown"
     )
 
-# --- DARS JADVALI HANDLERLARI ---
-@dp.message(F.text.in_({'📅 Dars jadvali', '📅 Расписание', '📅 시간표'}))
-async def schedule_start(message: types.Message):
-    """Dars jadvali kiritishni boshlash"""
-    user_id = message.from_user.id
-    
-    # Filial tanlash uchun tugmalar
-    builder = InlineKeyboardBuilder()
-    for branch in LOCATIONS:
-        builder.row(InlineKeyboardButton(
-            text=branch['name'],
-            callback_data=f"sch_branch_{branch['name']}"
-        ))
-    builder.row(InlineKeyboardButton(
-        text="✅ Yakunlash" if user_languages.get(user_id) == 'uz' else 
-             "✅ Готово" if user_languages.get(user_id) == 'ru' else "✅ 완료",
-        callback_data="sch_done"
-    ))
-    
-    await message.answer(
-        get_text(user_id, 'schedule'),
-        reply_markup=builder.as_markup()
-    )
-
-@dp.callback_query(F.data.startswith("sch_branch_"))
-async def schedule_select_branch(callback: types.CallbackQuery):
-    """Filial tanlanganda"""
-    user_id = callback.from_user.id
-    branch = callback.data.replace("sch_branch_", "")
-    
-    # Holatni saqlash
-    if user_id not in user_states:
-        user_states[user_id] = {}
-    user_states[user_id]['branch'] = branch
-    
-    # Kun tanlash uchun tugmalar
-    weekdays = get_weekdays(user_id)
-    builder = InlineKeyboardBuilder()
-    for i, day in enumerate(weekdays):
-        builder.row(InlineKeyboardButton(
-            text=day,
-            callback_data=f"sch_weekday_{i}"
-        ))
-    builder.row(InlineKeyboardButton(
-        text="🔙 Orqaga" if user_languages.get(user_id) == 'uz' else 
-             "🔙 Назад" if user_languages.get(user_id) == 'ru' else "🔙 뒤로",
-        callback_data="sch_back_to_branches"
-    ))
-    
-    await callback.message.edit_text(
-        get_text(user_id, 'select_weekday'),
-        reply_markup=builder.as_markup()
-    )
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("sch_weekday_"))
-async def schedule_select_weekday(callback: types.CallbackQuery):
-    """Kun tanlanganda"""
-    user_id = callback.from_user.id
-    weekday = callback.data.replace("sch_weekday_", "")
-    
-    # Holatni saqlash
-    if user_id not in user_states:
-        user_states[user_id] = {}
-    user_states[user_id]['weekday'] = weekday
-    if 'hours' not in user_states[user_id]:
-        user_states[user_id]['hours'] = []
-    
-    # Mavjud soatlarni olish
-    branch = user_states[user_id]['branch']
-    existing_hours = user_schedules[user_id][branch][weekday] if branch in user_schedules[user_id] and weekday in user_schedules[user_id][branch] else []
-    user_states[user_id]['hours'] = existing_hours.copy()
-    
-    # Soat tanlash uchun tugmalar
-    await show_hours_selection(callback.message, user_id)
-
-async def show_hours_selection(message: types.Message, user_id: int):
-    """Soat tanlash tugmalarini ko'rsatish"""
-    state = user_states[user_id]
-    selected = state['hours']
-    
-    # Tanlangan soatlarni formatlash
-    selected_text = ", ".join(selected) if selected else "—"
-    
-    # Soat tugmalarini yaratish (3 qator)
-    builder = InlineKeyboardBuilder()
-    
-    # Soatlarni 3 tadan qilib joylashtirish
-    for i in range(0, len(HOURS_LIST), 3):
-        row_hours = HOURS_LIST[i:i+3]
-        row_buttons = []
-        for hour in row_hours:
-            # Agar soat tanlangan bo'lsa, ✅ belgisi qo'shamiz
-            btn_text = f"✅ {hour}" if hour in selected else hour
-            row_buttons.append(InlineKeyboardButton(
-                text=btn_text,
-                callback_data=f"sch_hour_{hour}"
-            ))
-        builder.row(*row_buttons)
-    
-    # Tugatish va orqaga tugmalari
-    builder.row(
-        InlineKeyboardButton(
-            text="✅ Tugatish" if user_languages.get(user_id) == 'uz' else 
-                 "✅ Готово" if user_languages.get(user_id) == 'ru' else "✅ 완료",
-            callback_data="sch_save_weekday"
-        ),
-        InlineKeyboardButton(
-            text="🔙 Orqaga" if user_languages.get(user_id) == 'uz' else 
-                 "🔙 Назад" if user_languages.get(user_id) == 'ru' else "🔙 뒤로",
-            callback_data="sch_back_to_weekdays"
-        )
-    )
-    
-    hours_text = "Soatlar:" if user_languages.get(user_id) == 'uz' else "Часы:" if user_languages.get(user_id) == 'ru' else "시간:"
-    
-    await message.edit_text(
-        get_text(user_id, 'select_hours', hours_text=hours_text, selected=selected_text),
-        reply_markup=builder.as_markup()
-    )
-
-@dp.callback_query(F.data.startswith("sch_hour_"))
-async def schedule_toggle_hour(callback: types.CallbackQuery):
-    """Soat tanlash yoki olib tashlash"""
-    user_id = callback.from_user.id
-    hour = callback.data.replace("sch_hour_", "")
-    
-    if user_id not in user_states:
-        await callback.answer("Xatolik yuz berdi")
-        return
-    
-    state = user_states[user_id]
-    if 'hours' not in state:
-        state['hours'] = []
-    
-    # Soatni qo'shish yoki olib tashlash
-    if hour in state['hours']:
-        state['hours'].remove(hour)
-    else:
-        state['hours'].append(hour)
-    
-    # Tugmalarni yangilash
-    await show_hours_selection(callback.message, user_id)
-    await callback.answer()
-
-@dp.callback_query(F.data == "sch_save_weekday")
-async def schedule_save_weekday(callback: types.CallbackQuery):
-    """Kun uchun soatlarni saqlash"""
-    user_id = callback.from_user.id
-    
-    if user_id not in user_states:
-        await callback.answer("Xatolik yuz berdi")
-        return
-    
-    state = user_states[user_id]
-    branch = state['branch']
-    weekday = state['weekday']
-    hours = state['hours']
-    
-    # Ma'lumotlarni saqlash
-    user_schedules[user_id][branch][weekday] = hours
-    
-    # Yangi kun tanlash uchun qaytish
-    weekdays = get_weekdays(user_id)
-    builder = InlineKeyboardBuilder()
-    for i, day in enumerate(weekdays):
-        # Agar shu kun uchun soatlar kiritilgan bo'lsa, ✅ belgisi qo'shamiz
-        has_hours = branch in user_schedules[user_id] and str(i) in user_schedules[user_id][branch]
-        btn_text = f"✅ {day}" if has_hours else day
-        builder.row(InlineKeyboardButton(
-            text=btn_text,
-            callback_data=f"sch_weekday_{i}"
-        ))
-    builder.row(InlineKeyboardButton(
-        text="🔙 Orqaga" if user_languages.get(user_id) == 'uz' else 
-             "🔙 Назад" if user_languages.get(user_id) == 'ru' else "🔙 뒤로",
-        callback_data="sch_back_to_branches"
-    ))
-    
-    await callback.message.edit_text(
-        get_text(user_id, 'select_weekday'),
-        reply_markup=builder.as_markup()
-    )
-    await callback.answer(get_text(user_id, 'schedule_saved'))
-
-@dp.callback_query(F.data == "sch_back_to_weekdays")
-async def schedule_back_to_weekdays(callback: types.CallbackQuery):
-    """Kun tanlashga qaytish"""
-    user_id = callback.from_user.id
-    
-    if user_id not in user_states:
-        await callback.answer("Xatolik yuz berdi")
-        return
-    
-    state = user_states[user_id]
-    branch = state['branch']
-    
-    weekdays = get_weekdays(user_id)
-    builder = InlineKeyboardBuilder()
-    for i, day in enumerate(weekdays):
-        # Agar shu kun uchun soatlar kiritilgan bo'lsa, ✅ belgisi qo'shamiz
-        has_hours = branch in user_schedules[user_id] and str(i) in user_schedules[user_id][branch]
-        btn_text = f"✅ {day}" if has_hours else day
-        builder.row(InlineKeyboardButton(
-            text=btn_text,
-            callback_data=f"sch_weekday_{i}"
-        ))
-    builder.row(InlineKeyboardButton(
-        text="🔙 Orqaga" if user_languages.get(user_id) == 'uz' else 
-             "🔙 Назад" if user_languages.get(user_id) == 'ru' else "🔙 뒤로",
-        callback_data="sch_back_to_branches"
-    ))
-    
-    await callback.message.edit_text(
-        get_text(user_id, 'select_weekday'),
-        reply_markup=builder.as_markup()
-    )
-    await callback.answer()
-
-@dp.callback_query(F.data == "sch_back_to_branches")
-async def schedule_back_to_branches(callback: types.CallbackQuery):
-    """Filial tanlashga qaytish"""
-    user_id = callback.from_user.id
-    
-    builder = InlineKeyboardBuilder()
-    for branch in LOCATIONS:
-        # Agar shu filial uchun jadval kiritilgan bo'lsa, ✅ belgisi qo'shamiz
-        has_schedule = user_id in user_schedules and branch['name'] in user_schedules[user_id]
-        btn_text = f"✅ {branch['name']}" if has_schedule else branch['name']
-        builder.row(InlineKeyboardButton(
-            text=btn_text,
-            callback_data=f"sch_branch_{branch['name']}"
-        ))
-    builder.row(InlineKeyboardButton(
-        text="✅ Yakunlash" if user_languages.get(user_id) == 'uz' else 
-             "✅ Готово" if user_languages.get(user_id) == 'ru' else "✅ 완료",
-        callback_data="sch_done"
-    ))
-    
-    await callback.message.edit_text(
-        get_text(user_id, 'schedule'),
-        reply_markup=builder.as_markup()
-    )
-    await callback.answer()
-
-@dp.callback_query(F.data == "sch_done")
-async def schedule_done(callback: types.CallbackQuery):
-    """Dars jadvali kiritishni tugatish"""
-    user_id = callback.from_user.id
-    
-    # Holatni tozalash
-    if user_id in user_states:
-        del user_states[user_id]
-    
-    await callback.message.delete()
-    await callback.message.answer(
-        get_text(user_id, 'schedule_saved'),
-        reply_markup=await main_keyboard(user_id)
-    )
-    await callback.answer()
-
-@dp.message(F.text.in_({'📋 Mening jadvalim', '📋 Мое расписание', '📋 내 시간표'}))
-async def my_schedule(message: types.Message):
-    """Mening jadvallarimni ko'rish"""
-    user_id = message.from_user.id
-    
-    schedule_text = format_schedule_text(user_id)
-    
-    if schedule_text:
-        await message.answer(
-            get_text(user_id, 'my_schedule', schedule_text=schedule_text),
-            parse_mode="Markdown"
-        )
-    else:
-        await message.answer(get_text(user_id, 'no_schedule'))
-
-# --- BOSHQA HANDLERLAR ---
 @dp.message(F.text.in_({'📊 Mening statistikam', '📊 Моя статистика', '📊 내 통계'}))
 async def my_stats(message: types.Message):
     user_id = message.from_user.id
     now_uzb = datetime.now(UZB_TZ)
     current_month = now_uzb.strftime("%Y-%m")
     
-    # Foydalanuvchining barcha davomatlarini sanalar bilan saqlash
-    user_attendances = defaultdict(list)  # {branch: [(date, time), ...]}
-    
+    user_attendances = defaultdict(list)
     for (uid, branch, date, time) in daily_attendance_log:
         if uid == user_id:
             user_attendances[branch].append((date, time))
@@ -780,7 +826,6 @@ async def my_stats(message: types.Message):
         await message.answer(get_text(user_id, 'no_stats'), parse_mode="Markdown")
         return
     
-    # Oylar bo'yicha saralash uchun
     month_names_uz = {
         "01": "Yanvar", "02": "Fevral", "03": "Mart", "04": "Aprel",
         "05": "May", "06": "Iyun", "07": "Iyul", "08": "Avgust",
@@ -808,46 +853,39 @@ async def my_stats(message: types.Message):
         month_names = month_names_ru
         weekdays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
         current_month_text = "(текущий месяц)"
-    else:  # kr
+    else:
         month_names = month_names_kr
         weekdays = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
         current_month_text = "(이번 달)"
     
     text = get_text(user_id, 'stats') + "\n\n"
     
-    # Har bir filial uchun
     for branch, date_time_list in user_attendances.items():
         text += f"📍 **{branch}**\n"
         
-        # Sanalarni yil-oy bo'yicha guruhlash
         dates_by_month = defaultdict(list)
         for date_str, time_str in date_time_list:
-            year_month = date_str[:7]  # YYYY-MM
+            year_month = date_str[:7]
             dates_by_month[year_month].append((date_str, time_str))
         
-        # Oylar bo'yicha chiqarish
         for year_month, month_data in sorted(dates_by_month.items(), reverse=True):
             year, month = year_month.split('-')
             month_name = month_names.get(month, month)
             
-            # Agar joriy oy bo'lsa, maxsus belgi
             month_display = f"{month_name} {year}"
             if year_month == current_month:
                 month_display += f" {current_month_text}"
             
             text += f"   📅 **{month_display}**\n"
             
-            # Kunlar bo'yicha saralash (eng yangi birinchi)
             for date_str, time_str in sorted(month_data, reverse=True):
                 date_parts = date_str.split('-')
                 year, month, day = date_parts
                 
-                # Hafta kunini aniqlash
                 date_obj = datetime(int(year), int(month), int(day), tzinfo=UZB_TZ)
                 weekday = date_obj.weekday()
                 weekday_name = weekdays[weekday]
                 
-                # Formatlash
                 if lang == 'kr':
                     formatted_date = f"{year}년 {int(month):02d}월 {int(day):02d}일"
                 else:
@@ -858,62 +896,6 @@ async def my_stats(message: types.Message):
             text += "\n"
         
         text += "\n"
-    
-    await message.answer(text, parse_mode="Markdown")
-
-@dp.message(F.text.in_({'🏢 Filiallar', '🏢 Филиалы', '🏢 지점'}))
-async def show_branches(message: types.Message):
-    user_id = message.from_user.id
-    
-    text = get_text(user_id, 'branches') + "\n\n"
-    
-    # Filiallarni guruhlarga ajratish
-    schools = []
-    universities = []
-    lyceums = []
-    
-    for branch in LOCATIONS:
-        if "Maktab" in branch['name']:
-            schools.append(branch['name'])
-        elif "Universitet" in branch['name']:
-            universities.append(branch['name'])
-        else:
-            lyceums.append(branch['name'])
-    
-    # Tilga mos sarlavhalar
-    lang = user_languages.get(user_id, 'uz')
-    if lang == 'uz':
-        uni_title = "**🏛 Universitetlar:**"
-        lyceum_title = "**📚 Litseylar:**"
-        school_title = "**🏫 Maktablar:**"
-    elif lang == 'ru':
-        uni_title = "**🏛 Университеты:**"
-        lyceum_title = "**📚 Лицеи:**"
-        school_title = "**🏫 Школы:**"
-    else:  # kr
-        uni_title = "**🏛 대학교:**"
-        lyceum_title = "**📚 고등학교:**"
-        school_title = "**🏫 초중학교:**"
-    
-    if universities:
-        text += f"{uni_title}\n"
-        for uni in universities:
-            text += f"• {uni}\n"
-        text += "\n"
-    
-    if lyceums:
-        text += f"{lyceum_title}\n"
-        for lyceum in lyceums:
-            text += f"• {lyceum}\n"
-        text += "\n"
-    
-    if schools:
-        text += f"{school_title}\n"
-        for school in schools:
-            text += f"• {school}\n"
-        text += "\n"
-    
-    text += get_text(user_id, 'distance_info', distance=ALLOWED_DISTANCE)
     
     await message.answer(text, parse_mode="Markdown")
 
@@ -932,27 +914,23 @@ async def weekly_top(message: types.Message):
     week_ago = now_uzb - timedelta(days=7)
     week_ago_str = week_ago.strftime("%Y-%m-%d")
     
-    # Haftalik statistikani hisoblash
     weekly_stats = defaultdict(int)
-    
     for (uid, branch, date, time) in daily_attendance_log:
         if date >= week_ago_str:
             weekly_stats[uid] += 1
     
     if not weekly_stats:
-        # Tilga mos "ma'lumot yo'q" xabari
         lang = user_languages.get(user_id, 'uz')
         if lang == 'uz':
             no_data_msg = "📭 Bu hafta hali davomat yo'q"
         elif lang == 'ru':
             no_data_msg = "📭 На этой неделе еще нет отметок"
-        else:  # kr
+        else:
             no_data_msg = "📭 이번 주에는 아직 출석 기록이 없습니다"
         
         await message.answer(no_data_msg)
         return
     
-    # Top 10 foydalanuvchini saralash
     top_users = sorted(weekly_stats.items(), key=lambda x: x[1], reverse=True)[:10]
     
     top_list = ""
@@ -973,10 +951,8 @@ async def weekly_top(message: types.Message):
 
 @dp.message(F.text)
 async def handle_text(message: types.Message):
-    """Matnli xabarlarni qayta ishlash"""
     user_id = message.from_user.id
     
-    # Agar foydalanuvchi til tanlamagan bo'lsa
     if user_id not in user_languages:
         keyboard = await language_selection_keyboard()
         await message.answer(
@@ -985,7 +961,6 @@ async def handle_text(message: types.Message):
         )
         return
 
-# ASOSIY LOKATSIYA HANDLERI
 @dp.message(F.location)
 async def handle_location(message: types.Message):
     user_id = message.from_user.id
@@ -1007,11 +982,7 @@ async def handle_location(message: types.Message):
                 min_distance = dist
                 found_branch = branch["name"]
 
-    # DAVOMAT QISMI
     if found_branch:
-        attendance_key = (user_id, found_branch, today_date)
-        
-        # Tekshirish uchun (vaqtni hisobga olmasdan)
         already_attended = False
         for (uid, branch, date, time) in daily_attendance_log:
             if uid == user_id and branch == found_branch and date == today_date:
@@ -1019,23 +990,19 @@ async def handle_location(message: types.Message):
                 break
         
         if already_attended:
-            # Bugun allaqachon davomat qilgan
             await message.answer(
                 get_text(user_id, 'already_attended', branch=found_branch),
                 parse_mode="Markdown"
             )
             return
 
-        # Yangi davomat
         counter_key = (user_id, found_branch, current_month)
         attendance_counter[counter_key] = attendance_counter.get(counter_key, 0) + 1
         visit_number = attendance_counter[counter_key]
         
-        # Vaqt bilan saqlash
         daily_attendance_log.add((user_id, found_branch, today_date, now_time))
         full_name = message.from_user.full_name
         
-        # Admin guruhiga hisobot
         report = (
             f"✅ **Yangi Davomat**\n\n"
             f"👤 **O'qituvchi:** {full_name}\n"
@@ -1050,7 +1017,6 @@ async def handle_location(message: types.Message):
         builder.row(InlineKeyboardButton(text="👤 Profilni ko'rish", url=f"tg://user?id={user_id}"))
 
         try:
-            # Adminga yuborish
             await bot.send_message(
                 chat_id=ADMIN_GROUP_ID, 
                 text=report, 
@@ -1058,7 +1024,6 @@ async def handle_location(message: types.Message):
                 reply_markup=builder.as_markup()
             )
             
-            # Foydalanuvchiga davomat xabari
             success_text = get_text(
                 user_id, 
                 'attendance_success',
@@ -1069,7 +1034,6 @@ async def handle_location(message: types.Message):
                 distance=min_distance
             )
             
-            # Ob-havo ma'lumotini olish va qo'shish
             weather_data = await get_weather_by_coords(user_coords[0], user_coords[1])
             weather_message = format_weather_message(weather_data, user_languages.get(user_id, 'uz'))
             
@@ -1079,7 +1043,6 @@ async def handle_location(message: types.Message):
         except Exception as e:
             logging.error(f"Error: {e}")
     else:
-        # Filial topilmadi - faqat xato xabari
         await message.answer(
             get_text(user_id, 'not_in_area'),
             parse_mode="Markdown"
@@ -1120,7 +1083,6 @@ async def admin_callbacks(callback: types.CallbackQuery):
         current_month = now_uzb.strftime("%Y-%m")
         month_name = now_uzb.strftime("%B %Y")
         
-        # Oylik statistika
         monthly_stats = defaultdict(lambda: defaultdict(int))
         for (uid, branch, date, time) in daily_attendance_log:
             if date.startswith(current_month):
@@ -1138,21 +1100,17 @@ async def admin_callbacks(callback: types.CallbackQuery):
         await callback.message.answer(report, parse_mode="Markdown")
     
     elif action == "excel":
-        # Excel export qilish
         try:
-            # Excel fayl yaratish
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = "Davomat"
             
-            # Sarlavhalar
             headers = ["Sana", "Filial", "O'qituvchi ID", "O'qituvchi Ismi", "Vaqt"]
             for col, header in enumerate(headers, 1):
                 cell = ws.cell(row=1, column=col, value=header)
                 cell.font = Font(bold=True)
                 cell.alignment = Alignment(horizontal="center")
             
-            # Ma'lumotlarni yozish
             row = 2
             for (uid, branch, date, time) in sorted(daily_attendance_log):
                 try:
@@ -1168,7 +1126,6 @@ async def admin_callbacks(callback: types.CallbackQuery):
                 ws.cell(row=row, column=5, value=time)
                 row += 1
             
-            # Faylni saqlash va yuborish
             excel_file = io.BytesIO()
             wb.save(excel_file)
             excel_file.seek(0)
@@ -1210,13 +1167,12 @@ async def admin_callbacks(callback: types.CallbackQuery):
     
     await callback.answer()
 
-# --- REMINDER LOOP ---
+# --- REMINDER LOOP (KUNLIK ESLATMA) ---
 async def send_daily_reminders():
     """Har kuni soat 08:00 da eslatma yuborish"""
     now_uzb = datetime.now(UZB_TZ)
     today = now_uzb.strftime("%Y-%m-%d")
     
-    # Bugun davomat qilmagan foydalanuvchilarga eslatma
     sent_count = 0
     for user_id in user_ids:
         user_attended = any(k[0] == user_id and k[2] == today for k in daily_attendance_log)
@@ -1247,9 +1203,37 @@ async def reminder_loop():
 async def main():
     asyncio.create_task(start_web_server())
     asyncio.create_task(reminder_loop())
+    asyncio.create_task(schedule_reminders())  # Dars eslatmalari
     
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
+
+# --- WEB SERVER ---
+async def handle(request):
+    now_uzb = datetime.now(UZB_TZ)
+    return web.Response(
+        text=f"Bot is running! ✅\n\n"
+             f"📅 Sana: {now_uzb.strftime('%Y-%m-%d')}\n"
+             f"⏰ Vaqt: {now_uzb.strftime('%H:%M:%S')}\n"
+             f"👥 Foydalanuvchilar: {len(user_ids)} ta\n"
+             f"📊 Bugungi davomatlar: {len([k for k in daily_attendance_log if k[2] == now_uzb.strftime('%Y-%m-%d')])} ta"
+    )
+
+async def health_check(request):
+    now_uzb = datetime.now(UZB_TZ)
+    logging.info(f"Cron-job.org tomonidan tekshirildi: {now_uzb.strftime('%Y-%m-%d %H:%M:%S')}")
+    return web.Response(text=f"Bot healthy - {now_uzb.strftime('%H:%M:%S')}", status=200)
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get('/', handle)
+    app.router.add_get('/health', health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    logging.info(f"Web server started on port {port}")
 
 if __name__ == "__main__":
     asyncio.run(main())
