@@ -203,18 +203,18 @@ def get_button_text(user_id: int, button_key: str):
     return TRANSLATIONS[lang]['buttons'][button_key]
 
 async def main_keyboard(user_id: int):
-    """Asosiy menyu tugmalarini yaratish"""
+    """Asosiy menyu tugmalarini yaratish - 7 ta tugma"""
     builder = ReplyKeyboardBuilder()
     builder.add(
         KeyboardButton(text=get_button_text(user_id, 'attendance'), request_location=True),
         KeyboardButton(text=get_button_text(user_id, 'my_stats')),
         KeyboardButton(text=get_button_text(user_id, 'branches')),
         KeyboardButton(text=get_button_text(user_id, 'top_week')),
-        KeyboardButton(text=get_button_text(user_id, 'schedule')),
+        KeyboardButton(text=get_button_text(user_id, 'schedule')),  # Dars jadvali tugmasi
         KeyboardButton(text=get_button_text(user_id, 'help')),
         KeyboardButton(text=get_button_text(user_id, 'language'))
     )
-    builder.adjust(1, 2, 2, 2)
+    builder.adjust(1, 2, 2, 2)  # 1,2,2,2 qilib joylashtirish
     return builder.as_markup(resize_keyboard=True)
 
 async def language_selection_keyboard():
@@ -527,7 +527,7 @@ async def show_branches(message: types.Message):
     
     text = get_text(user_id, 'branches') + "\n\n"
     
-    # Filiallarni guruhlarga ajratish (faqat nomlari chiqsin)
+    # Filiallarni guruhlarga ajratish (faqat nomlari)
     schools = []
     universities = []
     lyceums = []
@@ -555,7 +555,7 @@ async def show_branches(message: types.Message):
         lyceum_title = "**📚 고등학교:**"
         school_title = "**🏫 초중학교:**"
     
-    # Faqat nomlarni chiqaramiz, yoniga hech narsa qo'shmaymiz
+    # Faqat nomlarni chiqaramiz - hech qanday link yoki qo'shimcha matnsiz
     if universities:
         text += f"{uni_title}\n"
         for uni in universities:
