@@ -4,7 +4,6 @@ import logging
 import pytz 
 import io
 import aiohttp
-import json
 from datetime import datetime, timedelta
 from collections import defaultdict
 from aiogram import Bot, Dispatcher, types, F
@@ -27,10 +26,6 @@ UZB_TZ = pytz.timezone('Asia/Tashkent')
 # --- OB-HAVO SOZLAMALARI ---
 WEATHER_API_KEY = "2b7818365e4ac19cebd34c34a135a669"
 WEATHER_API_URL = "http://api.openweathermap.org/data/2.5/weather"
-
-# --- AI SOZLAMALARI ---
-OPENAI_API_KEY = "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"
-OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 
 # Bot va Dispatcher obyektlarini yaratish
 bot = Bot(token=TOKEN)
@@ -119,17 +114,13 @@ TRANSLATIONS = {
         'monthly_report': "📊 **{month} oyi uchun hisobot**\n\n{report}",
         'language_changed': "✅ Til o'zgartirildi: O'zbek tili",
         'language_prompt': "Iltimos, tilni tanlang:",
-        'ai_prompt': "🤖 **AI yordamchi**\n\nMenga istalgan savolingizni yozib qoldiring. Men sizga yordam berishga harakat qilaman!\n\nMisol: /ai Bugun ob-havo qanday?",
-        'ai_thinking': "⏳ AI fikrlayapti... Iltimos, kuting...",
-        'ai_error': "❌ AI dan javob olishda xatolik yuz berdi. Qaytadan urinib ko'ring.",
         'buttons': {
             'attendance': "📍 Kelganimni tasdiqlash",
             'my_stats': "📊 Mening statistikam",
             'branches': "🏢 Filiallar",
             'help': "❓ Yordam",
             'top_week': "🏆 Hafta topi",
-            'language': "🌐 Til",
-            'ai_help': "🤖 AI yordamchi"
+            'language': "🌐 Til"
         }
     },
     'ru': {
@@ -147,17 +138,13 @@ TRANSLATIONS = {
         'monthly_report': "📊 **Отчет за {month}**\n\n{report}",
         'language_changed': "✅ Язык изменен: Русский язык",
         'language_prompt': "Пожалуйста, выберите язык:",
-        'ai_prompt': "🤖 **AI помощник**\n\nНапишите мне любой вопрос. Я постараюсь вам помочь!\n\nПример: /ai Какая сегодня погода?",
-        'ai_thinking': "⏳ AI думает... Пожалуйста, подождите...",
-        'ai_error': "❌ Ошибка при получении ответа от AI. Попробуйте снова.",
         'buttons': {
             'attendance': "📍 Подтвердить прибытие",
             'my_stats': "📊 Моя статистика",
             'branches': "🏢 Филиалы",
             'help': "❓ Помощь",
             'top_week': "🏆 Топ недели",
-            'language': "🌐 Язык",
-            'ai_help': "🤖 AI помощник"
+            'language': "🌐 Язык"
         }
     },
     'kr': {
@@ -175,17 +162,13 @@ TRANSLATIONS = {
         'monthly_report': "📊 **{month}월 보고서**\n\n{report}",
         'language_changed': "✅ 언어가 변경되었습니다: 한국어",
         'language_prompt': "언어를 선택하세요:",
-        'ai_prompt': "🤖 **AI 도우미**\n\n질문을 입력하세요. 도와드리겠습니다!\n\n예: /ai 오늘 날씨 어때요?",
-        'ai_thinking': "⏳ AI가 생각하고 있습니다... 잠시만 기다려주세요...",
-        'ai_error': "❌ AI 응답을 받는 중 오류가 발생했습니다. 다시 시도해주세요.",
         'buttons': {
             'attendance': "📍 출석 확인",
             'my_stats': "📊 내 통계",
             'branches': "🏢 지점",
             'help': "❓ 도움말",
             'top_week': "🏆 주간 TOP",
-            'language': "🌐 언어",
-            'ai_help': "🤖 AI 도우미"
+            'language': "🌐 언어"
         }
     }
 }
@@ -221,11 +204,10 @@ async def main_keyboard(user_id: int):
         KeyboardButton(text=get_button_text(user_id, 'my_stats')),
         KeyboardButton(text=get_button_text(user_id, 'branches')),
         KeyboardButton(text=get_button_text(user_id, 'top_week')),
-        KeyboardButton(text=get_button_text(user_id, 'ai_help')),
         KeyboardButton(text=get_button_text(user_id, 'help')),
         KeyboardButton(text=get_button_text(user_id, 'language'))
     )
-    builder.adjust(1, 2, 2, 2)
+    builder.adjust(1, 2, 2, 1)
     return builder.as_markup(resize_keyboard=True)
 
 async def language_selection_keyboard():
@@ -237,45 +219,6 @@ async def language_selection_keyboard():
         InlineKeyboardButton(text="🇰🇷 한국어", callback_data="lang_kr")
     )
     return builder.as_markup()
-
-# --- AI FUNKSIYALARI ---
-async def get_ai_response(query: str, lang: str = 'uz') -> str:
-    """AI dan javob olish"""
-    try:
-        # Tilga mos tizim xabari
-        system_messages = {
-            'uz': "Siz foydali va do'stona yordamchisiz. O'zbek tilida javob bering.",
-            'ru': "Вы полезный и дружелюбный помощник. Отвечайте на русском языке.",
-            'kr': "당신은 유용하고 친근한 도우미입니다. 한국어로 답변해주세요."
-        }
-        
-        headers = {
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "model": "gpt-3.5-turbo",
-            "messages": [
-                {"role": "system", "content": system_messages.get(lang, system_messages['uz'])},
-                {"role": "user", "content": query}
-            ],
-            "max_tokens": 500,
-            "temperature": 0.7
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.post(OPENAI_API_URL, headers=headers, json=payload) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data['choices'][0]['message']['content']
-                else:
-                    error_text = await response.text()
-                    logging.error(f"OpenAI API error: {response.status} - {error_text}")
-                    return None
-    except Exception as e:
-        logging.error(f"AI response error: {e}")
-        return None
 
 # --- OB-HAVO FUNKSIYALAR ---
 async def get_weather_by_coords(lat: float, lon: float):
@@ -472,63 +415,6 @@ async def set_changed_language(callback: types.CallbackQuery):
         reply_markup=keyboard,
         parse_mode="Markdown"
     )
-
-# --- AI HANDLERLARI ---
-@dp.message(F.text.in_({'🤖 AI yordamchi', '🤖 AI помощник', '🤖 AI 도우미'}))
-async def ai_help_button(message: types.Message):
-    """AI yordamchi tugmasi bosilganda"""
-    user_id = message.from_user.id
-    await message.answer(
-        get_text(user_id, 'ai_prompt'),
-        parse_mode="Markdown"
-    )
-
-@dp.message(Command("ai"))
-async def ai_command(message: types.Message):
-    """AI ga savol berish"""
-    user_id = message.from_user.id
-    query = message.text.replace("/ai", "").strip()
-    
-    if not query:
-        await message.answer(get_text(user_id, 'ai_prompt'), parse_mode="Markdown")
-        return
-    
-    # Fikrlash xabari
-    thinking_msg = await message.answer(get_text(user_id, 'ai_thinking'))
-    
-    # AI dan javob olish
-    response = await get_ai_response(query, user_languages.get(user_id, 'uz'))
-    
-    # Fikrlash xabarini o'chirish
-    await thinking_msg.delete()
-    
-    if response:
-        await message.answer(response, parse_mode="Markdown")
-    else:
-        await message.answer(get_text(user_id, 'ai_error'))
-
-@dp.message(F.text)
-async def handle_text(message: types.Message):
-    """Matnli xabarlarni qayta ishlash (agar /ai bo'lmasa)"""
-    user_id = message.from_user.id
-    
-    # Agar foydalanuvchi til tanlamagan bo'lsa
-    if user_id not in user_languages:
-        keyboard = await language_selection_keyboard()
-        await message.answer(
-            "Iltimos, tilni tanlang:\nПожалуйста, выберите язык:\n언어를 선택하세요:",
-            reply_markup=keyboard
-        )
-        return
-    
-    # Boshqa handlerlar ishlamay qolgan matnlar uchun
-    text = message.text
-    
-    # Agar tugma matni bo'lmasa va /ai bo'lmasa
-    if not text.startswith('/'):
-        # Avtomatik AI ga so'rov yuborish (agar xohlasangiz)
-        # Hozircha hech narsa qilmaymiz
-        pass
 
 @dp.message(F.text.in_({'📊 Mening statistikam', '📊 Моя статистика', '📊 내 통계'}))
 async def my_stats(message: types.Message):
@@ -740,6 +626,20 @@ async def weekly_top(message: types.Message):
         get_text(user_id, 'weekly_top', top_list=top_list),
         parse_mode="Markdown"
     )
+
+@dp.message(F.text)
+async def handle_text(message: types.Message):
+    """Matnli xabarlarni qayta ishlash"""
+    user_id = message.from_user.id
+    
+    # Agar foydalanuvchi til tanlamagan bo'lsa
+    if user_id not in user_languages:
+        keyboard = await language_selection_keyboard()
+        await message.answer(
+            "Iltimos, tilni tanlang:\nПожалуйста, выберите язык:\n언어를 선택하세요:",
+            reply_markup=keyboard
+        )
+        return
 
 # ASOSIY LOKATSIYA HANDLERI
 @dp.message(F.location)
@@ -1009,4 +909,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
