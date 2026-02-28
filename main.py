@@ -153,7 +153,7 @@ TRANSLATIONS = {
         'no_stats': "📭 Hali davomat qilmagansiz",
         'branches': "🏢 **Mavjud filiallar:**",
         'branch_location': "📍 Lokatsiyani ko'rish",
-        'help': "🤖 **Botdan foydalanish qo'llanmasi:**\n\n📍 **Davomat qilish uchun:**\n• Pastdagi \"📍 Kelganimni tasdiqlash\" tugmasini bosing\n• Joylashuvingizni yuboring\n\n📊 **Statistika:**\n• \"📊 Mening statistikam\" - shaxsiy davomat tarixingiz\n• \"🏢 Filiallar\" - barcha mavjud filiallar ro'yxati\n• \"📅 Dars jadvali qo'shish\" - haftalik dars jadvalingizni kiritish\n• \"📋 Mening jadvalim\" - kiritilgan dars jadvalingizni ko'rish\n\n⚠️ **Eslatmalar:**\n• Kuniga faqat 1 marta davomat qilish mumkin\n• Davomat faqat Toshkent vaqti bilan hisoblanadi",
+        'help': "🤖 **Botdan foydalanish qo'llanmasi:**\n\n📍 **Davomat qilish uchun:**\n• Pastdagi \"📍 Kelganimni tasdiqlash\" tugmasini bosing\n• Joylashuvingizni yuboring\n\n📊 **Statistika:**\n• \"📊 Mening statistikam\" - shaxsiy davomat tarixingiz\n• \"🏢 Filiallar\" - barcha mavjud filiallar ro'yxati\n• \"📅 Dars jadvali qoshish\" - haftalik dars jadvalingizni kiritish\n• \"📋 Mening jadvalim\" - kiritilgan dars jadvalingizni ko'rish\n\n⚠️ **Eslatmalar:**\n• Kuniga faqat 1 marta davomat qilish mumkin\n• Davomat faqat Toshkent vaqti bilan hisoblanadi",
         'attendance_success': "✅ **Davomat tasdiqlandi!**\n\n🏫 **Filial:** {branch}\n📅 **Sana:** {date}\n⏰ **Vaqt:** {time}\n📊 **Bu oydagi tashriflar:** {count} marta\n📏 **Masofa:** {distance:.1f} metr",
         'already_attended': "⚠️ Siz bugun **{branch}** hududida allaqachon davomatdan o'tgansiz!",
         'not_in_area': "❌ Siz belgilangan ta'lim muassasalari hududida emassiz!",
@@ -162,7 +162,7 @@ TRANSLATIONS = {
         'monthly_report': "📊 **{month} oyi uchun hisobot**\n\n{report}",
         'language_changed': "✅ Til o'zgartirildi: O'zbek tili",
         'language_prompt': "Iltimos, tilni tanlang:",
-        'add_schedule_button': "📅 Dars jadvali qo'shish",
+        'add_schedule_button': "📅 Dars jadvali qoshish",
         'view_schedule_button': "📋 Mening jadvalim",
         'schedule_prompt': "Qaysi filialda dars berasiz? Tanlang:",
         'schedule_days_prompt': "Haftaning qaysi kunlarida darsingiz bor? (1-3 kun tanlashingiz mumkin)\n\nTanlagan kunlaringizni tugmalarni bosib belgilang va keyingi bosqichga o'ting:",
@@ -172,7 +172,7 @@ TRANSLATIONS = {
         'schedule_cancel': "❌ Bekor qilindi",
         'enter_time_for': "📝 {day} kuni uchun dars vaqtini kiriting (HH:MM):",
         'invalid_time': "❌ Noto'g'ri format! Vaqtni HH:MM formatida yozing (masalan: 09:00)",
-        'no_schedule': "📭 Siz hali dars jadvali kiritmadingiz. Avval '📅 Dars jadvali qo'shish' tugmasi orqali jadvalingizni kiriting.",
+        'no_schedule': "📭 Siz hali dars jadvali kiritmadingiz. Avval '📅 Dars jadvali qoshish' tugmasi orqali jadvalingizni kiriting.",
         'my_schedule': "📋 **Sizning dars jadvalingiz**\n\n🏫 **Filial:** {branch}\n\n{schedule}",
         'buttons': {
             'attendance': "📍 Kelganimni tasdiqlash",
@@ -181,7 +181,7 @@ TRANSLATIONS = {
             'help': "❓ Yordam",
             'top_week': "🏆 Hafta topi",
             'language': "🌐 Til",
-            'add_schedule': "📅 Dars jadvali qo'shish",
+            'add_schedule': "📅 Dars jadvali qoshish",
             'view_schedule': "📋 Mening jadvalim"
         }
     },
@@ -590,33 +590,8 @@ async def show_branches(message: types.Message):
         parse_mode="Markdown"
     )
 
-# --- VIEW SCHEDULE HANDLER ---
-@dp.message(F.text.in_({'📋 Mening jadvalim', '📋 Мое расписание', '📋 내 시간표'}))
-async def view_schedule(message: types.Message):
-    user_id = message.from_user.id
-    
-    if user_id not in user_schedules:
-        await message.answer(get_text(user_id, 'no_schedule'), parse_mode="Markdown")
-        return
-    
-    schedule_data = user_schedules[user_id]
-    branch = schedule_data['branch']
-    days_schedule = schedule_data.get('schedule', {})
-    
-    lang = user_languages.get(user_id, 'uz')
-    schedule_text = ""
-    for day_num in sorted(days_schedule.keys()):
-        day_name = get_weekday_name(day_num, lang)
-        time_str = days_schedule[day_num]
-        schedule_text += f"   • {day_name}: {time_str}\n"
-    
-    await message.answer(
-        get_text(user_id, 'my_schedule', branch=branch, schedule=schedule_text),
-        parse_mode="Markdown"
-    )
-
 # --- ADD SCHEDULE HANDLERS ---
-@dp.message(F.text.in_({'📅 Dars jadvali qo'shish', '📅 Добавить расписание', '📅 시간표 추가'}))
+@dp.message(F.text.in_({'📅 Dars jadvali qoshish', '📅 Добавить расписание', '📅 시간표 추가'}))
 async def add_schedule_button(message: types.Message, state: FSMContext):
     """Dars jadvali qo'shish tugmasi"""
     user_id = message.from_user.id
@@ -811,6 +786,31 @@ async def cancel_schedule(callback: types.CallbackQuery, state: FSMContext):
     # Asosiy menyuni qaytarish
     keyboard = await main_keyboard(user_id)
     await callback.message.answer("Asosiy menyu:", reply_markup=keyboard)
+
+# --- VIEW SCHEDULE HANDLER ---
+@dp.message(F.text.in_({'📋 Mening jadvalim', '📋 Мое расписание', '📋 내 시간표'}))
+async def view_schedule(message: types.Message):
+    user_id = message.from_user.id
+    
+    if user_id not in user_schedules:
+        await message.answer(get_text(user_id, 'no_schedule'), parse_mode="Markdown")
+        return
+    
+    schedule_data = user_schedules[user_id]
+    branch = schedule_data['branch']
+    days_schedule = schedule_data.get('schedule', {})
+    
+    lang = user_languages.get(user_id, 'uz')
+    schedule_text = ""
+    for day_num in sorted(days_schedule.keys()):
+        day_name = get_weekday_name(day_num, lang)
+        time_str = days_schedule[day_num]
+        schedule_text += f"   • {day_name}: {time_str}\n"
+    
+    await message.answer(
+        get_text(user_id, 'my_schedule', branch=branch, schedule=schedule_text),
+        parse_mode="Markdown"
+    )
 
 # --- OTHER HANDLERS ---
 @dp.message(F.text.in_({'📊 Mening statistikam', '📊 Моя статистика', '📊 내 통계'}))
