@@ -4,6 +4,7 @@ import logging
 import pytz 
 import io
 import aiohttp
+import re
 from datetime import datetime, timedelta
 from collections import defaultdict
 from aiogram import Bot, Dispatcher, types, F
@@ -92,10 +93,11 @@ WEEKDAYS_KR = {
 class ScheduleStates(StatesGroup):
     choosing_branch = State()
     choosing_days = State()
+    entering_time = State()
     confirming = State()
 
-# Foydalanuvchilarning dars kunlari
-# {user_id: {"branch": branch_name, "days": [0,1,2,...]}}
+# Foydalanuvchilarning dars kunlari va soatlari
+# {user_id: {"branch": branch_name, "schedule": {day_num: "HH:MM", ...}}}
 user_schedules = {}
 
 # Ob-havo shartlariga mos tavsiyalar
@@ -150,21 +152,24 @@ TRANSLATIONS = {
         'no_stats': "📭 Hali davomat qilmagansiz",
         'branches': "🏢 **Mavjud filiallar:**",
         'distance_info': "📍 Barcha filiallar {distance} metr masofada aniqlanadi",
-        'help': "🤖 **Botdan foydalanish qo'llanmasi:**\n\n📍 **Davomat qilish uchun:**\n• Pastdagi \"📍 Kelganimni tasdiqlash\" tugmasini bosing\n• Joylashuvingizni yuboring\n\n📊 **Statistika:**\n• \"📊 Mening statistikam\" - shaxsiy davomat tarixingiz\n• \"🏢 Filiallar\" - barcha mavjud filiallar ro'yxati\n• \"📅 Mening dars kunlarim\" - haftalik dars kunlarini belgilash\n\n⚠️ **Eslatmalar:**\n• Kuniga faqat 1 marta davomat qilish mumkin\n• Filialdan {distance} metr masofada bo'lishingiz kerak\n• Davomat faqat Toshkent vaqti bilan hisoblanadi",
+        'help': "🤖 **Botdan foydalanish qo'llanmasi:**\n\n📍 **Davomat qilish uchun:**\n• Pastdagi \"📍 Kelganimni tasdiqlash\" tugmasini bosing\n• Joylashuvingizni yuboring\n\n📊 **Statistika:**\n• \"📊 Mening statistikam\" - shaxsiy davomat tarixingiz\n• \"🏢 Filiallar\" - barcha mavjud filiallar ro'yxati\n• \"📅 Mening dars kunlarim\" - haftalik dars kunlari va soatlarini belgilash\n\n⚠️ **Eslatmalar:**\n• Kuniga faqat 1 marta davomat qilish mumkin\n• Filialdan {distance} metr masofada bo'lishingiz kerak\n• Davomat faqat Toshkent vaqti bilan hisoblanadi",
         'attendance_success': "✅ **Davomat tasdiqlandi!**\n\n🏫 **Filial:** {branch}\n📅 **Sana:** {date}\n⏰ **Vaqt:** {time}\n📊 **Bu oydagi tashriflar:** {count} marta\n📏 **Masofa:** {distance:.1f} metr",
         'already_attended': "⚠️ Siz bugun **{branch}** hududida allaqachon davomatdan o'tgansiz!",
         'not_in_area': "❌ Siz belgilangan ta'lim muassasalari hududida emassiz!",
-        'daily_reminder': "⏰ **Eslatma!** Bugun **{branch}** filialida dars kuningiz. Davomatni tasdiqlashni unutmang!",
+        'daily_reminder': "⏰ **Eslatma!** Bugun **{branch}** filialida soat **{time}** da darsingiz bor. Davomatni tasdiqlashni unutmang!",
         'weekly_top': "🏆 **Haftaning eng faol o'qituvchilari:**\n\n{top_list}",
         'monthly_report': "📊 **{month} oyi uchun hisobot**\n\n{report}",
         'language_changed': "✅ Til o'zgartirildi: O'zbek tili",
         'language_prompt': "Iltimos, tilni tanlang:",
         'schedule_button': "📅 Mening dars kunlarim",
         'schedule_prompt': "Qaysi filialda dars berasiz? Tanlang:",
-        'schedule_days_prompt': "Haftaning qaysi kunlarida darsingiz bor? (1-3 kun tanlashingiz mumkin)\n\nTanlagan kunlaringizni tugmalarni bosib belgilang va '✅ Tasdiqlash' tugmasini bosing:",
+        'schedule_days_prompt': "Haftaning qaysi kunlarida darsingiz bor? (1-3 kun tanlashingiz mumkin)\n\nTanlagan kunlaringizni tugmalarni bosib belgilang va keyingi bosqichga o'ting:",
         'schedule_days_selected': "Tanlangan kunlar: {days}",
-        'schedule_confirm': "✅ Sizning dars kunlaringiz saqlandi:\n🏫 Filial: {branch}\n📅 Kunlar: {days}\n\nEslatma: Shu kunlarda ertalab soat 08:00 da eslatma olasiz.",
+        'schedule_time_prompt': "Endi har bir kun uchun dars boshlanish vaqtini kiriting.\n\nVaqtni **HH:MM** formatida yozing (masalan: 09:00 yoki 14:30)",
+        'schedule_confirm': "✅ Sizning dars kunlaringiz saqlandi:\n🏫 Filial: {branch}\n📅 Jadval:\n{schedule}\n\nEslatma: Shu kunlarda belgilangan vaqtda eslatma olasiz.",
         'schedule_cancel': "❌ Bekor qilindi",
+        'enter_time_for': "📝 {day} kuni uchun dars vaqtini kiriting (HH:MM):",
+        'invalid_time': "❌ Noto'g'ri format! Vaqtni HH:MM formatida yozing (masalan: 09:00)",
         'buttons': {
             'attendance': "📍 Kelganimni tasdiqlash",
             'my_stats': "📊 Mening statistikam",
@@ -181,21 +186,24 @@ TRANSLATIONS = {
         'no_stats': "📭 Вы еще не отмечались",
         'branches': "🏢 **Доступные филиалы:**",
         'distance_info': "📍 Все филиалы определяются в радиусе {distance} метров",
-        'help': "🤖 **Руководство по использованию:**\n\n📍 **Для отметки:**\n• Нажмите кнопку \"📍 Подтвердить прибытие\"\n• Отправьте свою геолокацию\n\n📊 **Статистика:**\n• \"📊 Моя статистика\" - история отметок\n• \"🏢 Филиалы\" - список всех филиалов\n• \"📅 Мои учебные дни\" - установка дней занятий\n\n⚠️ **Примечания:**\n• Можно отмечаться только 1 раз в день\n• Вы должны находиться в радиусе {distance} метров от филиала",
+        'help': "🤖 **Руководство по использованию:**\n\n📍 **Для отметки:**\n• Нажмите кнопку \"📍 Подтвердить прибытие\"\n• Отправьте свою геолокацию\n\n📊 **Статистика:**\n• \"📊 Моя статистика\" - история отметок\n• \"🏢 Филиалы\" - список всех филиалов\n• \"📅 Мои учебные дни\" - установка дней и времени занятий\n\n⚠️ **Примечания:**\n• Можно отмечаться только 1 раз в день\n• Вы должны находиться в радиусе {distance} метров от филиала",
         'attendance_success': "✅ **Отметка подтверждена!**\n\n🏫 **Филиал:** {branch}\n📅 **Дата:** {date}\n⏰ **Время:** {time}\n📊 **Посещений в этом месяце:** {count}\n📏 **Расстояние:** {distance:.1f} м",
         'already_attended': "⚠️ Вы уже отмечались сегодня в филиале **{branch}**!",
         'not_in_area': "❌ Вы не находитесь в зоне учебных заведений!",
-        'daily_reminder': "⏰ **Напоминание!** Сегодня у вас учебный день в филиале **{branch}**. Не забудьте отметить прибытие!",
+        'daily_reminder': "⏰ **Напоминание!** Сегодня у вас занятие в филиале **{branch}** в **{time}**. Не забудьте отметить прибытие!",
         'weekly_top': "🏆 **Самые активные учителя недели:**\n\n{top_list}",
         'monthly_report': "📊 **Отчет за {month}**\n\n{report}",
         'language_changed': "✅ Язык изменен: Русский язык",
         'language_prompt': "Пожалуйста, выберите язык:",
         'schedule_button': "📅 Мои учебные дни",
         'schedule_prompt': "В каком филиале вы преподаете? Выберите:",
-        'schedule_days_prompt': "В какие дни недели у вас занятия? (можно выбрать 1-3 дня)\n\nВыберите дни нажатием кнопок и нажмите '✅ Подтвердить':",
+        'schedule_days_prompt': "В какие дни недели у вас занятия? (можно выбрать 1-3 дня)\n\nВыберите дни нажатием кнопок и перейдите к следующему шагу:",
         'schedule_days_selected': "Выбранные дни: {days}",
-        'schedule_confirm': "✅ Ваши учебные дни сохранены:\n🏫 Филиал: {branch}\n📅 Дни: {days}\n\nНапоминание: В эти дни вы будете получать напоминание в 08:00 утра.",
+        'schedule_time_prompt': "Теперь введите время начала занятий для каждого дня.\n\nВводите время в формате **ЧЧ:ММ** (например: 09:00 или 14:30)",
+        'schedule_confirm': "✅ Ваши учебные дни сохранены:\n🏫 Филиал: {branch}\n📅 Расписание:\n{schedule}\n\nНапоминание: В эти дни вы будете получать напоминание в указанное время.",
         'schedule_cancel': "❌ Отменено",
+        'enter_time_for': "📝 Введите время для дня {day} (ЧЧ:ММ):",
+        'invalid_time': "❌ Неверный формат! Введите время в формате ЧЧ:ММ (например: 09:00)",
         'buttons': {
             'attendance': "📍 Подтвердить прибытие",
             'my_stats': "📊 Моя статистика",
@@ -212,21 +220,24 @@ TRANSLATIONS = {
         'no_stats': "📭 아직 출석 체크하지 않았습니다",
         'branches': "🏢 **등록된 지점:**",
         'distance_info': "📍 모든 지점은 {distance}미터 반경 내에서 확인됩니다",
-        'help': "🤖 **사용 설명서:**\n\n📍 **출석 체크 방법:**\n• 하단의 \"📍 출석 확인\" 버튼을 누르세요\n• 위치를 전송하세요\n\n📊 **통계:**\n• \"📊 내 통계\" - 개인 출석 기록\n• \"🏢 지점\" - 모든 지점 목록\n• \"📅 내 수업 요일\" - 수업 요일 설정\n\n⚠️ **참고사항:**\n• 하루에 한 번만 출석 체크 가능\n• 지점에서 {distance}미터 이내에 있어야 함",
+        'help': "🤖 **사용 설명서:**\n\n📍 **출석 체크 방법:**\n• 하단의 \"📍 출석 확인\" 버튼을 누르세요\n• 위치를 전송하세요\n\n📊 **통계:**\n• \"📊 내 통계\" - 개인 출석 기록\n• \"🏢 지점\" - 모든 지점 목록\n• \"📅 내 수업 요일\" - 수업 요일 및 시간 설정\n\n⚠️ **참고사항:**\n• 하루에 한 번만 출석 체크 가능\n• 지점에서 {distance}미터 이내에 있어야 함",
         'attendance_success': "✅ **출석이 확인되었습니다!**\n\n🏫 **지점:** {branch}\n📅 **날짜:** {date}\n⏰ **시간:** {time}\n📊 **이번 달 출석:** {count}회\n📏 **거리:** {distance:.1f}미터",
         'already_attended': "⚠️ 오늘 이미 **{branch}** 지점에서 출석 체크하셨습니다!",
         'not_in_area': "❌ 지정된 교육 기관 구역 내에 있지 않습니다!",
-        'daily_reminder': "⏰ **알림!** 오늘은 **{branch}** 지점에서 수업이 있는 날입니다. 출석을 확인하세요!",
+        'daily_reminder': "⏰ **알림!** 오늘은 **{branch}** 지점에서 **{time}**에 수업이 있습니다. 출석을 확인하세요!",
         'weekly_top': "🏆 **이번 주 가장 활발한 교사:**\n\n{top_list}",
         'monthly_report': "📊 **{month}월 보고서**\n\n{report}",
         'language_changed': "✅ 언어가 변경되었습니다: 한국어",
         'language_prompt': "언어를 선택하세요:",
         'schedule_button': "📅 내 수업 요일",
         'schedule_prompt': "어느 지점에서 수업을 하시나요? 선택하세요:",
-        'schedule_days_prompt': "주중 어떤 요일에 수업이 있나요? (1-3일 선택 가능)\n\n버튼을 눌러 요일을 선택하고 '✅ 확인' 버튼을 누르세요:",
+        'schedule_days_prompt': "주중 어떤 요일에 수업이 있나요? (1-3일 선택 가능)\n\n버튼을 눌러 요일을 선택하고 다음 단계로 진행하세요:",
         'schedule_days_selected': "선택한 요일: {days}",
-        'schedule_confirm': "✅ 수업 요일이 저장되었습니다:\n🏫 지점: {branch}\n📅 요일: {days}\n\n알림: 이 요일에는 오전 8시에 알림을 받게 됩니다.",
+        'schedule_time_prompt': "이제 각 요일의 수업 시작 시간을 입력하세요.\n\n시간 형식: **HH:MM** (예: 09:00 또는 14:30)",
+        'schedule_confirm': "✅ 수업 시간이 저장되었습니다:\n🏫 지점: {branch}\n📅 시간표:\n{schedule}\n\n알림: 이 요일에는 지정된 시간에 알림을 받게 됩니다.",
         'schedule_cancel': "❌ 취소됨",
+        'enter_time_for': "📝 {day}요일 수업 시간을 입력하세요 (HH:MM):",
+        'invalid_time': "❌ 잘못된 형식! HH:MM 형식으로 입력하세요 (예: 09:00)",
         'buttons': {
             'attendance': "📍 출석 확인",
             'my_stats': "📊 내 통계",
@@ -329,7 +340,7 @@ async def weekdays_keyboard(user_id: int, selected_days: list = None):
     
     builder.adjust(2)
     builder.row(
-        InlineKeyboardButton(text="✅ Tasdiqlash", callback_data="confirm_days"),
+        InlineKeyboardButton(text="⏭️ Keyingi", callback_data="next_to_time"),
         InlineKeyboardButton(text="❌ Bekor qilish", callback_data="cancel_schedule")
     )
     return builder.as_markup()
@@ -585,6 +596,9 @@ async def process_day_selection(callback: types.CallbackQuery, state: FSMContext
             await callback.answer("Maksimum 3 ta kun tanlashingiz mumkin!", show_alert=True)
             return
     
+    # Tanlangan kunlarni tartiblash
+    selected_days.sort()
+    
     # Yangilangan ma'lumotlarni saqlash
     await state.update_data(selected_days=selected_days)
     
@@ -593,12 +607,11 @@ async def process_day_selection(callback: types.CallbackQuery, state: FSMContext
     await callback.message.edit_reply_markup(reply_markup=keyboard)
     await callback.answer()
 
-@dp.callback_query(F.data == "confirm_days", ScheduleStates.choosing_days)
-async def confirm_schedule(callback: types.CallbackQuery, state: FSMContext):
-    """Dars kunlarini tasdiqlash"""
+@dp.callback_query(F.data == "next_to_time", ScheduleStates.choosing_days)
+async def go_to_time_input(callback: types.CallbackQuery, state: FSMContext):
+    """Vaqt kiritish bosqichiga o'tish"""
     user_id = callback.from_user.id
     data = await state.get_data()
-    selected_branch = data.get('selected_branch')
     selected_days = data.get('selected_days', [])
     
     if not selected_days:
@@ -608,32 +621,103 @@ async def confirm_schedule(callback: types.CallbackQuery, state: FSMContext):
     # Kunlarni tartiblash
     selected_days.sort()
     
-    # Foydalanuvchi ma'lumotlarini saqlash
-    user_schedules[user_id] = {
-        'branch': selected_branch,
-        'days': selected_days
-    }
-    
-    # Kun nomlarini olish
-    lang = user_languages.get(user_id, 'uz')
-    day_names = [get_weekday_name(day, lang) for day in selected_days]
-    days_str = ", ".join(day_names)
+    # Vaqtlar lug'atini yaratish
+    await state.update_data(times={})
     
     await callback.answer()
     await callback.message.delete()
     
-    # Tasdiqlash xabari
+    # Vaqt kiritish bosqichiga o'tish
+    lang = user_languages.get(user_id, 'uz')
+    first_day = selected_days[0]
+    day_name = get_weekday_name(first_day, lang)
+    
     await callback.message.answer(
-        get_text(user_id, 'schedule_confirm', branch=selected_branch, days=days_str),
+        get_text(user_id, 'enter_time_for', day=day_name),
         parse_mode="Markdown"
     )
     
-    # Holatni tozalash
+    # Qaysi kun uchun vaqt kiritilayotganini saqlash
+    await state.update_data(current_day_index=0)
+    await state.set_state(ScheduleStates.entering_time)
+
+@dp.message(ScheduleStates.entering_time)
+async def process_time_input(message: types.Message, state: FSMContext):
+    """Vaqt kiritishni qayta ishlash"""
+    user_id = message.from_user.id
+    time_text = message.text.strip()
+    
+    # Vaqt formatini tekshirish (HH:MM)
+    time_pattern = re.compile(r'^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$')
+    if not time_pattern.match(time_text):
+        await message.answer(get_text(user_id, 'invalid_time'))
+        return
+    
+    # Vaqtni to'g'rilash (agar 9:00 bo'lsa, 09:00 qilish)
+    if len(time_text) == 4:
+        time_text = "0" + time_text
+    
+    data = await state.get_data()
+    selected_days = data.get('selected_days', [])
+    times = data.get('times', {})
+    current_index = data.get('current_day_index', 0)
+    
+    current_day = selected_days[current_index]
+    times[current_day] = time_text
+    
+    await state.update_data(times=times)
+    
+    # Keyingi kunni tekshirish
+    current_index += 1
+    if current_index < len(selected_days):
+        # Keyingi kun uchun so'rash
+        lang = user_languages.get(user_id, 'uz')
+        next_day = selected_days[current_index]
+        day_name = get_weekday_name(next_day, lang)
+        
+        await state.update_data(current_day_index=current_index)
+        await message.answer(
+            get_text(user_id, 'enter_time_for', day=day_name),
+            parse_mode="Markdown"
+        )
+    else:
+        # Barcha vaqtlar kiritildi - tasdiqlash
+        await show_schedule_confirmation(message, state, user_id)
+
+async def show_schedule_confirmation(message: types.Message, state: FSMContext, user_id: int):
+    """Dars jadvalini tasdiqlash"""
+    data = await state.get_data()
+    selected_branch = data.get('selected_branch')
+    selected_days = data.get('selected_days', [])
+    times = data.get('times', {})
+    
+    # Jadvalni saqlash
+    schedule_data = {}
+    lang = user_languages.get(user_id, 'uz')
+    
+    schedule_text = ""
+    for day_num in selected_days:
+        day_name = get_weekday_name(day_num, lang)
+        time_str = times.get(day_num, "09:00")
+        schedule_text += f"   • {day_name}: {time_str}\n"
+        schedule_data[day_num] = time_str
+    
+    # Foydalanuvchi ma'lumotlarini saqlash
+    user_schedules[user_id] = {
+        'branch': selected_branch,
+        'schedule': schedule_data
+    }
+    
+    await message.answer(
+        get_text(user_id, 'schedule_confirm', branch=selected_branch, schedule=schedule_text),
+        parse_mode="Markdown"
+    )
+    
     await state.clear()
     
     # Asosiy menyuni qaytarish
     keyboard = await main_keyboard(user_id)
-    await callback.message.answer("Asosiy menyu:", reply_markup=keyboard)
+    await message.answer("Asosiy menyu:", reply_markup=keyboard)
 
 @dp.callback_query(F.data == "cancel_schedule", ScheduleStates.choosing_days)
 async def cancel_schedule(callback: types.CallbackQuery, state: FSMContext):
@@ -864,7 +948,7 @@ async def weekly_top(message: types.Message):
     )
 
 @dp.message(F.text)
-async def handle_text(message: types.Message):
+async def handle_text(message: types.Message, state: FSMContext):
     """Matnli xabarlarni qayta ishlash"""
     user_id = message.from_user.id
     
@@ -1108,6 +1192,7 @@ async def send_daily_reminders():
     now_uzb = datetime.now(UZB_TZ)
     today = now_uzb.strftime("%Y-%m-%d")
     today_weekday = now_uzb.weekday()  # 0-Dushanba, 6-Yakshanba
+    current_time = now_uzb.strftime("%H:%M")
     
     # Bugun davomat qilmagan va dars kuni bo'lgan foydalanuvchilarga eslatma
     sent_count = 0
@@ -1116,16 +1201,19 @@ async def send_daily_reminders():
         if user_id in user_schedules:
             schedule = user_schedules[user_id]
             branch = schedule['branch']
-            days = schedule['days']
+            days_schedule = schedule.get('schedule', {})
             
-            # Bugun dars kuni bo'lsa va hali davomat qilmagan bo'lsa
-            if today_weekday in days:
+            # Bugun dars kuni bo'lsa
+            if today_weekday in days_schedule:
+                lesson_time = days_schedule[today_weekday]
+                
+                # Vaqtni solishtirish (agar dars vaqti bo'lsa yoki ertalab 08:00 da eslatma)
                 user_attended = any(k[0] == user_id and k[2] == today for k in daily_attendance_log)
                 if not user_attended:
                     try:
                         await bot.send_message(
                             user_id,
-                            get_text(user_id, 'daily_reminder', branch=branch),
+                            get_text(user_id, 'daily_reminder', branch=branch, time=lesson_time),
                             parse_mode="Markdown"
                         )
                         sent_count += 1
@@ -1139,6 +1227,7 @@ async def reminder_loop():
     """Eslatmalar uchun doimiy loop"""
     while True:
         now_uzb = datetime.now(UZB_TZ)
+        # Har kuni soat 08:00 da eslatma
         if now_uzb.hour == 8 and now_uzb.minute == 0:
             await send_daily_reminders()
             await asyncio.sleep(60)
