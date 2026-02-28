@@ -154,14 +154,14 @@ TRANSLATIONS = {
         'reminder_15min': "⏰ **15 daqiqadan keyin dars boshlanadi!**\n\n📍 Filial: {branch}\n📚 Dars: {lesson_type}\n⏱️ Vaqt: {time}\n\n✅ Davomat qilishni unutmang!",
         'view_on_map': "🗺️ Yandex Maps orqali ko'rish",
         'buttons': {
-            'attendance': "📍 Kelganimni tasdiqlash",
-            'my_stats': "📊 Mening statistikam",
-            'branches': "🏢 Filiallar",
-            'help': "❓ Yordam",
-            'top_week': "🏆 Hafta topi",
-            'language': "🌐 Til",
-            'schedule_add': "📅 Dars jadvali qo'shish",
-            'my_schedule': "📋 Mening jadvalim"
+            'attendance': "Kelganimni tasdiqlash",
+            'my_stats': "Mening statistikam",
+            'branches': "Filiallar",
+            'help': "Yordam",
+            'top_week': "Hafta topi",
+            'language': "Til",
+            'schedule_add': "Dars jadvali qo'shish",
+            'my_schedule': "Mening jadvalim"
         }
     },
     'ru': {
@@ -190,14 +190,14 @@ TRANSLATIONS = {
         'reminder_15min': "⏰ **Через 15 минут начнется урок!**\n\n📍 Филиал: {branch}\n📚 Урок: {lesson_type}\n⏱️ Время: {time}\n\n✅ Не забудьте отметиться!",
         'view_on_map': "🗺️ Посмотреть на Yandex Maps",
         'buttons': {
-            'attendance': "📍 Подтвердить прибытие",
-            'my_stats': "📊 Моя статистика",
-            'branches': "🏢 Филиалы",
-            'help': "❓ Помощь",
-            'top_week': "🏆 Топ недели",
-            'language': "🌐 Язык",
-            'schedule_add': "📅 Добавить расписание",
-            'my_schedule': "📋 Мое расписание"
+            'attendance': "Подтвердить прибытие",
+            'my_stats': "Моя статистика",
+            'branches': "Филиалы",
+            'help': "Помощь",
+            'top_week': "Топ недели",
+            'language': "Язык",
+            'schedule_add': "Добавить расписание",
+            'my_schedule': "Мое расписание"
         }
     },
     'kr': {
@@ -226,14 +226,14 @@ TRANSLATIONS = {
         'reminder_15min': "⏰ **15분 후 수업이 시작됩니다!**\n\n📍 지점: {branch}\n📚 수업: {lesson_type}\n⏱️ 시간: {time}\n\n✅ 출석 체크를 잊지 마세요!",
         'view_on_map': "🗺️ Yandex Maps에서 보기",
         'buttons': {
-            'attendance': "📍 출석 확인",
-            'my_stats': "📊 내 통계",
-            'branches': "🏢 지점",
-            'help': "❓ 도움말",
-            'top_week': "🏆 주간 TOP",
-            'language': "🌐 언어",
-            'schedule_add': "📅 시간표 추가",
-            'my_schedule': "📋 내 시간표"
+            'attendance': "출석 확인",
+            'my_stats': "내 통계",
+            'branches': "지점",
+            'help': "도움말",
+            'top_week': "주간 TOP",
+            'language': "언어",
+            'schedule_add': "시간표 추가",
+            'my_schedule': "내 시간표"
         }
     }
 }
@@ -282,14 +282,14 @@ async def main_keyboard(user_id: int):
     """Asosiy menyu tugmalarini yaratish"""
     builder = ReplyKeyboardBuilder()
     builder.add(
-        KeyboardButton(text=get_button_text(user_id, 'attendance'), request_location=True),
-        KeyboardButton(text=get_button_text(user_id, 'my_stats')),
-        KeyboardButton(text=get_button_text(user_id, 'schedule_add')),
-        KeyboardButton(text=get_button_text(user_id, 'my_schedule')),
-        KeyboardButton(text=get_button_text(user_id, 'branches')),
-        KeyboardButton(text=get_button_text(user_id, 'top_week')),
-        KeyboardButton(text=get_button_text(user_id, 'help')),
-        KeyboardButton(text=get_button_text(user_id, 'language'))
+        KeyboardButton(text=f"📍 {get_button_text(user_id, 'attendance')}", request_location=True),
+        KeyboardButton(text=f"📊 {get_button_text(user_id, 'my_stats')}"),
+        KeyboardButton(text=f"📅 {get_button_text(user_id, 'schedule_add')}"),
+        KeyboardButton(text=f"📋 {get_button_text(user_id, 'my_schedule')}"),
+        KeyboardButton(text=f"🏢 {get_button_text(user_id, 'branches')}"),
+        KeyboardButton(text=f"🏆 {get_button_text(user_id, 'top_week')}"),
+        KeyboardButton(text=f"❓ {get_button_text(user_id, 'help')}"),
+        KeyboardButton(text=f"🌐 {get_button_text(user_id, 'language')}")
     )
     builder.adjust(1, 2, 2, 2, 1)
     return builder.as_markup(resize_keyboard=True)
@@ -355,7 +355,7 @@ async def schedule_reminders():
                                 # Agar eslatma vaqti hozir bo'lsa
                                 if now >= reminder_time and now < lesson_time:
                                     # Eslatma yuborish (har 5 daqiqada bir marta)
-                                    reminder_key = f"{user_id}_{branch}_{lesson_type_dict}_{weekday_idx}_{time_str}"
+                                    reminder_key = f"{user_id}_{branch}_{json.dumps(lesson_type_dict, sort_keys=True)}_{weekday_idx}_{time_str}"
                                     
                                     if reminder_key not in user_reminders:
                                         user_reminders[reminder_key] = now
@@ -397,7 +397,7 @@ async def schedule_reminders():
         await asyncio.sleep(60)
 
 # --- DARS JADVALI HANDLERLARI ---
-@dp.message(F.text.in_({'📅 Dars jadvali qo'shish', '📅 Добавить расписание', '📅 시간표 추가'}))
+@dp.message(F.text.in_({'📅 Dars jadvali qoshish', '📅 Добавить расписание', '📅 시간표 추가'}))
 async def schedule_start(message: types.Message):
     """Dars jadvali qo'shishni boshlash"""
     user_id = message.from_user.id
@@ -729,7 +729,7 @@ async def show_branches(message: types.Message):
         maps_url = f"https://yandex.com/maps/?pt={branch['lon']},{branch['lat']}&z=17&l=map"
         text += f"• {branch['name']}\n"
         builder.row(InlineKeyboardButton(
-            text=f"🗺️ {branch['name']} - Yandex Maps",
+            text=f"🗺️ {branch['name']} - {get_text(user_id, 'view_on_map')}",
             url=maps_url
         ))
     
@@ -741,7 +741,7 @@ async def show_branches(message: types.Message):
         parse_mode="Markdown"
     )
 
-# --- QOLGAN HANDLERLAR (avvalgidek) ---
+# --- QOLGAN HANDLERLAR ---
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id
@@ -1199,14 +1199,100 @@ async def reminder_loop():
             await asyncio.sleep(60)
         await asyncio.sleep(30)
 
-# --- MAIN ---
-async def main():
-    asyncio.create_task(start_web_server())
-    asyncio.create_task(reminder_loop())
-    asyncio.create_task(schedule_reminders())  # Dars eslatmalari
+# --- OB-HAVO FUNKSIYALAR ---
+async def get_weather_by_coords(lat: float, lon: float):
+    """Koordinatalar bo'yicha ob-havo ma'lumotini olish"""
+    params = {
+        "lat": lat,
+        "lon": lon,
+        "appid": WEATHER_API_KEY,
+        "units": "metric",
+        "lang": "uz"
+    }
     
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(WEATHER_API_URL, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data
+                else:
+                    logging.error(f"Weather API error: {response.status}")
+                    return None
+    except Exception as e:
+        logging.error(f"Error fetching weather: {e}")
+        return None
+
+def get_weather_emoji(weather_condition: str) -> str:
+    """Ob-havo holatiga mos emoji qaytarish"""
+    emoji_map = {
+        "Clear": "☀️",
+        "Clouds": "☁️",
+        "Rain": "🌧️",
+        "Drizzle": "🌦️",
+        "Thunderstorm": "⛈️",
+        "Snow": "❄️",
+        "Mist": "🌫️",
+        "Fog": "🌫️",
+        "Haze": "🌫️"
+    }
+    return emoji_map.get(weather_condition, "🌡️")
+
+def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
+    """Ob-havo ma'lumotlarini formatlash"""
+    if not weather_data:
+        return ""
+    
+    city = weather_data.get('name', 'Noma\'lum')
+    if city == "" or city is None:
+        city = "Toshkent"
+        
+    main = weather_data.get('main', {})
+    weather = weather_data.get('weather', [{}])[0]
+    wind = weather_data.get('wind', {})
+    
+    temp = main.get('temp', 0)
+    feels_like = main.get('feels_like', 0)
+    humidity = main.get('humidity', 0)
+    pressure = main.get('pressure', 0)
+    condition = weather.get('main', 'Unknown')
+    description = weather.get('description', '')
+    wind_speed = wind.get('speed', 0)
+    
+    emoji = get_weather_emoji(condition)
+    
+    # Asosiy tavsiya
+    recommendation = WEATHER_RECOMMENDATIONS.get(condition, {}).get(lang, "")
+    if not recommendation:
+        recommendation = WEATHER_RECOMMENDATIONS.get('Clear', {}).get(lang, "")
+    
+    # Bosimni mmHg ga o'tkazish
+    pressure_mmhg = pressure * 0.750062
+    
+    # Tilga mos ravishda matnlar
+    temp_text = "Harorat" if lang == 'uz' else "Температура" if lang == 'ru' else "기온"
+    feels_text = "his qilinadi" if lang == 'uz' else "ощущается" if lang == 'ru' else "체감"
+    humidity_text = "Namlik" if lang == 'uz' else "Влажность" if lang == 'ru' else "습도"
+    wind_text = "Shamol" if lang == 'uz' else "Ветер" if lang == 'ru' else "바람"
+    pressure_text = "Bosim" if lang == 'uz' else "Давление" if lang == 'ru' else "기압"
+    recommendation_title = "Tavsiya" if lang == 'uz' else "Рекомендация" if lang == 'ru' else "추천"
+    time_text = "Vaqt" if lang == 'uz' else "Время" if lang == 'ru' else "시간"
+    
+    message = f"""
+{emoji} **Ob-havo ma'lumoti**
+
+📍 **Joy:** {city}
+🌡️ **{temp_text}:** {temp:.1f}°C ({feels_text}: {feels_like:.1f}°C)
+💧 **{humidity_text}:** {humidity}%
+💨 **{wind_text}:** {wind_speed:.1f} m/s
+📊 **{pressure_text}:** {pressure_mmhg:.1f} mmHg
+
+💡 **{recommendation_title}:**
+{recommendation}
+
+📅 **{time_text}:** {datetime.now(UZB_TZ).strftime('%H:%M')}
+"""
+    return message
 
 # --- WEB SERVER ---
 async def handle(request):
@@ -1234,6 +1320,15 @@ async def start_web_server():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
     logging.info(f"Web server started on port {port}")
+
+# --- MAIN ---
+async def main():
+    asyncio.create_task(start_web_server())
+    asyncio.create_task(reminder_loop())
+    asyncio.create_task(schedule_reminders())  # Dars eslatmalari
+    
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
