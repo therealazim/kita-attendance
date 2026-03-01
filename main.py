@@ -23,10 +23,11 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter, landscape
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.pagesizes import letter, landscape, A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
 import pickle
 
 # --- LOGGING ---
@@ -98,10 +99,10 @@ class AdminAddSchedule(StatesGroup):
 
 class AdminEditSchedule(StatesGroup):
     selecting_schedule = State()
-    selecting_branch = State()
-    selecting_lesson_type = State()
-    selecting_weekdays = State()
-    entering_time = State()
+    editing_branch = State()
+    editing_lesson_type = State()
+    editing_weekdays = State()
+    editing_time = State()
 
 class Broadcast(StatesGroup):
     selecting_specialty = State()
@@ -120,6 +121,11 @@ WEEKDAYS = {
     'uz': ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba'],
     'ru': ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'],
     'kr': ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일']
+}
+
+# Hafta kunlari tartibi (saralash uchun)
+WEEKDAY_ORDER = {
+    'Dushanba': 0, 'Seshanba': 1, 'Chorshanba': 2, 'Payshanba': 3, 'Juma': 4, 'Shanba': 5, 'Yakshanba': 6
 }
 
 # Dars turlari
@@ -196,26 +202,31 @@ TRANSLATIONS = {
         'monthly_report': "\U0001F4CA {month} oyi uchun hisobot\n\n{report}",
         'language_changed': "✅ Til o'zgartirildi: O'zbek tili",
         'language_prompt': "Iltimos, tilni tanlang:",
-        'view_schedules': "\U0001F4CB Mening dars jadvalim",
-        'my_schedule': "📅 Sizning dars jadvalingiz:\n\n{schedule}",
+        'view_schedules': "\U0001F4CB Dars jadvalim (PDF)",
+        'my_schedule': "📅 Sizning dars jadvalingiz PDF formatida tayyorlandi!",
         'no_schedules': "📭 Sizga hali dars jadvali biriktirilmagan.",
-        'schedule_updated': "📢 Sizning dars jadvalingiz yangilandi!\n\n{schedule}",
+        'schedule_updated': "📢 Sizning dars jadvalingiz yangilandi!",
         'schedule_deleted_notify': "📢 Sizning dars jadvalingiz o'chirildi.",
         'select_teacher': "👤 O'qituvchini tanlang:",
         'select_lesson_type': "📚 Dars turini tanlang:",
         'active_schedules': "📋 Faol dars jadvallari",
         'no_active_schedules': "📭 Hali dars jadvallari mavjud emas.",
-        'schedule_info': "👤 {teacher} [{specialty}]\n🏢 {branch}\n📚 {lesson_type}\n📆 {days_times}",
+        'schedule_info': "{teacher} [{specialty}]\n🏢 {branch}\n📚 {lesson_type}\n📆 {days_times}",
         'enter_date': "📅 Hisobot olish uchun sanani kiriting (format: YYYY-MM-DD)\nMasalan: 2026-03-01",
         'invalid_date': "❌ Noto'g'ri sana formati. Qaytadan urinib ko'ring:",
         'select_broadcast_specialty': "📢 Qaysi fan o'qituvchilariga xabar yubormoqchisiz?",
         'all_teachers': "👥 Hammasi",
+        'edit_schedule': "✏️ Dars jadvalini tahrirlash",
+        'select_new_branch': "🏢 Yangi filialni tanlang:",
+        'select_new_lesson_type': "📚 Yangi dars turini tanlang:",
+        'select_new_weekdays': "📅 Yangi kunlarni tanlang:",
+        'enter_new_time': "⏰ {weekday} kuni uchun yangi vaqtni kiriting:\n\nFormat: HH:MM (masalan: 09:00)",
         'buttons': {
             'attendance': "\U0001F4CD Kelganimni tasdiqlash",
             'my_stats': "\U0001F4CA Mening statistikam",
             'branches': "\U0001F3E2 Filiallar",
             'top_week': "\U0001F3C6 Hafta topi",
-            'view_schedules': "\U0001F4CB Dars jadvalim",
+            'view_schedules': "\U0001F4CB Dars jadvalim (PDF)",
             'help': "\u2753 Yordam",
             'language': "\U0001F310 Til"
         }
@@ -238,26 +249,31 @@ TRANSLATIONS = {
         'monthly_report': "\U0001F4CA Отчет за {month}\n\n{report}",
         'language_changed': "✅ Язык изменен: Русский язык",
         'language_prompt': "Пожалуйста, выберите язык:",
-        'view_schedules': "\U0001F4CB Мое расписание",
-        'my_schedule': "📅 Ваше расписание уроков:\n\n{schedule}",
+        'view_schedules': "\U0001F4CB Мое расписание (PDF)",
+        'my_schedule': "📅 Ваше расписание уроков готово в формате PDF!",
         'no_schedules': "📭 Вам еще не назначено расписание.",
-        'schedule_updated': "📢 Ваше расписание обновлено!\n\n{schedule}",
+        'schedule_updated': "📢 Ваше расписание обновлено!",
         'schedule_deleted_notify': "📢 Ваше расписание удалено.",
         'select_teacher': "👤 Выберите учителя:",
         'select_lesson_type': "📚 Выберите тип урока:",
         'active_schedules': "📋 Активные расписания",
         'no_active_schedules': "📭 Нет активных расписаний.",
-        'schedule_info': "👤 {teacher} [{specialty}]\n🏢 {branch}\n📚 {lesson_type}\n📆 {days_times}",
+        'schedule_info': "{teacher} [{specialty}]\n🏢 {branch}\n📚 {lesson_type}\n📆 {days_times}",
         'enter_date': "📅 Введите дату для отчета (формат: YYYY-MM-DD)\nНапример: 2026-03-01",
         'invalid_date': "❌ Неверный формат даты. Попробуйте снова:",
         'select_broadcast_specialty': "📢 Каким учителям отправить сообщение?",
         'all_teachers': "👥 Всем",
+        'edit_schedule': "✏️ Редактирование расписания",
+        'select_new_branch': "🏢 Выберите новый филиал:",
+        'select_new_lesson_type': "📚 Выберите новый тип урока:",
+        'select_new_weekdays': "📅 Выберите новые дни:",
+        'enter_new_time': "⏰ Введите новое время для {weekday}:\n\nФормат: HH:MM (например: 09:00)",
         'buttons': {
             'attendance': "\U0001F4CD Подтвердить прибытие",
             'my_stats': "\U0001F4CA Моя статистика",
             'branches': "\U0001F3E2 Филиалы",
             'top_week': "\U0001F3C6 Топ недели",
-            'view_schedules': "\U0001F4CB Мое расписание",
+            'view_schedules': "\U0001F4CB Мое расписание (PDF)",
             'help': "\u2753 Помощь",
             'language': "\U0001F310 Язык"
         }
@@ -280,26 +296,31 @@ TRANSLATIONS = {
         'monthly_report': "\U0001F4CA {month}월 보고서\n\n{report}",
         'language_changed': "✅ 언어가 변경되었습니다: 한국어",
         'language_prompt': "언어를 선택하세요:",
-        'view_schedules': "\U0001F4CB 내 시간표",
-        'my_schedule': "📅 내 수업 시간표:\n\n{schedule}",
+        'view_schedules': "\U0001F4CB 내 시간표 (PDF)",
+        'my_schedule': "📅 내 수업 시간표가 PDF 형식으로 준비되었습니다!",
         'no_schedules': "📭 아직 시간표가 배정되지 않았습니다.",
-        'schedule_updated': "📢 시간표가 업데이트되었습니다!\n\n{schedule}",
+        'schedule_updated': "📢 시간표가 업데이트되었습니다!",
         'schedule_deleted_notify': "📢 시간표가 삭제되었습니다.",
         'select_teacher': "👤 교사를 선택하세요:",
         'select_lesson_type': "📚 수업 유형을 선택하세요:",
         'active_schedules': "📋 활성 시간표",
         'no_active_schedules': "📭 활성 시간표가 없습니다.",
-        'schedule_info': "👤 {teacher} [{specialty}]\n🏢 {branch}\n📚 {lesson_type}\n📆 {days_times}",
+        'schedule_info': "{teacher} [{specialty}]\n🏢 {branch}\n📚 {lesson_type}\n📆 {days_times}",
         'enter_date': "📅 보고서 날짜를 입력하세요 (형식: YYYY-MM-DD)\n예: 2026-03-01",
         'invalid_date': "❌ 잘못된 날짜 형식입니다. 다시 시도하세요:",
         'select_broadcast_specialty': "📢 어떤 선생님들에게 메시지를 보낼까요?",
         'all_teachers': "👥 모두",
+        'edit_schedule': "✏️ 시간표 편집",
+        'select_new_branch': "🏢 새 지점을 선택하세요:",
+        'select_new_lesson_type': "📚 새 수업 유형을 선택하세요:",
+        'select_new_weekdays': "📅 새 요일을 선택하세요:",
+        'enter_new_time': "⏰ {weekday} 요일의 새 시간을 입력하세요:\n\n형식: HH:MM (예: 09:00)",
         'buttons': {
             'attendance': "\U0001F4CD 출석 확인",
             'my_stats': "\U0001F4CA 내 통계",
             'branches': "\U0001F3E2 지점",
             'top_week': "\U0001F3C6 주간 TOP",
-            'view_schedules': "\U0001F4CB 내 시간표",
+            'view_schedules': "\U0001F4CB 내 시간표 (PDF)",
             'help': "\u2753 도움말",
             'language': "\U0001F310 언어"
         }
@@ -344,6 +365,154 @@ def get_specialty_display(specialty: str, lang: str = 'uz') -> str:
     else:
         return "🇰🇷 Koreys tili"
 
+def sort_weekdays(days_dict):
+    """Hafta kunlarini tartiblash"""
+    return dict(sorted(days_dict.items(), key=lambda x: WEEKDAY_ORDER.get(x[0], 0)))
+
+async def create_schedule_pdf(user_id: int) -> io.BytesIO:
+    """Foydalanuvchi uchun dars jadvali PDF yaratish"""
+    pdf_buffer = io.BytesIO()
+    doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Sarlavha
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=16,
+        alignment=1,
+        spaceAfter=20
+    )
+    
+    name = user_names.get(user_id, "Foydalanuvchi")
+    specialty = user_specialty.get(user_id, '')
+    specialty_display = f" [{specialty}]" if specialty else ""
+    
+    elements.append(Paragraph(f"{name}{specialty_display} - Dars Jadvali", title_style))
+    elements.append(Spacer(1, 10))
+    
+    if user_id not in user_schedules or not user_schedules[user_id]:
+        elements.append(Paragraph("Sizga hali dars jadvali biriktirilmagan.", styles['Normal']))
+    else:
+        for schedule_id in user_schedules[user_id]:
+            schedule = schedules.get(schedule_id)
+            if schedule and schedule['user_id'] == user_id:
+                branch = schedule['branch']
+                lesson_type = schedule.get('lesson_type', 'Dars')
+                
+                # Filial sarlavhasi
+                branch_style = ParagraphStyle(
+                    'BranchStyle',
+                    parent=styles['Heading2'],
+                    fontSize=14,
+                    textColor=colors.blue,
+                    spaceAfter=10
+                )
+                elements.append(Paragraph(f"🏢 {branch} - {lesson_type}", branch_style))
+                
+                # Jadval ma'lumotlari
+                days = sort_weekdays(schedule['days'])
+                data = [['Kun', 'Vaqt']]
+                for day, time in days.items():
+                    data.append([day, time])
+                
+                table = Table(data, colWidths=[2.5*inch, 2.5*inch])
+                table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                    ('FONTSIZE', (0, 0), (-1, -1), 12)
+                ]))
+                elements.append(table)
+                elements.append(Spacer(1, 15))
+    
+    # Sana
+    date_style = ParagraphStyle(
+        'DateStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        alignment=2,
+        spaceBefore=20
+    )
+    elements.append(Paragraph(f"Yaratilgan sana: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", date_style))
+    
+    doc.build(elements)
+    pdf_buffer.seek(0)
+    return pdf_buffer
+
+# --- WEB SERVER ---
+async def handle(request):
+    now_uzb = datetime.now(UZB_TZ)
+    return web.Response(
+        text=f"Bot is running! ✅\n\n"
+             f"📅 Sana: {now_uzb.strftime('%Y-%m-%d')}\n"
+             f"⏰ Vaqt: {now_uzb.strftime('%H:%M:%S')}\n"
+             f"👥 Foydalanuvchilar: {len(user_ids)} ta\n"
+             f"📊 Bugungi davomatlar: {len([k for k in daily_attendance_log if k[2] == now_uzb.strftime('%Y-%m-%d')])} ta"
+    )
+
+async def health_check(request):
+    now_uzb = datetime.now(UZB_TZ)
+    logging.info(f"Cron-job.org tomonidan tekshirildi: {now_uzb.strftime('%Y-%m-%d %H:%M:%S')}")
+    return web.Response(text=f"Bot healthy - {now_uzb.strftime('%H:%M:%S')}", status=200)
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get('/', handle)
+    app.router.add_get('/health', health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    logging.info(f"Web server started on port {port}")
+
+# --- HANDLERS ---
+@dp.message(CommandStart())
+async def cmd_start(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    
+    # Bloklangan foydalanuvchini tekshirish
+    if user_status.get(user_id) == 'blocked':
+        await message.answer(get_text(user_id, 'blocked_user'))
+        return
+    
+    # Agar foydalanuvchi ismini kiritmagan bo'lsa
+    if user_id not in user_names:
+        # Til tanlashni so'raymiz
+        if user_id not in user_languages:
+            keyboard = await language_selection_keyboard()
+            await message.answer(
+                "Iltimos, tilni tanlang:\nПожалуйста, выберите язык:\n언어를 선택하세요:",
+                reply_markup=keyboard
+            )
+            return
+        
+        # Ism so'rash
+        await state.set_state(Registration.waiting_for_name)
+        await message.answer(get_text(user_id, 'ask_name'))
+        return
+    
+    # Eski foydalanuvchi bo'lsa, to'g'ridan-to'g'ri menyuga o'tamiz
+    user_ids.add(user_id)
+    keyboard = await main_keyboard(user_id)
+    name = user_names.get(user_id, message.from_user.full_name)
+    specialty = user_specialty.get(user_id, '')
+    
+    welcome_text = get_text(user_id, 'welcome', name=name)
+    if specialty:
+        specialty_display = get_specialty_display(specialty, user_languages.get(user_id, 'uz'))
+        welcome_text += f"\n\n{specialty_display}"
+    
+    await message.answer(
+        welcome_text,
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
+
 async def main_keyboard(user_id: int):
     """Asosiy menyu tugmalarini yaratish"""
     builder = ReplyKeyboardBuilder()
@@ -356,7 +525,7 @@ async def main_keyboard(user_id: int):
         KeyboardButton(text=get_button_text(user_id, 'help')),
         KeyboardButton(text=get_button_text(user_id, 'language'))
     )
-    builder.adjust(1, 2, 2, 2)  # 1,2,2,2 qilib joylashtirish
+    builder.adjust(1, 2, 2, 2)
     return builder.as_markup(resize_keyboard=True)
 
 async def language_selection_keyboard():
@@ -479,76 +648,7 @@ def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
 """
     return message
 
-# --- WEB SERVER ---
-async def handle(request):
-    now_uzb = datetime.now(UZB_TZ)
-    return web.Response(
-        text=f"Bot is running! ✅\n\n"
-             f"📅 Sana: {now_uzb.strftime('%Y-%m-%d')}\n"
-             f"⏰ Vaqt: {now_uzb.strftime('%H:%M:%S')}\n"
-             f"👥 Foydalanuvchilar: {len(user_ids)} ta\n"
-             f"📊 Bugungi davomatlar: {len([k for k in daily_attendance_log if k[2] == now_uzb.strftime('%Y-%m-%d')])} ta"
-    )
-
-async def health_check(request):
-    now_uzb = datetime.now(UZB_TZ)
-    logging.info(f"Cron-job.org tomonidan tekshirildi: {now_uzb.strftime('%Y-%m-%d %H:%M:%S')}")
-    return web.Response(text=f"Bot healthy - {now_uzb.strftime('%H:%M:%S')}", status=200)
-
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get('/', handle)
-    app.router.add_get('/health', health_check)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    port = int(os.environ.get("PORT", 10000))
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
-    logging.info(f"Web server started on port {port}")
-
-# --- HANDLERS ---
-@dp.message(CommandStart())
-async def cmd_start(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-    
-    # Bloklangan foydalanuvchini tekshirish
-    if user_status.get(user_id) == 'blocked':
-        await message.answer(get_text(user_id, 'blocked_user'))
-        return
-    
-    # Agar foydalanuvchi ismini kiritmagan bo'lsa
-    if user_id not in user_names:
-        # Til tanlashni so'raymiz
-        if user_id not in user_languages:
-            keyboard = await language_selection_keyboard()
-            await message.answer(
-                "Iltimos, tilni tanlang:\nПожалуйста, выберите язык:\n언어를 선택하세요:",
-                reply_markup=keyboard
-            )
-            return
-        
-        # Ism so'rash
-        await state.set_state(Registration.waiting_for_name)
-        await message.answer(get_text(user_id, 'ask_name'))
-        return
-    
-    # Eski foydalanuvchi bo'lsa, to'g'ridan-to'g'ri menyuga o'tamiz
-    user_ids.add(user_id)
-    keyboard = await main_keyboard(user_id)
-    name = user_names.get(user_id, message.from_user.full_name)
-    specialty = user_specialty.get(user_id, '')
-    
-    welcome_text = get_text(user_id, 'welcome', name=name)
-    if specialty:
-        specialty_display = get_specialty_display(specialty, user_languages.get(user_id, 'uz'))
-        welcome_text += f"\n\n{specialty_display}"
-    
-    await message.answer(
-        welcome_text,
-        reply_markup=keyboard,
-        parse_mode="Markdown"
-    )
-
+# --- HANDLERS (DAVOMI) ---
 @dp.message(Registration.waiting_for_name)
 async def process_name(message: types.Message, state: FSMContext):
     """Foydalanuvchi ismini qabul qilish"""
@@ -654,10 +754,10 @@ async def set_changed_language(callback: types.CallbackQuery):
         logging.error(f"set_changed_language error: {e}")
         await callback.answer("Xatolik yuz berdi")
 
-# --- FOYDALANUVCHI UCHUN DARS JADVALINI KO'RISH ---
-@dp.message(F.text.in_({'\U0001F4CB Dars jadvalim', '\U0001F4CB Мое расписание', '\U0001F4CB 내 시간표'}))
-async def view_my_schedule(message: types.Message):
-    """Foydalanuvchi o'zining dars jadvalini ko'rish"""
+# --- FOYDALANUVCHI UCHUN DARS JADVALINI PDF KO'RISH ---
+@dp.message(F.text.in_({'\U0001F4CB Dars jadvalim (PDF)', '\U0001F4CB Мое расписание (PDF)', '\U0001F4CB 내 시간표 (PDF)'}))
+async def view_my_schedule_pdf(message: types.Message):
+    """Foydalanuvchi o'zining dars jadvalini PDF formatida ko'rish"""
     user_id = message.from_user.id
     
     if user_status.get(user_id) == 'blocked':
@@ -668,23 +768,18 @@ async def view_my_schedule(message: types.Message):
         await message.answer(get_text(user_id, 'no_schedules'))
         return
     
-    # Foydalanuvchining barcha jadvallarini yig'ish
-    schedule_text = ""
-    for schedule_id in user_schedules[user_id]:
-        schedule = schedules.get(schedule_id)
-        if schedule and schedule['user_id'] == user_id:
-            branch = schedule['branch']
-            lesson_type = schedule.get('lesson_type', 'Dars')
-            days_times = ""
-            for day, time in sorted(schedule['days'].items(), key=lambda x: WEEKDAYS_UZ.index(x[0])):
-                days_times += f"• {day}: {time}\n"
-            
-            schedule_text += f"🏢 {branch} - {lesson_type}\n{days_times}\n"
-    
-    await message.answer(
-        get_text(user_id, 'my_schedule', schedule=schedule_text),
-        parse_mode="Markdown"
-    )
+    try:
+        # PDF yaratish
+        pdf_buffer = await create_schedule_pdf(user_id)
+        
+        await message.answer_document(
+            types.BufferedInputFile(pdf_buffer.getvalue(), 
+                                    filename=f"dars_jadvali_{user_names.get(user_id, 'user')}.pdf"),
+            caption=get_text(user_id, 'my_schedule')
+        )
+    except Exception as e:
+        logging.error(f"view_my_schedule_pdf error: {e}")
+        await message.answer("❌ PDF yaratishda xatolik yuz berdi")
 
 # --- BOSHQA FOYDALANUVCHI HANDLERLARI ---
 @dp.message(F.text.in_({'\U0001F4CA Mening statistikam', '\U0001F4CA Моя статистика', '\U0001F4CA 내 통계'}))
@@ -960,7 +1055,7 @@ async def handle_location(message: types.Message):
             parse_mode="Markdown"
         )
 
-# --- ADMIN PANEL - YANGILANGAN ---
+# --- ADMIN PANEL - KENGAYTIRILGAN ---
 @dp.message(Command("admin"))
 async def admin_panel(message: types.Message):
     """Admin panel asosiy menyusi"""
@@ -1221,7 +1316,7 @@ async def admin_monthly(callback: types.CallbackQuery):
         await callback.message.edit_text("❌ Oylik hisobotni olishda xatolik yuz berdi")
         await callback.answer()
 
-# --- 2. FOYDALANUVCHILARNI BOSHQARISH (FAQAT FAOLLAR VA BLOKLANGANLAR) ---
+# --- 2. FOYDALANUVCHILARNI BOSHQARISH ---
 @dp.callback_query(F.data == "admin_users_main")
 async def admin_users_main(callback: types.CallbackQuery):
     """Foydalanuvchilarni boshqarish menyusi"""
@@ -1697,14 +1792,10 @@ async def admin_active_schedules(callback: types.CallbackQuery):
             branch = schedule['branch']
             lesson_type = schedule.get('lesson_type', 'Dars')
             days_times = ""
-            for day, time in sorted(schedule['days'].items(), key=lambda x: WEEKDAYS_UZ.index(x[0])):
+            for day, time in sorted(schedule['days'].items(), key=lambda x: WEEKDAY_ORDER.get(x[0], 0)):
                 days_times += f"• {day}: {time}\n"
             
-            text = get_text(callback.from_user.id, 'schedule_info', 
-                           teacher=f"{teacher_name}{specialty_display}", 
-                           branch=branch, 
-                           lesson_type=lesson_type, 
-                           days_times=days_times)
+            text = f"{teacher_name}{specialty_display}\n🏢 {branch}\n📚 {lesson_type}\n{days_times}"
             
             # O'zgartirish va o'chirish tugmalari
             builder = InlineKeyboardBuilder()
@@ -1764,6 +1855,281 @@ async def admin_delete_schedule(callback: types.CallbackQuery):
     except Exception as e:
         logging.error(f"admin_delete_schedule error: {e}")
         await callback.answer("Xatolik yuz berdi")
+
+@dp.callback_query(F.data.startswith("admin_edit_schedule_"))
+async def admin_edit_schedule_start(callback: types.CallbackQuery, state: FSMContext):
+    """Dars jadvalini tahrirlash - filial tanlash"""
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    try:
+        schedule_id = callback.data.replace("admin_edit_schedule_", "")
+        schedule = schedules.get(schedule_id)
+        
+        if not schedule:
+            await callback.message.edit_text("❌ Jadval topilmadi!")
+            await callback.answer()
+            return
+        
+        await state.update_data(edit_schedule_id=schedule_id)
+        await state.update_data(original_schedule=schedule)
+        
+        # Filiallar ro'yxati
+        builder = InlineKeyboardBuilder()
+        for location in LOCATIONS:
+            builder.row(
+                InlineKeyboardButton(text=location['name'], callback_data=f"edit_branch_{location['name']}")
+            )
+        
+        await state.set_state(AdminEditSchedule.editing_branch)
+        await callback.message.edit_text(
+            get_text(callback.from_user.id, 'select_new_branch'),
+            reply_markup=builder.as_markup()
+        )
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_edit_schedule_start error: {e}")
+        await callback.answer("Xatolik yuz berdi")
+
+@dp.callback_query(AdminEditSchedule.editing_branch, F.data.startswith("edit_branch_"))
+async def admin_edit_schedule_branch(callback: types.CallbackQuery, state: FSMContext):
+    """Filial tanlangandan keyin"""
+    try:
+        branch = callback.data.replace("edit_branch_", "")
+        await state.update_data(edit_branch=branch)
+        
+        user_id = callback.from_user.id
+        lang = user_languages.get(user_id, 'uz')
+        lesson_types = LESSON_TYPES.get(lang, LESSON_TYPES['uz'])
+        
+        # Dars turini tanlash
+        builder = InlineKeyboardBuilder()
+        for lesson in lesson_types:
+            builder.row(
+                InlineKeyboardButton(text=lesson, callback_data=f"edit_lesson_{lesson}")
+            )
+        
+        await state.set_state(AdminEditSchedule.editing_lesson_type)
+        await callback.message.edit_text(
+            get_text(user_id, 'select_new_lesson_type'),
+            reply_markup=builder.as_markup()
+        )
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_edit_schedule_branch error: {e}")
+        await callback.answer("Xatolik yuz berdi")
+
+@dp.callback_query(AdminEditSchedule.editing_lesson_type, F.data.startswith("edit_lesson_"))
+async def admin_edit_schedule_lesson(callback: types.CallbackQuery, state: FSMContext):
+    """Dars turi tanlangandan keyin"""
+    try:
+        lesson_type = callback.data.replace("edit_lesson_", "")
+        await state.update_data(edit_lesson_type=lesson_type)
+        
+        user_id = callback.from_user.id
+        lang = user_languages.get(user_id, 'uz')
+        weekdays = WEEKDAYS.get(lang, WEEKDAYS['uz'])
+        
+        # Hafta kunlarini tanlash
+        builder = InlineKeyboardBuilder()
+        for i, day in enumerate(weekdays):
+            builder.row(
+                InlineKeyboardButton(text=f"⬜ {day}", callback_data=f"edit_weekday_{i}")
+            )
+        builder.row(
+            InlineKeyboardButton(text="➡️ Keyingisi", callback_data="edit_weekdays_next")
+        )
+        
+        await state.update_data(edit_selected_days={})
+        await state.set_state(AdminEditSchedule.editing_weekdays)
+        await callback.message.edit_text(
+            get_text(user_id, 'select_new_weekdays'),
+            reply_markup=builder.as_markup()
+        )
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_edit_schedule_lesson error: {e}")
+        await callback.answer("Xatolik yuz berdi")
+
+@dp.callback_query(AdminEditSchedule.editing_weekdays, F.data.startswith("edit_weekday_"))
+async def admin_edit_schedule_weekday_select(callback: types.CallbackQuery, state: FSMContext):
+    """Kunlarni tanlash"""
+    try:
+        data = await state.get_data()
+        selected_days = data.get('edit_selected_days', {})
+        day_index = int(callback.data.replace("edit_weekday_", ""))
+        
+        user_id = callback.from_user.id
+        lang = user_languages.get(user_id, 'uz')
+        weekdays = WEEKDAYS.get(lang, WEEKDAYS['uz'])
+        
+        if day_index in selected_days:
+            del selected_days[day_index]
+        else:
+            selected_days[day_index] = None
+        
+        await state.update_data(edit_selected_days=selected_days)
+        
+        # Keyboardni yangilash
+        builder = InlineKeyboardBuilder()
+        for i, day in enumerate(weekdays):
+            if i in selected_days:
+                builder.row(
+                    InlineKeyboardButton(text=f"✅ {day}", callback_data=f"edit_weekday_{i}")
+                )
+            else:
+                builder.row(
+                    InlineKeyboardButton(text=f"⬜ {day}", callback_data=f"edit_weekday_{i}")
+                )
+        builder.row(
+            InlineKeyboardButton(text="➡️ Keyingisi", callback_data="edit_weekdays_next")
+        )
+        
+        await callback.message.edit_reply_markup(reply_markup=builder.as_markup())
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_edit_schedule_weekday_select error: {e}")
+        await callback.answer("Xatolik yuz berdi")
+
+@dp.callback_query(AdminEditSchedule.editing_weekdays, F.data == "edit_weekdays_next")
+async def admin_edit_schedule_weekdays_next(callback: types.CallbackQuery, state: FSMContext):
+    """Kunlar tanlangandan keyin vaqt kiritish"""
+    try:
+        data = await state.get_data()
+        selected_days = data.get('edit_selected_days', {})
+        
+        if not selected_days:
+            await callback.answer("Hech bo'lmaganda 1 kun tanlang!", show_alert=True)
+            return
+        
+        days_without_time = [day for day in selected_days if selected_days[day] is None]
+        
+        if days_without_time:
+            await state.update_data(edit_current_day=days_without_time[0])
+            await state.set_state(AdminEditSchedule.editing_time)
+            
+            user_id = callback.from_user.id
+            lang = user_languages.get(user_id, 'uz')
+            weekdays = WEEKDAYS.get(lang, WEEKDAYS['uz'])
+            day_name = weekdays[days_without_time[0]]
+            
+            await callback.message.edit_text(
+                get_text(user_id, 'enter_new_time', weekday=day_name)
+            )
+        else:
+            await admin_save_edited_schedule(callback.message, state)
+        
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_edit_schedule_weekdays_next error: {e}")
+        await callback.answer("Xatolik yuz berdi")
+
+@dp.message(AdminEditSchedule.editing_time)
+async def admin_edit_schedule_enter_time(message: types.Message, state: FSMContext):
+    """Vaqt kiritish"""
+    try:
+        time_str = message.text.strip()
+        hours, minutes = map(int, time_str.split(':'))
+        if hours < 0 or hours > 23 or minutes < 0 or minutes > 59:
+            raise ValueError
+        formatted_time = f"{hours:02d}:{minutes:02d}"
+    except:
+        await message.answer("❌ Noto'g'ri format! Iltimos, HH:MM formatida kiriting (masalan: 09:00)")
+        return
+    
+    data = await state.get_data()
+    selected_days = data.get('edit_selected_days', {})
+    current_day = data.get('edit_current_day')
+    
+    selected_days[current_day] = formatted_time
+    await state.update_data(edit_selected_days=selected_days)
+    
+    days_without_time = [day for day in selected_days if selected_days[day] is None]
+    
+    if days_without_time:
+        await state.update_data(edit_current_day=days_without_time[0])
+        
+        user_id = message.from_user.id
+        lang = user_languages.get(user_id, 'uz')
+        weekdays = WEEKDAYS.get(lang, WEEKDAYS['uz'])
+        day_name = weekdays[days_without_time[0]]
+        
+        await message.answer(
+            get_text(user_id, 'enter_new_time', weekday=day_name)
+        )
+    else:
+        await admin_save_edited_schedule(message, state)
+
+async def admin_save_edited_schedule(message: types.Message, state: FSMContext):
+    """Tahrirlangan jadvalni saqlash"""
+    try:
+        data = await state.get_data()
+        schedule_id = data.get('edit_schedule_id')
+        original_schedule = data.get('original_schedule')
+        teacher_id = original_schedule['user_id']
+        new_branch = data.get('edit_branch')
+        new_lesson_type = data.get('edit_lesson_type')
+        new_selected_days = data.get('edit_selected_days', {})
+        
+        user_id = message.from_user.id
+        lang = user_languages.get(user_id, 'uz')
+        weekdays = WEEKDAYS.get(lang, WEEKDAYS['uz'])
+        
+        # Yangi jadval yaratish
+        new_days = {}
+        for day_index, time in new_selected_days.items():
+            day_name = weekdays[day_index]
+            new_days[day_name] = time
+        
+        # Eski jadvalni o'chirish
+        if teacher_id in user_schedules and schedule_id in user_schedules[teacher_id]:
+            user_schedules[teacher_id].remove(schedule_id)
+        
+        # Yangi jadval yaratish
+        new_schedule_id = f"schedule_{teacher_id}_{datetime.now().timestamp()}"
+        schedules[new_schedule_id] = {
+            'user_id': teacher_id,
+            'branch': new_branch,
+            'lesson_type': new_lesson_type,
+            'days': new_days
+        }
+        user_schedules[teacher_id].append(new_schedule_id)
+        
+        # O'qituvchiga xabar yuborish
+        try:
+            schedule_text = ""
+            for day, time in sorted(new_days.items(), key=lambda x: WEEKDAY_ORDER.get(x[0], 0)):
+                schedule_text += f"• {day}: {time}\n"
+            
+            await bot.send_message(
+                teacher_id,
+                get_text(teacher_id, 'schedule_updated'),
+                parse_mode="Markdown"
+            )
+            
+            # Yangi jadvalni PDF sifatida yuborish
+            pdf_buffer = await create_schedule_pdf(teacher_id)
+            await bot.send_document(
+                teacher_id,
+                types.BufferedInputFile(pdf_buffer.getvalue(), 
+                                        filename=f"dars_jadvali_{user_names.get(teacher_id, 'user')}.pdf"),
+                caption="📅 Yangilangan dars jadvalingiz"
+            )
+        except Exception as e:
+            logging.error(f"Failed to notify teacher {teacher_id}: {e}")
+        
+        await message.answer("✅ Dars jadvali muvaffaqiyatli tahrirlandi!")
+        
+        await state.clear()
+        
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Admin panel", callback_data="admin_back"))
+        await message.answer("Admin panelga qaytish:", reply_markup=builder.as_markup())
+    except Exception as e:
+        logging.error(f"admin_save_edited_schedule error: {e}")
+        await message.answer("❌ Jadvalni tahrirlashda xatolik yuz berdi")
+        await state.clear()
 
 @dp.callback_query(F.data == "admin_add_schedule")
 async def admin_add_schedule_start(callback: types.CallbackQuery, state: FSMContext):
@@ -1949,7 +2315,7 @@ async def admin_add_schedule_weekdays_next(callback: types.CallbackQuery, state:
                 f"⏰ {day_name} kuni soat nechida?\n\nFormat: HH:MM (masalan: 09:00)"
             )
         else:
-            await admin_save_schedule(callback.message, state, is_new=True)
+            await admin_save_new_schedule(callback.message, state)
         
         await callback.answer()
     except Exception as e:
@@ -1990,10 +2356,10 @@ async def admin_add_schedule_enter_time(message: types.Message, state: FSMContex
             f"⏰ {day_name} kuni soat nechida?\n\nFormat: HH:MM (masalan: 09:00)"
         )
     else:
-        await admin_save_schedule(message, state, is_new=True)
+        await admin_save_new_schedule(message, state)
 
-async def admin_save_schedule(message: types.Message, state: FSMContext, is_new: bool = True):
-    """Admin tomonidan kiritilgan jadvalni saqlash"""
+async def admin_save_new_schedule(message: types.Message, state: FSMContext):
+    """Yangi jadvalni saqlash"""
     try:
         data = await state.get_data()
         teacher_id = data.get('teacher_id')
@@ -2021,31 +2387,27 @@ async def admin_save_schedule(message: types.Message, state: FSMContext, is_new:
         user_schedules[teacher_id].append(schedule_id)
         
         teacher_name = user_names.get(teacher_id, f"ID: {teacher_id}")
-        days_list = ", ".join(days_with_names.keys())
-        times_list = ", ".join(days_with_names.values())
         
         # O'qituvchiga xabar yuborish
         try:
-            schedule_text = ""
-            for day, time in sorted(days_with_names.items(), key=lambda x: WEEKDAYS_UZ.index(x[0])):
-                schedule_text += f"• {day}: {time}\n"
-            
             await bot.send_message(
                 teacher_id,
-                get_text(teacher_id, 'schedule_updated', schedule=f"🏢 {branch} - {lesson_type}\n{schedule_text}"),
+                get_text(teacher_id, 'schedule_updated'),
                 parse_mode="Markdown"
+            )
+            
+            # Yangi jadvalni PDF sifatida yuborish
+            pdf_buffer = await create_schedule_pdf(teacher_id)
+            await bot.send_document(
+                teacher_id,
+                types.BufferedInputFile(pdf_buffer.getvalue(), 
+                                        filename=f"dars_jadvali_{user_names.get(teacher_id, 'user')}.pdf"),
+                caption="📅 Sizning yangi dars jadvalingiz"
             )
         except Exception as e:
             logging.error(f"Failed to notify teacher {teacher_id}: {e}")
         
-        await message.answer(
-            f"✅ Dars jadvali muvaffaqiyatli qo'shildi!\n\n"
-            f"👤 O'qituvchi: {teacher_name}\n"
-            f"🏢 Filial: {branch}\n"
-            f"📚 Dars turi: {lesson_type}\n"
-            f"📆 Kunlar: {days_list}\n"
-            f"⏰ Vaqtlar: {times_list}"
-        )
+        await message.answer(f"✅ Dars jadvali muvaffaqiyatli qo'shildi!")
         
         await state.clear()
         
@@ -2053,7 +2415,7 @@ async def admin_save_schedule(message: types.Message, state: FSMContext, is_new:
         builder.row(InlineKeyboardButton(text="🔙 Admin panel", callback_data="admin_back"))
         await message.answer("Admin panelga qaytish:", reply_markup=builder.as_markup())
     except Exception as e:
-        logging.error(f"admin_save_schedule error: {e}")
+        logging.error(f"admin_save_new_schedule error: {e}")
         await message.answer("❌ Jadvalni saqlashda xatolik yuz berdi")
         await state.clear()
 
@@ -2176,7 +2538,7 @@ async def admin_location_add_coords(message: types.Message, state: FSMContext):
     
     await state.clear()
 
-# --- 6. PDF HISOBOT (ORTGA QAYTISH TUGMASISIZ) ---
+# --- 6. PDF HISOBOT (ORTGA QAYTISH TUGMASIZ) ---
 @dp.callback_query(F.data == "admin_pdf_report")
 async def admin_pdf_report_start(callback: types.CallbackQuery, state: FSMContext):
     """PDF hisobot - sanani kiritish"""
