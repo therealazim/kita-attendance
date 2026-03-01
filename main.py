@@ -103,7 +103,7 @@ TRANSLATIONS = {
         'welcome': "🌟 **HANCOM ACADEMYning o'qituvchilar uchun davomat botiga hush kelibsiz, {name}!**\n\nQuyidagi tugmalar orqali:\n• Davomat qilishingiz\n• Statistikangizni ko'rishingiz\n• Filiallar bilan tanishishingiz mumkin\n\nBoshlash uchun pastdagi tugmalardan foydalaning!",
         'stats': "📊 **Sizning statistikangiz:**",
         'no_stats': "📭 Hali davomat qilmagansiz",
-        'branches': "🏢 **Mavjud filiallar (lokatsiya):**",
+        'branches': "🏢 **Mavjud filiallar:**",
         'distance_info': "📍 Barcha filiallar {distance} metr masofada aniqlanadi",
         'help': "🤖 **Botdan foydalanish qo'llanmasi:**\n\n📍 **Davomat qilish uchun:**\n• Pastdagi \"📍 Kelganimni tasdiqlash\" tugmasini bosing\n• Joylashuvingizni yuboring\n\n📊 **Statistika:**\n• \"📊 Mening statistikam\" - shaxsiy davomat tarixingiz\n• \"🏢 Filiallar\" - barcha mavjud filiallar ro'yxati\n\n⚠️ **Eslatmalar:**\n• Kuniga faqat 1 marta davomat qilish mumkin\n• Filialdan {distance} metr masofada bo'lishingiz kerak\n• Davomat faqat Toshkent vaqti bilan hisoblanadi",
         'attendance_success': "✅ **Davomat tasdiqlandi!**\n\n🏫 **Filial:** {branch}\n📅 **Sana:** {date}\n⏰ **Vaqt:** {time}\n📊 **Bu oydagi tashriflar:** {count} marta\n📏 **Masofa:** {distance:.1f} metr",
@@ -114,22 +114,20 @@ TRANSLATIONS = {
         'monthly_report': "📊 **{month} oyi uchun hisobot**\n\n{report}",
         'language_changed': "✅ Til o'zgartirildi: O'zbek tili",
         'language_prompt': "Iltimos, tilni tanlang:",
-        'schedule': "📅 **Dars jadvali**\n\nHozircha dars jadvali mavjud emas. Tez kunda qo'shiladi!",
         'buttons': {
             'attendance': "📍 Kelganimni tasdiqlash",
             'my_stats': "📊 Mening statistikam",
             'branches': "🏢 Filiallar",
             'help': "❓ Yordam",
             'top_week': "🏆 Hafta topi",
-            'language': "🌐 Til",
-            'schedule': "📅 Dars jadvali"
+            'language': "🌐 Til"
         }
     },
     'ru': {
         'welcome': "🌟 **Добро пожаловать в бот для отметок HANCOM ACADEMY для учителей, {name}!**\n\nС помощью кнопок ниже вы можете:\n• Отметиться\n• Посмотреть статистику\n• Ознакомиться с филиалами\n\nИспользуйте кнопки ниже для начала!",
         'stats': "📊 **Ваша статистика:**",
         'no_stats': "📭 Вы еще не отмечались",
-        'branches': "🏢 **Доступные филиалы (локация):**",
+        'branches': "🏢 **Доступные филиалы:**",
         'distance_info': "📍 Все филиалы определяются в радиусе {distance} метров",
         'help': "🤖 **Руководство по использованию:**\n\n📍 **Для отметки:**\n• Нажмите кнопку \"📍 Подтвердить прибытие\"\n• Отправьте свою геолокацию\n\n📊 **Статистика:**\n• \"📊 Моя статистика\" - история отметок\n• \"🏢 Филиалы\" - список всех филиалов\n\n⚠️ **Примечания:**\n• Можно отмечаться только 1 раз в день\n• Вы должны находиться в радиусе {distance} метров от филиала",
         'attendance_success': "✅ **Отметка подтверждена!**\n\n🏫 **Филиал:** {branch}\n📅 **Дата:** {date}\n⏰ **Время:** {time}\n📊 **Посещений в этом месяце:** {count}\n📏 **Расстояние:** {distance:.1f} м",
@@ -140,22 +138,20 @@ TRANSLATIONS = {
         'monthly_report': "📊 **Отчет за {month}**\n\n{report}",
         'language_changed': "✅ Язык изменен: Русский язык",
         'language_prompt': "Пожалуйста, выберите язык:",
-        'schedule': "📅 **Расписание уроков**\n\nПока расписание отсутствует. Скоро будет добавлено!",
         'buttons': {
             'attendance': "📍 Подтвердить прибытие",
             'my_stats': "📊 Моя статистика",
             'branches': "🏢 Филиалы",
             'help': "❓ Помощь",
             'top_week': "🏆 Топ недели",
-            'language': "🌐 Язык",
-            'schedule': "📅 Расписание"
+            'language': "🌐 Язык"
         }
     },
     'kr': {
         'welcome': "🌟 **HANCOM ACADEMY 교사용 출석 체크 봇에 오신 것을 환영합니다, {name}!**\n\n아래 버튼을 통해:\n• 출석 체크하기\n• 내 통계 보기\n• 지점 목록 보기\n\n시작하려면 아래 버튼을 사용하세요!",
         'stats': "📊 **내 통계:**",
         'no_stats': "📭 아직 출석 체크하지 않았습니다",
-        'branches': "🏢 **등록된 지점 (위치):**",
+        'branches': "🏢 **등록된 지점:**",
         'distance_info': "📍 모든 지점은 {distance}미터 반경 내에서 확인됩니다",
         'help': "🤖 **사용 설명서:**\n\n📍 **출석 체크 방법:**\n• 하단의 \"📍 출석 확인\" 버튼을 누르세요\n• 위치를 전송하세요\n\n📊 **통계:**\n• \"📊 내 통계\" - 개인 출석 기록\n• \"🏢 지점\" - 모든 지점 목록\n\n⚠️ **참고사항:**\n• 하루에 한 번만 출석 체크 가능\n• 지점에서 {distance}미터 이내에 있어야 함\n• 출석은 타슈켄트 시간 기준으로 기록됨",
         'attendance_success': "✅ **출석이 확인되었습니다!**\n\n🏫 **지점:** {branch}\n📅 **날짜:** {date}\n⏰ **시간:** {time}\n📊 **이번 달 출석:** {count}회\n📏 **거리:** {distance:.1f}미터",
@@ -166,15 +162,13 @@ TRANSLATIONS = {
         'monthly_report': "📊 **{month}월 보고서**\n\n{report}",
         'language_changed': "✅ 언어가 변경되었습니다: 한국어",
         'language_prompt': "언어를 선택하세요:",
-        'schedule': "📅 **수업 시간표**\n\n아직 시간표가 없습니다. 곧 추가됩니다!",
         'buttons': {
             'attendance': "📍 출석 확인",
             'my_stats': "📊 내 통계",
             'branches': "🏢 지점",
             'help': "❓ 도움말",
             'top_week': "🏆 주간 TOP",
-            'language': "🌐 언어",
-            'schedule': "📅 시간표"
+            'language': "🌐 언어"
         }
     }
 }
@@ -203,18 +197,17 @@ def get_button_text(user_id: int, button_key: str):
     return TRANSLATIONS[lang]['buttons'][button_key]
 
 async def main_keyboard(user_id: int):
-    """Asosiy menyu tugmalarini yaratish - 7 ta tugma"""
+    """Asosiy menyu tugmalarini yaratish"""
     builder = ReplyKeyboardBuilder()
     builder.add(
         KeyboardButton(text=get_button_text(user_id, 'attendance'), request_location=True),
         KeyboardButton(text=get_button_text(user_id, 'my_stats')),
         KeyboardButton(text=get_button_text(user_id, 'branches')),
         KeyboardButton(text=get_button_text(user_id, 'top_week')),
-        KeyboardButton(text=get_button_text(user_id, 'schedule')),  # Dars jadvali tugmasi
         KeyboardButton(text=get_button_text(user_id, 'help')),
         KeyboardButton(text=get_button_text(user_id, 'language'))
     )
-    builder.adjust(1, 2, 2, 2)  # 1 qator, 2 qator, 2 qator, 2 qator
+    builder.adjust(1, 2, 2, 1)
     return builder.as_markup(resize_keyboard=True)
 
 async def language_selection_keyboard():
@@ -226,14 +219,6 @@ async def language_selection_keyboard():
         InlineKeyboardButton(text="🇰🇷 한국어", callback_data="lang_kr")
     )
     return builder.as_markup()
-
-def get_yandex_maps_link(lat: float, lon: float) -> str:
-    """Yandex Maps link yaratish"""
-    return f"https://yandex.com/maps/?pt={lon},{lat}&z=17&l=map"
-
-def get_google_maps_link(lat: float, lon: float) -> str:
-    """Google Maps link yaratish"""
-    return f"https://www.google.com/maps?q={lat},{lon}"
 
 # --- OB-HAVO FUNKSIYALAR ---
 async def get_weather_by_coords(lat: float, lon: float):
@@ -472,14 +457,17 @@ async def my_stats(message: types.Message):
         month_names = month_names_uz
         weekdays = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
         current_month_text = "(joriy oy)"
+        date_format = "{day:02d}.{month:02d}.{year}"
     elif lang == 'ru':
         month_names = month_names_ru
         weekdays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
         current_month_text = "(текущий месяц)"
+        date_format = "{day:02d}.{month:02d}.{year}"
     else:  # kr
         month_names = month_names_kr
         weekdays = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
         current_month_text = "(이번 달)"
+        date_format = "{year}년 {month:02d}월 {day:02d}일"
     
     text = get_text(user_id, 'stats') + "\n\n"
     
@@ -532,7 +520,6 @@ async def my_stats(message: types.Message):
 @dp.message(F.text.in_({'🏢 Filiallar', '🏢 Филиалы', '🏢 지점'}))
 async def show_branches(message: types.Message):
     user_id = message.from_user.id
-    lang = user_languages.get(user_id, 'uz')
     
     text = get_text(user_id, 'branches') + "\n\n"
     
@@ -543,83 +530,48 @@ async def show_branches(message: types.Message):
     
     for branch in LOCATIONS:
         if "Maktab" in branch['name']:
-            schools.append(branch)
+            schools.append(branch['name'])
         elif "Universitet" in branch['name']:
-            universities.append(branch)
+            universities.append(branch['name'])
         else:
-            lyceums.append(branch)
+            lyceums.append(branch['name'])
     
     # Tilga mos sarlavhalar
+    lang = user_languages.get(user_id, 'uz')
     if lang == 'uz':
         uni_title = "**🏛 Universitetlar:**"
         lyceum_title = "**📚 Litseylar:**"
         school_title = "**🏫 Maktablar:**"
-        link_text = "📍 Lokatsiyani ko'rish"
     elif lang == 'ru':
         uni_title = "**🏛 Университеты:**"
         lyceum_title = "**📚 Лицеи:**"
         school_title = "**🏫 Школы:**"
-        link_text = "📍 Посмотреть на карте"
     else:  # kr
         uni_title = "**🏛 대학교:**"
         lyceum_title = "**📚 고등학교:**"
         school_title = "**🏫 초중학교:**"
-        link_text = "📍 위치 보기"
     
-    # Universitetlar
     if universities:
         text += f"{uni_title}\n"
-        builder = InlineKeyboardBuilder()
         for uni in universities:
-            yandex_link = get_yandex_maps_link(uni['lat'], uni['lon'])
-            google_link = get_google_maps_link(uni['lat'], uni['lon'])
-            builder.row(
-                InlineKeyboardButton(text=f"📍 {uni['name']}", url=yandex_link)
-            )
-        await message.answer(text, parse_mode="Markdown", reply_markup=builder.as_markup())
-        text = ""  # Textni tozalab, keyingi bo'limlar uchun yangidan boshlaymiz
+            text += f"• {uni}\n"
+        text += "\n"
     
-    # Litseylar
     if lyceums:
         text += f"{lyceum_title}\n"
-        builder = InlineKeyboardBuilder()
         for lyceum in lyceums:
-            yandex_link = get_yandex_maps_link(lyceum['lat'], lyceum['lon'])
-            builder.row(
-                InlineKeyboardButton(text=f"📍 {lyceum['name']}", url=yandex_link)
-            )
-        await message.answer(text, parse_mode="Markdown", reply_markup=builder.as_markup())
-        text = ""
+            text += f"• {lyceum}\n"
+        text += "\n"
     
-    # Maktablar
     if schools:
         text += f"{school_title}\n"
-        builder = InlineKeyboardBuilder()
         for school in schools:
-            yandex_link = get_yandex_maps_link(school['lat'], school['lon'])
-            builder.row(
-                InlineKeyboardButton(text=f"📍 {school['name']}", url=yandex_link)
-            )
-        await message.answer(text, parse_mode="Markdown", reply_markup=builder.as_markup())
-        text = ""
+            text += f"• {school}\n"
+        text += "\n"
     
-    # Masofa ma'lumoti
-    if text:  # Agar text bo'sh bo'lmasa
-        await message.answer(text, parse_mode="Markdown")
+    text += get_text(user_id, 'distance_info', distance=ALLOWED_DISTANCE)
     
-    await message.answer(
-        get_text(user_id, 'distance_info', distance=ALLOWED_DISTANCE),
-        parse_mode="Markdown"
-    )
-
-@dp.message(F.text.in_({'📅 Dars jadvali', '📅 Расписание', '📅 시간표'}))
-async def schedule_handler(message: types.Message):
-    """Dars jadvali tugmasi bosilganda"""
-    user_id = message.from_user.id
-    await message.answer(
-        get_text(user_id, 'schedule'),
-        parse_mode="Markdown"
-    )
+    await message.answer(text, parse_mode="Markdown")
 
 @dp.message(F.text.in_({'❓ Yordam', '❓ Помощь', '❓ 도움말'}))
 async def help_command(message: types.Message):
@@ -713,6 +665,8 @@ async def handle_location(message: types.Message):
 
     # DAVOMAT QISMI
     if found_branch:
+        attendance_key = (user_id, found_branch, today_date)
+        
         # Tekshirish uchun (vaqtni hisobga olmasdan)
         already_attended = False
         for (uid, branch, date, time) in daily_attendance_log:
