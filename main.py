@@ -18,6 +18,8 @@ from geopy.distance import geodesic
 from aiohttp import web
 import openpyxl
 from openpyxl.styles import Font, Alignment
+import matplotlib
+matplotlib.use('Agg')  # Server uchun kerak
 import matplotlib.pyplot as plt
 import numpy as np
 from reportlab.lib import colors
@@ -1752,7 +1754,7 @@ async def admin_broadcast_message(message: types.Message, state: FSMContext):
         InlineKeyboardButton(text="❌ Yo'q", callback_data="broadcast_cancel")
     )
     
-    total_users = len(user_ids)
+    total_users = len([uid for uid in user_ids if user_status.get(uid) != 'blocked'])
     await state.set_state(Broadcast.waiting_for_confirm)
     await message.answer(
         f"📢 **Xabar yuborishni tasdiqlang**\n\n"
@@ -2041,7 +2043,8 @@ async def admin_logs_recent(callback: types.CallbackQuery):
     text = "📋 **Oxirgi 20 ta log**\n\n"
     for log in bot_logs[-20:]:
         text += f"[{log['date']}] {log['action']}\n"
-        text += f"👤 {user_names.get(log['user_id'], f'ID:{log['user_id']}')}\n"
+        # TUZATILGAN QATOR:
+        text += f"👤 {user_names.get(log['user_id'], f'ID:{log["user_id"]}')}\n"
         if log['details']:
             text += f"📝 {log['details']}\n"
         text += "\n"
