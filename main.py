@@ -2227,7 +2227,7 @@ async def admin_logs_recent(callback: types.CallbackQuery):
         text = "📋 Oxirgi 20 ta log\n\n"
         for log in bot_logs[-20:]:
             text += f"[{log['date']}] {log['action']}\n"
-            text += f"👤 {user_names.get(log['user_id'], f'ID: {log["user_id"]}')}\n"
+            text += f"👤 {user_names.get(log['user_id'], 'ID: ' + str(log['user_id']))}\n"
             if log['details']:
                 text += f"📝 {log['details']}\n"
             text += "\n"
