@@ -34,7 +34,10 @@ WEATHER_API_URL = "http://api.openweathermap.org/data/2.5/weather"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# BARCHA LOKATSIYALAR RO'YXATI
+# Foydalanuvchi ism-familiyalarini saqlash uchun
+user_names = {}  # {user_id: full_name}
+
+# BARCHA LOKATSIYALAR RO'YXATI (YANGI MAKTABLAR QO'SHILDI)
 LOCATIONS = [
     {"name": "Kimyo Xalqaro Universiteti", "lat": 41.257490, "lon": 69.220109},
     {"name": "78-Maktab", "lat": 41.282791, "lon": 69.173290},
@@ -52,9 +55,20 @@ LOCATIONS = [
     {"name": "Tekstil litseyi", "lat": 41.284784, "lon": 69.249356},
     {"name": "200-Maktab", "lat": 41.263860, "lon": 69.181538},
     {"name": "Selxoz litseyi", "lat": 41.362532, "lon": 69.340768},
-    {"name": "294-Maktab", "lat": 41.281633, "lon": 69.289237}
+    {"name": "294-Maktab", "lat": 41.281633, "lon": 69.289237},
+    {"name": "Umnie Deti School", "lat": 41.315790, "lon": 69.209515},  # Yangi
+    {"name": "Cambridge School", "lat": 41.342296, "lon": 69.167571}     # Yangi
 ]
 ALLOWED_DISTANCE = 500
+
+# FSM holatlari
+class Registration(StatesGroup):
+    waiting_for_name = State()
+
+class AddSchedule(StatesGroup):
+    selecting_branch = State()
+    selecting_weekdays = State()
+    entering_time = State()
 
 # Hafta kunlari
 WEEKDAYS = {
@@ -111,6 +125,7 @@ WEATHER_RECOMMENDATIONS = {
 TRANSLATIONS = {
     'uz': {
         'welcome': "\U0001F31F **HANCOM ACADEMYning o'qituvchilar uchun davomat botiga hush kelibsiz, {name}!**\n\nQuyidagi tugmalar orqali:\n• Davomat qilishingiz\n• Statistikangizni ko'rishingiz\n• Filiallar bilan tanishishingiz mumkin",
+        'ask_name': "👤 **Iltimos, ism va familiyangizni kiriting:**\n\nMasalan: Azimjon Yulchiev",
         'stats': "\U0001F4CA **Sizning statistikangiz:**",
         'no_stats': "\U0001F4AD Hali davomat qilmagansiz",
         'branches': "\U0001F3E2 **Mavjud filiallar (lokatsiya):**",
@@ -148,6 +163,7 @@ TRANSLATIONS = {
     },
     'ru': {
         'welcome': "\U0001F31F **Добро пожаловать в бот для отметок HANCOM ACADEMY для учителей, {name}!**\n\nС помощью кнопок ниже вы можете:\n• Отметиться\n• Посмотреть статистику\n• Ознакомиться с филиалами",
+        'ask_name': "👤 **Пожалуйста, введите ваше имя и фамилию:**\n\nНапример: Azimjon Yulchiev",
         'stats': "\U0001F4CA **Ваша статистика:**",
         'no_stats': "\U0001F4AD Вы еще не отмечались",
         'branches': "\U0001F3E2 **Доступные филиалы (локация):**",
@@ -185,6 +201,7 @@ TRANSLATIONS = {
     },
     'kr': {
         'welcome': "\U0001F31F **HANCOM ACADEMY 교사용 출석 체크 봇에 오신 것을 환영합니다, {name}!**\n\n아래 버튼을 통해:\n• 출석 체크하기\n• 내 통계 보기\n• 지점 목록 보기",
+        'ask_name': "👤 **이름과 성을 입력하세요:**\n\n예: Azimjon Yulchiev",
         'stats': "\U0001F4CA **내 통계:**",
         'no_stats': "\U0001F4AD 아직 출석 체크하지 않았습니다",
         'branches': "\U0001F3E2 **등록된 지점 (위치):**",
@@ -231,12 +248,6 @@ user_ids = set()              # Barcha foydalanuvchilar ID si
 # Dars jadvallari uchun ma'lumotlar
 schedules = {}  # {schedule_id: {'user_id': user_id, 'branch': branch, 'days': {weekday: time}}}
 user_schedules = defaultdict(list)  # {user_id: [schedule_id1, schedule_id2, ...]}
-
-# FSM holatlari
-class AddSchedule(StatesGroup):
-    selecting_branch = State()
-    selecting_weekdays = State()
-    entering_time = State()
 
 # --- YORDAMCHI FUNKSIYALAR ---
 def get_text(user_id: int, key: str, **kwargs):
@@ -409,22 +420,29 @@ async def start_web_server():
 
 # --- HANDLERS ---
 @dp.message(CommandStart())
-async def cmd_start(message: types.Message):
+async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     
-    # Yangi foydalanuvchi bo'lsa, til tanlashni so'raymiz
-    if user_id not in user_languages:
-        keyboard = await language_selection_keyboard()
-        await message.answer(
-            "Iltimos, tilni tanlang:\nПожалуйста, выберите язык:\n언어를 선택하세요:",
-            reply_markup=keyboard
-        )
+    # Agar foydalanuvchi ismini kiritmagan bo'lsa
+    if user_id not in user_names:
+        # Til tanlashni so'raymiz
+        if user_id not in user_languages:
+            keyboard = await language_selection_keyboard()
+            await message.answer(
+                "Iltimos, tilni tanlang:\nПожалуйста, выберите язык:\n언어를 선택하세요:",
+                reply_markup=keyboard
+            )
+            return
+        
+        # Ism so'rash
+        await state.set_state(Registration.waiting_for_name)
+        await message.answer(get_text(user_id, 'ask_name'))
         return
     
     # Eski foydalanuvchi bo'lsa, to'g'ridan-to'g'ri menyuga o'tamiz
     user_ids.add(user_id)
     keyboard = await main_keyboard(user_id)
-    name = message.from_user.full_name
+    name = user_names.get(user_id, message.from_user.full_name)
     
     await message.answer(
         get_text(user_id, 'welcome', name=name),
@@ -432,27 +450,40 @@ async def cmd_start(message: types.Message):
         parse_mode="Markdown"
     )
 
+@dp.message(Registration.waiting_for_name)
+async def process_name(message: types.Message, state: FSMContext):
+    """Foydalanuvchi ismini qabul qilish"""
+    user_id = message.from_user.id
+    full_name = message.text.strip()
+    
+    # Ismni saqlash
+    user_names[user_id] = full_name
+    user_ids.add(user_id)
+    
+    await state.clear()
+    
+    # Asosiy menyuni ko'rsatish
+    keyboard = await main_keyboard(user_id)
+    await message.answer(
+        get_text(user_id, 'welcome', name=full_name),
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
+
 @dp.callback_query(F.data.startswith("lang_"))
-async def set_initial_language(callback: types.CallbackQuery):
+async def set_initial_language(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     lang = callback.data.split("_")[1]
     
     # Tilni saqlash
     user_languages[user_id] = lang
-    user_ids.add(user_id)
     
     await callback.answer()
     await callback.message.delete()
     
-    # Asosiy menyuni ko'rsatish
-    keyboard = await main_keyboard(user_id)
-    name = callback.from_user.full_name
-    
-    await callback.message.answer(
-        get_text(user_id, 'welcome', name=name),
-        reply_markup=keyboard,
-        parse_mode="Markdown"
-    )
+    # Ism so'rash
+    await state.set_state(Registration.waiting_for_name)
+    await callback.message.answer(get_text(user_id, 'ask_name'))
 
 @dp.message(F.text.in_({'\U0001F310 Til', '\U0001F310 Язык', '\U0001F310 언어'}))
 async def change_language(message: types.Message):
@@ -852,7 +883,7 @@ async def show_branches(message: types.Message):
             universities.append(branch)
         elif "Litsey" in branch['name'] or "litseyi" in branch['name'].lower():
             lyceums.append(branch)
-        elif "Maktab" in branch['name']:
+        elif "Maktab" in branch['name'] or "School" in branch['name'] or "Umnie Deti" in branch['name']:
             schools.append(branch)
     
     # Tilga mos sarlavhalar
@@ -891,7 +922,7 @@ async def show_branches(message: types.Message):
                 InlineKeyboardButton(text=f"\U0001F4CD {lyceum['name']}", url=maps_link)
             )
     
-    # Maktablar
+    # Maktablar (yangi qo'shilgan maktablar bilan)
     if schools:
         for school in schools:
             maps_link = get_yandex_maps_link(school['lat'], school['lon'])
@@ -996,8 +1027,9 @@ async def handle_location(message: types.Message):
         visit_number = attendance_counter[counter_key]
         
         daily_attendance_log.add((user_id, found_branch, today_date, now_time))
-        full_name = message.from_user.full_name
+        full_name = user_names.get(user_id, message.from_user.full_name)
         
+        # Admin guruhiga hisobot
         report = (
             f"✅ **Yangi Davomat**\n\n"
             f"👤 **O'qituvchi:** {full_name}\n"
@@ -1109,8 +1141,7 @@ async def admin_callbacks(callback: types.CallbackQuery):
             row = 2
             for (uid, branch, date, time) in sorted(daily_attendance_log):
                 try:
-                    user = await bot.get_chat(uid)
-                    user_name = user.full_name
+                    user_name = user_names.get(uid, f"User_{uid}")
                 except:
                     user_name = f"User_{uid}"
                 
