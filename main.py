@@ -83,6 +83,69 @@ LOCATIONS = [
     {"name": "Umnie Deti School", "lat": 41.315790, "lon": 69.209515},
     {"name": "Cambridge School", "lat": 41.342296, "lon": 69.167571}
 ]
+
+# Ma'lumotlarni saqlash uchun o'zgaruvchilar
+daily_attendance_log = set()  # {(user_id, branch_name, date, time)}
+attendance_counter = {}       # {(user_id, branch_name, month): count}
+user_languages = {}           # {user_id: 'uz' or 'ru' or 'kr'}
+user_ids = set()              # Barcha foydalanuvchilar ID si
+schedules = {}                # {schedule_id: {...}}
+user_schedules = defaultdict(list)
+
+# --- MA'LUMOTLARNI SAQLASH (DATA PERSISTENCE) ---
+DATA_FILE = "bot_data.pkl"
+
+def save_data():
+    """Barcha RAM'dagi ma'lumotlarni faylga saqlash"""
+    try:
+        data = {
+            'user_names': user_names,
+            'user_specialty': user_specialty,
+            'user_status': user_status,
+            'broadcast_history': broadcast_history,
+            'daily_attendance_log': daily_attendance_log,
+            'attendance_counter': attendance_counter,
+            'user_languages': user_languages,
+            'user_ids': user_ids,
+            'schedules': schedules,
+            'user_schedules': dict(user_schedules),
+            'LOCATIONS': LOCATIONS
+        }
+        with open(DATA_FILE, 'wb') as f:
+            pickle.dump(data, f)
+    except Exception as e:
+        logging.error(f"Ma'lumotlarni saqlashda xato: {e}")
+
+def load_data():
+    """Ma'lumotlarni fayldan yuklash"""
+    global user_names, user_specialty, user_status, broadcast_history
+    global daily_attendance_log, attendance_counter, user_languages
+    global user_ids, schedules, user_schedules, LOCATIONS
+    
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, 'rb') as f:
+                data = pickle.load(f)
+            user_names = data.get('user_names', {})
+            user_specialty = data.get('user_specialty', {})
+            user_status = data.get('user_status', {})
+            broadcast_history = data.get('broadcast_history', [])
+            daily_attendance_log = data.get('daily_attendance_log', set())
+            attendance_counter = data.get('attendance_counter', {})
+            user_languages = data.get('user_languages', {})
+            user_ids = data.get('user_ids', set())
+            schedules = data.get('schedules', {})
+            LOCATIONS = data.get('LOCATIONS', LOCATIONS)
+            
+            u_sch = data.get('user_schedules', {})
+            user_schedules = defaultdict(list, u_sch)
+            logging.info("Barcha ma'lumotlar muvaffaqiyatli yuklandi.")
+        except Exception as e:
+            logging.error(f"Ma'lumotlarni yuklashda xato: {e}")
+
+# Ishga tushganda ma'lumotlarni yuklash
+load_data()
+
 ALLOWED_DISTANCE = 500
 
 # FSM holatlari
@@ -342,16 +405,6 @@ TRANSLATIONS = {
     }
 }
 
-# Ma'lumotlarni saqlash
-daily_attendance_log = set()  # {(user_id, branch_name, date, time)}
-attendance_counter = {}       # {(user_id, branch_name, month): count}
-user_languages = {}           # {user_id: 'uz' or 'ru' or 'kr'}
-user_ids = set()              # Barcha foydalanuvchilar ID si
-
-# Dars jadvallari uchun ma'lumotlar
-schedules = {}  # {schedule_id: {'user_id': user_id, 'branch': branch, 'lesson_type': lesson_type, 'days': {weekday: time}}}
-user_schedules = defaultdict(list)  # {user_id: [schedule_id1, schedule_id2, ...]}
-
 # --- YORDAMCHI FUNKSIYALAR ---
 def get_text(user_id: int, key: str, **kwargs):
     """Foydalanuvchi tiliga mos matn qaytarish"""
@@ -592,6 +645,7 @@ async def process_name(message: types.Message, state: FSMContext):
     # Ismni saqlash
     user_names[user_id] = full_name
     user_ids.add(user_id)
+    save_data() # Saqlash
     
     await state.update_data(name=full_name)
     
@@ -622,6 +676,7 @@ async def process_specialty(message: types.Message, state: FSMContext):
     # Mutaxassislikni saqlash
     user_specialty[user_id] = specialty
     user_status[user_id] = 'active'
+    save_data() # Saqlash
     
     await state.clear()
     
@@ -646,6 +701,7 @@ async def set_initial_language(callback: types.CallbackQuery, state: FSMContext)
         
         # Tilni saqlash
         user_languages[user_id] = lang
+        save_data() # Saqlash
         
         await callback.answer()
         await callback.message.delete()
@@ -674,6 +730,7 @@ async def set_changed_language(callback: types.CallbackQuery):
         user_id = callback.from_user.id
         lang = callback.data.split("_")[2]
         user_languages[user_id] = lang
+        save_data() # Saqlash
         
         await callback.answer()
         await callback.message.delete()
@@ -939,6 +996,8 @@ async def handle_location(message: types.Message):
         visit_number = attendance_counter[counter_key]
         
         daily_attendance_log.add((user_id, found_branch, today_date, now_time))
+        save_data() # Saqlash
+        
         full_name = user_names.get(user_id, message.from_user.full_name)
         specialty = user_specialty.get(user_id, '')
         specialty_display = f" [{specialty}]" if specialty else ""
@@ -1446,6 +1505,7 @@ async def admin_user_block(callback: types.CallbackQuery):
     try:
         uid = int(callback.data.replace("admin_user_block_", ""))
         user_status[uid] = 'blocked'
+        save_data() # Saqlash
         
         await callback.answer("✅ Foydalanuvchi bloklandi!")
         await admin_user_info(callback)
@@ -1463,6 +1523,7 @@ async def admin_user_unblock(callback: types.CallbackQuery):
     try:
         uid = int(callback.data.replace("admin_user_unblock_", ""))
         user_status[uid] = 'active'
+        save_data() # Saqlash
         
         await callback.answer("✅ Foydalanuvchi faollashtirildi!")
         await admin_user_info(callback)
@@ -1733,6 +1794,7 @@ async def admin_broadcast_confirm(callback: types.CallbackQuery, state: FSMConte
             'failed_count': failed_count,
             'specialty': specialty
         })
+        save_data() # Saqlash
         
         specialty_text = f" ({specialty})" if specialty else " (barcha)"
         
@@ -1875,6 +1937,7 @@ async def admin_delete_schedule(callback: types.CallbackQuery):
             del schedules[schedule_id]
             if teacher_id in user_schedules and schedule_id in user_schedules[teacher_id]:
                 user_schedules[teacher_id].remove(schedule_id)
+            save_data() # Saqlash
             
             await callback.message.edit_text("✅ Dars jadvali o'chirildi!")
         else:
@@ -2124,6 +2187,7 @@ async def admin_save_edited_schedule(message: types.Message, state: FSMContext):
             'days': new_days
         }
         user_schedules[teacher_id].append(new_schedule_id)
+        save_data() # Saqlash
         
         # O'qituvchiga xabar yuborish
         try:
@@ -2221,8 +2285,8 @@ async def admin_add_schedule_branch(callback: types.CallbackQuery, state: FSMCon
         branch = callback.data.replace("admin_branch_", "")
         await state.update_data(branch=branch)
         
-        user_id = callback.from_user.id
-        lang = user_languages.get(user_id, 'uz')
+        user_id = callback.from_user.id(callback.from_user.id)
+        lang = user_languages.get(callback.from_user.id, 'uz')
         lesson_types = LESSON_TYPES.get(lang, LESSON_TYPES['uz'])
         
         # Dars turini tanlash
@@ -2410,6 +2474,7 @@ async def admin_save_new_schedule(message: types.Message, state: FSMContext):
             'days': days_with_names
         }
         user_schedules[teacher_id].append(schedule_id)
+        save_data() # Saqlash
         
         # O'qituvchiga xabar yuborish
         try:
@@ -2548,6 +2613,7 @@ async def admin_location_add_coords(message: types.Message, state: FSMContext):
         
         # Yangi filialni qo'shish
         LOCATIONS.append({"name": name, "lat": lat, "lon": lon})
+        save_data() # Saqlash
         
         await message.answer(f"✅ Filial muvaffaqiyatli qo'shildi!\n\n{name}\n📍 {lat}, {lon}")
         
