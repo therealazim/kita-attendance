@@ -1,9 +1,13 @@
 import asyncpg
 import os
 import json
+import logging
 from datetime import datetime
 from typing import Optional, List, Tuple, Dict, Any, Set
 from collections import defaultdict
+
+# Xatoliklarni kuzatish uchun logging
+logging.basicConfig(level=logging.INFO)
 
 class Database:
     """PostgreSQL bilan ishlash uchun class"""
@@ -189,7 +193,11 @@ class Database:
                 stats[branch]['teachers'].add(row['unique_teachers'])
                 stats[branch]['daily'][row['day'].strftime('%Y-%m-%d')] = row['total']
             
-            return stats
+            # Set obyektlarini JSON formatlash uchun listga aylantirish
+            for b in stats:
+                stats[b]['teachers'] = list(stats[b]['teachers'])
+            
+            return dict(stats)
     
     async def get_monthly_stats(self, year_month: str) -> Dict:
         """Oylik statistika"""
@@ -274,14 +282,15 @@ class Database:
         
         print("🔄 Ma'lumotlarni migratsiya qilish boshlandi...")
         
-        # Foydalanuvchilarni ko'chirish
-        user_count = 0
-        for user_id, name in user_names.items():
-            specialty = user_specialty.get(user_id)
-            status = user_status.get(user_id, 'active')
-            lang = user_languages.get(user_id, 'uz')
-            
-            async with self.pool.acquire() as conn:
+        async with self.pool.acquire() as conn:
+            # Bitta connection ichida ishlash optimizatsiya uchun
+            # Foydalanuvchilarni ko'chirish
+            user_count = 0
+            for user_id, name in user_names.items():
+                specialty = user_specialty.get(user_id)
+                status = user_status.get(user_id, 'active')
+                lang = user_languages.get(user_id, 'uz')
+                
                 await conn.execute('''
                     INSERT INTO users (user_id, full_name, specialty, status, language)
                     VALUES ($1, $2, $3, $4, $5)
@@ -291,34 +300,32 @@ class Database:
                         status = EXCLUDED.status,
                         language = EXCLUDED.language
                 ''', user_id, name, specialty, status, lang)
-            user_count += 1
-        
-        # Davomatlarni ko'chirish
-        attendance_count = 0
-        for uid, branch, date, time in daily_attendance_log:
-            async with self.pool.acquire() as conn:
+                user_count += 1
+            
+            # Davomatlarni ko'chirish
+            attendance_count = 0
+            for uid, branch, date, time in daily_attendance_log:
                 await conn.execute('''
                     INSERT INTO attendance (user_id, branch, date, time)
                     VALUES ($1, $2, $3::date, $4)
                     ON CONFLICT DO NOTHING
                 ''', uid, branch, date, time)
-            attendance_count += 1
-        
-        # Dars jadvallarini ko'chirish
-        schedule_count = 0
-        for schedule_id, schedule in schedules.items():
-            user_id = schedule['user_id']
-            branch = schedule['branch']
-            lesson_type = schedule.get('lesson_type', 'Dars')
-            days = schedule['days']
+                attendance_count += 1
             
-            async with self.pool.acquire() as conn:
+            # Dars jadvallarini ko'chirish
+            schedule_count = 0
+            for schedule_id, schedule in schedules.items():
+                user_id = schedule['user_id']
+                branch = schedule['branch']
+                lesson_type = schedule.get('lesson_type', 'Dars')
+                days = schedule['days']
+                
                 await conn.execute('''
                     INSERT INTO schedules (schedule_id, user_id, branch, lesson_type, days_data)
                     VALUES ($1, $2, $3, $4, $5::jsonb)
                     ON CONFLICT (schedule_id) DO NOTHING
                 ''', schedule_id, user_id, branch, lesson_type, json.dumps(days))
-            schedule_count += 1
+                schedule_count += 1
         
         print(f"✅ Migratsiya tugadi: {user_count} foydalanuvchi, {attendance_count} davomat, {schedule_count} jadval")
     
