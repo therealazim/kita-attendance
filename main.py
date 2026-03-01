@@ -27,7 +27,6 @@ from reportlab.lib.pagesizes import letter, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-import zipfile
 import pickle
 
 # --- LOGGING ---
@@ -52,8 +51,8 @@ user_names = {}  # {user_id: full_name}
 # Foydalanuvchi holati (bloklangan, aktiv, etc.)
 user_status = {}  # {user_id: 'active' or 'blocked'}
 
-# Adminlar ro'yxati (birdan ortiq admin bo'lishi mumkin)
-admins = {ADMIN_GROUP_ID: True}  # Asosiy admin guruhi
+# Adminlar ro'yxati
+admins = {ADMIN_GROUP_ID: True}
 
 # Broadcast xabarlar tarixi
 broadcast_history = []  # [{text: '...', date: '...', sent_count: 0}]
@@ -86,11 +85,6 @@ ALLOWED_DISTANCE = 500
 class Registration(StatesGroup):
     waiting_for_name = State()
 
-class AddSchedule(StatesGroup):
-    selecting_branch = State()
-    selecting_weekdays = State()
-    entering_time = State()
-
 class AdminAddSchedule(StatesGroup):
     selecting_teacher = State()
     selecting_branch = State()
@@ -105,6 +99,9 @@ class Broadcast(StatesGroup):
 class AddLocation(StatesGroup):
     waiting_for_name = State()
     waiting_for_coords = State()
+
+class PDFReport(StatesGroup):
+    waiting_for_date = State()
 
 # Hafta kunlari
 WEEKDAYS = {
@@ -182,27 +179,20 @@ TRANSLATIONS = {
         'language_changed': "✅ Til o'zgartirildi: O'zbek tili",
         'language_prompt': "Iltimos, tilni tanlang:",
         'view_schedules': "\U0001F4CB Dars jadvallaringiz",
-        'no_schedules': "\U0001F4AD Sizda hali dars jadvallari mavjud emas.\n\n\U00002795 Jadval qo'shish tugmasi orqali yangi jadval qo'shishingiz mumkin.",
-        'add_schedule_start': "\U0001F4C5 Yangi dars jadvali qo'shish\n\nQaysi filialda dars berasiz?",
-        'select_weekdays': "\U0001F4C5 Qaysi kunlarda dars berasiz?\n\nQuyidagi kunlardan tanlang (bir nechta tanlashingiz mumkin):",
-        'next_button': "➡️ Keyingisi",
-        'done_button': "✅ Tugatish",
-        'enter_time': "⏰ {weekday} kuni soat nechida dars boshlanadi?\n\nFormat: HH:MM (masalan: 09:00)",
-        'schedule_saved': "✅ Dars jadvali muvaffaqiyatli saqlandi!\n\n\U0001F4C5 Filial: {branch}\n\U0001F4C6 Kunlar: {days}\n⏰ Vaqtlar: {times}",
-        'schedule_detail': "\U0001F4C5 {branch}\n\n{days_times}",
-        'schedule_deleted': "✅ Dars jadvali o'chirildi!\n\n\U0001F4C5 {branch} filialidagi jadval o'chirildi.",
-        'confirm_delete': "❓ Haqiqatan ham bu jadvalni o'chirmoqchimisiz?",
-        'reminder': "⏰ Eslatma!\n\nBugun soat {time} da {branch} filialida darsingiz bor.\nDavomat qilishni unutmang!",
-        'blocked_user': "⛔ Siz bloklangansiz. Admin bilan bog'laning.",
+        'no_schedules': "\U0001F4AD Sizda hali dars jadvallari mavjud emas.",
+        'add_schedule_not_allowed': "❌ Dars jadvali faqat admin tomonidan qo'shiladi.",
         'select_teacher': "👤 O'qituvchini tanlang:",
         'select_lesson_type': "📚 Dars turini tanlang:",
+        'active_schedules': "📋 Faol dars jadvallari",
+        'no_active_schedules': "📭 Hali dars jadvallari mavjud emas.",
+        'schedule_info': "👤 {teacher}\n🏢 {branch}\n📚 {lesson_type}\n📆 {days_times}",
+        'enter_date': "📅 Hisobot olish uchun sanani kiriting (format: YYYY-MM-DD)\nMasalan: 2026-03-01",
+        'invalid_date': "❌ Noto'g'ri sana formati. Qaytadan urinib ko'ring:",
         'buttons': {
             'attendance': "\U0001F4CD Kelganimni tasdiqlash",
             'my_stats': "\U0001F4CA Mening statistikam",
             'branches': "\U0001F3E2 Filiallar",
             'top_week': "\U0001F3C6 Hafta topi",
-            'view_schedules': "\U0001F4CB Dars jadvallari",
-            'add_schedule': "\u2795 Jadval qo'shish",
             'help': "\u2753 Yordam",
             'language': "\U0001F310 Til"
         }
@@ -223,27 +213,20 @@ TRANSLATIONS = {
         'language_changed': "✅ Язык изменен: Русский язык",
         'language_prompt': "Пожалуйста, выберите язык:",
         'view_schedules': "\U0001F4CB Ваши расписания уроков",
-        'no_schedules': "\U0001F4AD У вас еще нет расписаний уроков.\n\n\U00002795 Вы можете добавить новое расписание через кнопку 'Добавить расписание'.",
-        'add_schedule_start': "\U0001F4C5 Добавление нового расписания\n\nВ каком филиале вы преподаете?",
-        'select_weekdays': "\U0001F4C5 В какие дни вы преподаете?\n\nВыберите дни (можно выбрать несколько):",
-        'next_button': "➡️ Далее",
-        'done_button': "✅ Завершить",
-        'enter_time': "⏰ Во сколько начинается урок в {weekday}?\n\nФормат: ЧЧ:ММ (например: 09:00)",
-        'schedule_saved': "✅ Расписание успешно сохранено!\n\n\U0001F4C5 Филиал: {branch}\n\U0001F4C6 Дни: {days}\n⏰ Время: {times}",
-        'schedule_detail': "\U0001F4C5 {branch}\n\n{days_times}",
-        'schedule_deleted': "✅ Расписание удалено!\n\n\U0001F4C5 Расписание для филиала {branch} удалено.",
-        'confirm_delete': "❓ Вы действительно хотите удалить это расписание?",
-        'reminder': "⏰ Напоминание!\n\nСегодня в {time} у вас урок в филиале {branch}.\nНе забудьте отметиться!",
-        'blocked_user': "⛔ Вы заблокированы. Свяжитесь с администратором.",
+        'no_schedules': "\U0001F4AD У вас еще нет расписаний уроков.",
+        'add_schedule_not_allowed': "❌ Расписание может добавить только администратор.",
         'select_teacher': "👤 Выберите учителя:",
         'select_lesson_type': "📚 Выберите тип урока:",
+        'active_schedules': "📋 Активные расписания",
+        'no_active_schedules': "📭 Нет активных расписаний.",
+        'schedule_info': "👤 {teacher}\n🏢 {branch}\n📚 {lesson_type}\n📆 {days_times}",
+        'enter_date': "📅 Введите дату для отчета (формат: YYYY-MM-DD)\nНапример: 2026-03-01",
+        'invalid_date': "❌ Неверный формат даты. Попробуйте снова:",
         'buttons': {
             'attendance': "\U0001F4CD Подтвердить прибытие",
             'my_stats': "\U0001F4CA Моя статистика",
             'branches': "\U0001F3E2 Филиалы",
             'top_week': "\U0001F3C6 Топ недели",
-            'view_schedules': "\U0001F4CB Расписания",
-            'add_schedule': "\u2795 Добавить",
             'help': "\u2753 Помощь",
             'language': "\U0001F310 Язык"
         }
@@ -264,27 +247,20 @@ TRANSLATIONS = {
         'language_changed': "✅ 언어가 변경되었습니다: 한국어",
         'language_prompt': "언어를 선택하세요:",
         'view_schedules': "\U0001F4CB 내 수업 시간표",
-        'no_schedules': "\U0001F4AD 아직 수업 시간표가 없습니다.\n\n\U00002795 '시간표 추가' 버튼을 통해 새 시간표를 추가할 수 있습니다.",
-        'add_schedule_start': "\U0001F4C5 새 수업 시간표 추가\n\n어느 지점에서 수업하시나요?",
-        'select_weekdays': "\U0001F4C5 어느 요일에 수업하시나요?\n\n요일을 선택하세요 (여러 개 선택 가능):",
-        'next_button': "➡️ 다음",
-        'done_button': "✅ 완료",
-        'enter_time': "⏰ {weekday} 수업 시작 시간은 몇 시인가요?\n\n형식: HH:MM (예: 09:00)",
-        'schedule_saved': "✅ 시간표가 성공적으로 저장되었습니다!\n\n\U0001F4C5 지점: {branch}\n\U0001F4C6 요일: {days}\n⏰ 시간: {times}",
-        'schedule_detail': "\U0001F4C5 {branch}\n\n{days_times}",
-        'schedule_deleted': "✅ 시간표가 삭제되었습니다!\n\n\U0001F4C5 {branch} 지점의 시간표가 삭제되었습니다.",
-        'confirm_delete': "❓ 이 시간표를 삭제하시겠습니까?",
-        'reminder': "⏰ 알림!\n\n오늘 {time}에 {branch} 지점에서 수업이 있습니다.\n출석 체크를 잊지 마세요!",
-        'blocked_user': "⛔ 차단되었습니다. 관리자에게 문의하세요.",
+        'no_schedules': "\U0001F4AD 아직 수업 시간표가 없습니다.",
+        'add_schedule_not_allowed': "❌ 시간표는 관리자만 추가할 수 있습니다.",
         'select_teacher': "👤 교사를 선택하세요:",
         'select_lesson_type': "📚 수업 유형을 선택하세요:",
+        'active_schedules': "📋 활성 시간표",
+        'no_active_schedules': "📭 활성 시간표가 없습니다.",
+        'schedule_info': "👤 {teacher}\n🏢 {branch}\n📚 {lesson_type}\n📆 {days_times}",
+        'enter_date': "📅 보고서 날짜를 입력하세요 (형식: YYYY-MM-DD)\n예: 2026-03-01",
+        'invalid_date': "❌ 잘못된 날짜 형식입니다. 다시 시도하세요:",
         'buttons': {
             'attendance': "\U0001F4CD 출석 확인",
             'my_stats': "\U0001F4CA 내 통계",
             'branches': "\U0001F3E2 지점",
             'top_week': "\U0001F3C6 주간 TOP",
-            'view_schedules': "\U0001F4CB 시간표",
-            'add_schedule': "\u2795 추가",
             'help': "\u2753 도움말",
             'language': "\U0001F310 언어"
         }
@@ -323,19 +299,17 @@ def check_admin(chat_id):
     return chat_id == ADMIN_GROUP_ID
 
 async def main_keyboard(user_id: int):
-    """Asosiy menyu tugmalarini yaratish - 8 ta tugma"""
+    """Asosiy menyu tugmalarini yaratish - 6 ta tugma (jadval qo'shish yo'q)"""
     builder = ReplyKeyboardBuilder()
     builder.add(
         KeyboardButton(text=get_button_text(user_id, 'attendance'), request_location=True),
         KeyboardButton(text=get_button_text(user_id, 'my_stats')),
         KeyboardButton(text=get_button_text(user_id, 'branches')),
         KeyboardButton(text=get_button_text(user_id, 'top_week')),
-        KeyboardButton(text=get_button_text(user_id, 'view_schedules')),
-        KeyboardButton(text=get_button_text(user_id, 'add_schedule')),
         KeyboardButton(text=get_button_text(user_id, 'help')),
         KeyboardButton(text=get_button_text(user_id, 'language'))
     )
-    builder.adjust(1, 2, 2, 3)  # 1,2,2,3 qilib joylashtirish
+    builder.adjust(1, 2, 2, 1)  # 1,2,2,1 qilib joylashtirish
     return builder.as_markup(resize_keyboard=True)
 
 async def language_selection_keyboard():
@@ -582,10 +556,10 @@ async def set_changed_language(callback: types.CallbackQuery):
         logging.error(f"set_changed_language error: {e}")
         await callback.answer("Xatolik yuz berdi")
 
-# --- DARS JADVALLARI HANDLERLARI (FOYDALANUVCHI UCHUN) ---
+# --- FOYDALANUVCHI UCHUN DARS JADVALLARINI KO'RISH (QO'SHISH YO'Q) ---
 @dp.message(F.text.in_({'\U0001F4CB Dars jadvallari', '\U0001F4CB Расписания', '\U0001F4CB 시간표 목록'}))
 async def view_schedules(message: types.Message):
-    """Foydalanuvchining barcha dars jadvallarini ko'rish"""
+    """Foydalanuvchi o'zining dars jadvallarini ko'rish"""
     user_id = message.from_user.id
     
     if user_status.get(user_id) == 'blocked':
@@ -596,7 +570,7 @@ async def view_schedules(message: types.Message):
         await message.answer(get_text(user_id, 'no_schedules'))
         return
     
-    # Har bir jadval uchun alohida xabar va o'chirish tugmasi
+    # Har bir jadval uchun alohida xabar
     for schedule_id in user_schedules[user_id]:
         schedule = schedules.get(schedule_id)
         if schedule and schedule['user_id'] == user_id:
@@ -606,279 +580,10 @@ async def view_schedules(message: types.Message):
             for day, time in schedule['days'].items():
                 days_times += f"• {day}: {time}\n"
             
-            # O'chirish tugmasi bilan keyboard
-            builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"delete_schedule_{schedule_id}")
-            )
-            
             await message.answer(
-                f"\U0001F4C5 {branch} - {lesson_type}\n\n{days_times}",
-                reply_markup=builder.as_markup(),
+                get_text(user_id, 'schedule_detail', branch=branch, days_times=days_times),
                 parse_mode="Markdown"
             )
-
-@dp.callback_query(F.data.startswith("delete_schedule_"))
-async def confirm_delete_schedule(callback: types.CallbackQuery):
-    try:
-        schedule_id = callback.data.replace("delete_schedule_", "")
-        user_id = callback.from_user.id
-        
-        # Tasdiqlash tugmalari
-        builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text="✅ Ha", callback_data=f"confirm_delete_{schedule_id}"),
-            InlineKeyboardButton(text="❌ Yo'q", callback_data="cancel_delete")
-        )
-        
-        await callback.message.edit_text(
-            get_text(user_id, 'confirm_delete'),
-            reply_markup=builder.as_markup()
-        )
-        await callback.answer()
-    except Exception as e:
-        logging.error(f"confirm_delete_schedule error: {e}")
-        await callback.answer("Xatolik yuz berdi")
-
-@dp.callback_query(F.data.startswith("confirm_delete_"))
-async def delete_schedule(callback: types.CallbackQuery):
-    try:
-        schedule_id = callback.data.replace("confirm_delete_", "")
-        user_id = callback.from_user.id
-        
-        # Jadvalni o'chirish
-        if schedule_id in schedules and schedules[schedule_id]['user_id'] == user_id:
-            branch = schedules[schedule_id]['branch']
-            del schedules[schedule_id]
-            
-            # Foydalanuvchi jadvallari ro'yxatidan o'chirish
-            if user_id in user_schedules and schedule_id in user_schedules[user_id]:
-                user_schedules[user_id].remove(schedule_id)
-            
-            await callback.message.edit_text(
-                get_text(user_id, 'schedule_deleted', branch=branch)
-            )
-        else:
-            await callback.message.edit_text("❌ Jadval topilmadi yoki sizga tegishli emas!")
-        
-        await callback.answer()
-    except Exception as e:
-        logging.error(f"delete_schedule error: {e}")
-        await callback.answer("Xatolik yuz berdi")
-
-@dp.callback_query(F.data == "cancel_delete")
-async def cancel_delete(callback: types.CallbackQuery):
-    try:
-        await callback.message.delete()
-        await callback.answer("Bekor qilindi")
-    except Exception as e:
-        logging.error(f"cancel_delete error: {e}")
-        await callback.answer("Xatolik yuz berdi")
-
-@dp.message(F.text.in_({'\u2795 Jadval qo\'shish', '\u2795 Добавить расписание', '\u2795 시간표 추가'}))
-async def add_schedule_start(message: types.Message, state: FSMContext):
-    """Yangi dars jadvali qo'shish - filial tanlash"""
-    user_id = message.from_user.id
-    
-    if user_status.get(user_id) == 'blocked':
-        await message.answer(get_text(user_id, 'blocked_user'))
-        return
-    
-    lang = user_languages.get(user_id, 'uz')
-    
-    # Filiallar ro'yxatini tayyorlash
-    builder = InlineKeyboardBuilder()
-    for location in LOCATIONS:
-        builder.row(
-            InlineKeyboardButton(text=location['name'], callback_data=f"branch_{location['name']}")
-        )
-    
-    await state.set_state(AddSchedule.selecting_branch)
-    await message.answer(
-        get_text(user_id, 'add_schedule_start'),
-        reply_markup=builder.as_markup()
-    )
-
-@dp.callback_query(AddSchedule.selecting_branch, F.data.startswith("branch_"))
-async def add_schedule_branch(callback: types.CallbackQuery, state: FSMContext):
-    try:
-        branch = callback.data.replace("branch_", "")
-        await state.update_data(branch=branch)
-        
-        user_id = callback.from_user.id
-        lang = user_languages.get(user_id, 'uz')
-        weekdays = WEEKDAYS.get(lang, WEEKDAYS['uz'])
-        
-        # Hafta kunlarini tanlash uchun keyboard
-        builder = InlineKeyboardBuilder()
-        for i, day in enumerate(weekdays):
-            builder.row(
-                InlineKeyboardButton(text=f"⬜ {day}", callback_data=f"weekday_{i}")
-            )
-        builder.row(
-            InlineKeyboardButton(text=get_text(user_id, 'next_button'), callback_data="weekdays_next")
-        )
-        
-        await state.update_data(selected_days={})
-        await state.set_state(AddSchedule.selecting_weekdays)
-        await callback.message.edit_text(
-            get_text(user_id, 'select_weekdays'),
-            reply_markup=builder.as_markup()
-        )
-        await callback.answer()
-    except Exception as e:
-        logging.error(f"add_schedule_branch error: {e}")
-        await callback.answer("Xatolik yuz berdi")
-
-@dp.callback_query(AddSchedule.selecting_weekdays, F.data.startswith("weekday_"))
-async def add_schedule_weekday_select(callback: types.CallbackQuery, state: FSMContext):
-    try:
-        data = await state.get_data()
-        selected_days = data.get('selected_days', {})
-        day_index = int(callback.data.replace("weekday_", ""))
-        
-        user_id = callback.from_user.id
-        lang = user_languages.get(user_id, 'uz')
-        weekdays = WEEKDAYS.get(lang, WEEKDAYS['uz'])
-        
-        # Kunni tanlash/bekor qilish
-        if day_index in selected_days:
-            del selected_days[day_index]
-        else:
-            selected_days[day_index] = None
-        
-        await state.update_data(selected_days=selected_days)
-        
-        # Keyboardni yangilash
-        builder = InlineKeyboardBuilder()
-        for i, day in enumerate(weekdays):
-            if i in selected_days:
-                builder.row(
-                    InlineKeyboardButton(text=f"✅ {day}", callback_data=f"weekday_{i}")
-                )
-            else:
-                builder.row(
-                    InlineKeyboardButton(text=f"⬜ {day}", callback_data=f"weekday_{i}")
-                )
-        builder.row(
-            InlineKeyboardButton(text=get_text(user_id, 'next_button'), callback_data="weekdays_next")
-        )
-        
-        await callback.message.edit_reply_markup(reply_markup=builder.as_markup())
-        await callback.answer()
-    except Exception as e:
-        logging.error(f"add_schedule_weekday_select error: {e}")
-        await callback.answer("Xatolik yuz berdi")
-
-@dp.callback_query(AddSchedule.selecting_weekdays, F.data == "weekdays_next")
-async def add_schedule_weekdays_next(callback: types.CallbackQuery, state: FSMContext):
-    try:
-        data = await state.get_data()
-        selected_days = data.get('selected_days', {})
-        user_id = callback.from_user.id
-        
-        if not selected_days:
-            await callback.answer("Hech bo'lmaganda 1 kun tanlang!", show_alert=True)
-            return
-        
-        days_without_time = [day for day in selected_days if selected_days[day] is None]
-        
-        if days_without_time:
-            await state.update_data(current_day=days_without_time[0])
-            await state.set_state(AddSchedule.entering_time)
-            
-            lang = user_languages.get(user_id, 'uz')
-            weekdays = WEEKDAYS.get(lang, WEEKDAYS['uz'])
-            day_name = weekdays[days_without_time[0]]
-            
-            await callback.message.edit_text(
-                get_text(user_id, 'enter_time', weekday=day_name)
-            )
-        else:
-            await save_schedule(callback.message, state, user_id)
-        
-        await callback.answer()
-    except Exception as e:
-        logging.error(f"add_schedule_weekdays_next error: {e}")
-        await callback.answer("Xatolik yuz berdi")
-
-@dp.message(AddSchedule.entering_time)
-async def add_schedule_enter_time(message: types.Message, state: FSMContext):
-    """Har bir kun uchun vaqt kiritish"""
-    user_id = message.from_user.id
-    
-    try:
-        time_str = message.text.strip()
-        hours, minutes = map(int, time_str.split(':'))
-        if hours < 0 or hours > 23 or minutes < 0 or minutes > 59:
-            raise ValueError
-        formatted_time = f"{hours:02d}:{minutes:02d}"
-    except:
-        lang = user_languages.get(user_id, 'uz')
-        await message.answer("❌ Noto'g'ri format! Iltimos, HH:MM formatida kiriting (masalan: 09:00)")
-        return
-    
-    data = await state.get_data()
-    selected_days = data.get('selected_days', {})
-    current_day = data.get('current_day')
-    
-    selected_days[current_day] = formatted_time
-    await state.update_data(selected_days=selected_days)
-    
-    days_without_time = [day for day in selected_days if selected_days[day] is None]
-    
-    if days_without_time:
-        await state.update_data(current_day=days_without_time[0])
-        lang = user_languages.get(user_id, 'uz')
-        weekdays = WEEKDAYS.get(lang, WEEKDAYS['uz'])
-        day_name = weekdays[days_without_time[0]]
-        
-        await message.answer(
-            get_text(user_id, 'enter_time', weekday=day_name)
-        )
-    else:
-        await save_schedule(message, state, user_id)
-
-async def save_schedule(message: types.Message, state: FSMContext, user_id: int):
-    """Jadvalni saqlash"""
-    try:
-        data = await state.get_data()
-        branch = data.get('branch')
-        selected_days = data.get('selected_days', {})
-        
-        lang = user_languages.get(user_id, 'uz')
-        weekdays = WEEKDAYS.get(lang, WEEKDAYS['uz'])
-        
-        schedule_id = f"schedule_{user_id}_{datetime.now().timestamp()}"
-        
-        days_with_names = {}
-        for day_index, time in selected_days.items():
-            day_name = weekdays[day_index]
-            days_with_names[day_name] = time
-        
-        schedules[schedule_id] = {
-            'user_id': user_id,
-            'branch': branch,
-            'lesson_type': 'Dars',
-            'days': days_with_names
-        }
-        user_schedules[user_id].append(schedule_id)
-        
-        days_list = ", ".join(days_with_names.keys())
-        times_list = ", ".join(days_with_names.values())
-        
-        await message.answer(
-            get_text(user_id, 'schedule_saved', branch=branch, days=days_list, times=times_list),
-            parse_mode="Markdown"
-        )
-        
-        await state.clear()
-        
-        keyboard = await main_keyboard(user_id)
-        await message.answer("Asosiy menyu:", reply_markup=keyboard)
-    except Exception as e:
-        logging.error(f"save_schedule error: {e}")
-        await message.answer("❌ Jadvalni saqlashda xatolik yuz berdi")
 
 # --- BOSHQA FOYDALANUVCHI HANDLERLARI ---
 @dp.message(F.text.in_({'\U0001F4CA Mening statistikam', '\U0001F4CA Моя статистика', '\U0001F4CA 내 통계'}))
@@ -983,50 +688,17 @@ async def show_branches(message: types.Message):
         await message.answer(get_text(user_id, 'blocked_user'))
         return
     
-    lang = user_languages.get(user_id, 'uz')
-    
-    universities = []
-    lyceums = []
-    schools = []
-    
-    for branch in LOCATIONS:
-        if "Universitet" in branch['name'] or "Kimyo" in branch['name']:
-            universities.append(branch)
-        elif "Litsey" in branch['name'] or "litseyi" in branch['name'].lower():
-            lyceums.append(branch)
-        elif "Maktab" in branch['name'] or "School" in branch['name'] or "Umnie Deti" in branch['name']:
-            schools.append(branch)
-    
     # Barcha tugmalarni bitta builderda yig'amiz
     builder = InlineKeyboardBuilder()
     
-    # Universitetlar
-    if universities:
-        for uni in universities:
-            maps_link = get_yandex_maps_link(uni['lat'], uni['lon'])
-            builder.row(
-                InlineKeyboardButton(text=f"\U0001F4CD {uni['name']}", url=maps_link)
-            )
+    for loc in LOCATIONS:
+        maps_link = get_yandex_maps_link(loc['lat'], loc['lon'])
+        builder.row(
+            InlineKeyboardButton(text=f"\U0001F4CD {loc['name']}", url=maps_link)
+        )
     
-    # Litseylar
-    if lyceums:
-        for lyceum in lyceums:
-            maps_link = get_yandex_maps_link(lyceum['lat'], lyceum['lon'])
-            builder.row(
-                InlineKeyboardButton(text=f"\U0001F4CD {lyceum['name']}", url=maps_link)
-            )
-    
-    # Maktablar
-    if schools:
-        for school in schools:
-            maps_link = get_yandex_maps_link(school['lat'], school['lon'])
-            builder.row(
-                InlineKeyboardButton(text=f"\U0001F4CD {school['name']}", url=maps_link)
-            )
-    
-    # Bitta xabar - barcha tugmalar
     await message.answer(
-        "\U0001F3E2 Mavjud filiallar:",
+        "\U0001F3E2 Mavjud filiallar (lokatsiya uchun bosing):",
         reply_markup=builder.as_markup()
     )
 
@@ -1201,9 +873,6 @@ async def admin_panel(message: types.Message):
         )
         builder.row(
             InlineKeyboardButton(text="🏢 Filiallar", callback_data="admin_locations_main"),
-            InlineKeyboardButton(text="📥 Backup", callback_data="admin_backup")
-        )
-        builder.row(
             InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report")
         )
         
@@ -1216,7 +885,7 @@ async def admin_panel(message: types.Message):
         logging.error(f"admin_panel error: {e}")
         await message.answer("❌ Admin panelni ochishda xatolik yuz berdi")
 
-# --- 1. STATISTIKA BO'LIMI (TUZATILGAN - GRAFIKDAN QAYTISH MUAMMOSI HAL) ---
+# --- 1. STATISTIKA BO'LIMI (GRAFIKLAR O'CHIRILGAN) ---
 @dp.callback_query(F.data == "admin_stats_main")
 async def admin_stats_main(callback: types.CallbackQuery):
     """Statistika asosiy menyusi"""
@@ -1228,14 +897,13 @@ async def admin_stats_main(callback: types.CallbackQuery):
         builder = InlineKeyboardBuilder()
         builder.row(
             InlineKeyboardButton(text="📊 Umumiy statistika", callback_data="admin_stats_general"),
-            InlineKeyboardButton(text="📈 Grafiklar", callback_data="admin_stats_charts")
+            InlineKeyboardButton(text="🏆 Filiallar reytingi", callback_data="admin_stats_branches")
         )
         builder.row(
-            InlineKeyboardButton(text="🏆 Filiallar reytingi", callback_data="admin_stats_branches"),
-            InlineKeyboardButton(text="👥 O'qituvchilar reytingi", callback_data="admin_stats_teachers")
+            InlineKeyboardButton(text="👥 O'qituvchilar reytingi", callback_data="admin_stats_teachers"),
+            InlineKeyboardButton(text="📅 Oylik hisobot", callback_data="admin_monthly")
         )
         builder.row(
-            InlineKeyboardButton(text="📅 Oylik hisobot", callback_data="admin_monthly"),
             InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back")
         )
         
@@ -1313,56 +981,6 @@ async def admin_stats_general(callback: types.CallbackQuery):
     except Exception as e:
         logging.error(f"admin_stats_general error: {e}")
         await callback.message.edit_text("❌ Statistikani olishda xatolik yuz berdi")
-        await callback.answer()
-
-@dp.callback_query(F.data == "admin_stats_charts")
-async def admin_stats_charts(callback: types.CallbackQuery):
-    """Grafikli statistika"""
-    if not check_admin(callback.message.chat.id):
-        await callback.answer("Ruxsat yo'q!")
-        return
-    
-    try:
-        # So'nggi 7 kunlik davomatlar
-        now_uzb = datetime.now(UZB_TZ)
-        dates = []
-        counts = []
-        
-        for i in range(6, -1, -1):
-            date = (now_uzb - timedelta(days=i)).strftime("%Y-%m-%d")
-            dates.append((now_uzb - timedelta(days=i)).strftime("%d.%m"))
-            count = len([k for k in daily_attendance_log if k[2] == date])
-            counts.append(count)
-        
-        # Grafik yaratish
-        plt.figure(figsize=(10, 6))
-        plt.bar(dates, counts, color='skyblue')
-        plt.title(f"So'nggi 7 kunlik davomatlar", fontsize=16)
-        plt.xlabel("Sanalar", fontsize=12)
-        plt.ylabel("Davomatlar soni", fontsize=12)
-        plt.grid(axis='y', alpha=0.3)
-        
-        for i, v in enumerate(counts):
-            plt.text(i, v + 0.1, str(v), ha='center', va='bottom')
-        
-        # Grafikni saqlash
-        img_bytes = io.BytesIO()
-        plt.savefig(img_bytes, format='png', dpi=100, bbox_inches='tight')
-        img_bytes.seek(0)
-        plt.close()
-        
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_stats_main"))
-        
-        await callback.message.answer_photo(
-            photo=types.BufferedInputFile(img_bytes.getvalue(), filename="chart.png"),
-            caption="📊 So'nggi 7 kunlik davomatlar statistikasi",
-            reply_markup=builder.as_markup()
-        )
-        await callback.answer()
-    except Exception as e:
-        logging.error(f"admin_stats_charts error: {e}")
-        await callback.message.answer("❌ Grafik yaratishda xatolik yuz berdi")
         await callback.answer()
 
 @dp.callback_query(F.data == "admin_stats_branches")
@@ -1487,7 +1105,7 @@ async def admin_monthly(callback: types.CallbackQuery):
         await callback.message.edit_text("❌ Oylik hisobotni olishda xatolik yuz berdi")
         await callback.answer()
 
-# --- 2. FOYDALANUVCHILARNI BOSHQARISH (QIDIRUV O'CHIRILGAN) ---
+# --- 2. FOYDALANUVCHILARNI BOSHQARISH ---
 @dp.callback_query(F.data == "admin_users_main")
 async def admin_users_main(callback: types.CallbackQuery):
     """Foydalanuvchilarni boshqarish menyusi"""
@@ -1849,7 +1467,6 @@ async def admin_broadcast_confirm(callback: types.CallbackQuery, state: FSMConte
                 failed_count += 1
                 logging.error(f"Broadcast error for user {user_id}: {e}")
         
-        # Broadcast tarixiga qo'shish
         broadcast_history.append({
             'text': data.get('message_text', ''),
             'date': datetime.now(UZB_TZ).strftime("%Y-%m-%d %H:%M:%S"),
@@ -1895,7 +1512,7 @@ async def admin_broadcast_cancel(callback: types.CallbackQuery, state: FSMContex
         logging.error(f"admin_broadcast_cancel error: {e}")
         await callback.answer("Xatolik yuz berdi")
 
-# --- 4. DARS JADVALLARI (ADMIN UCHUN YANGI) - STATISTIKA O'CHIRILGAN ---
+# --- 4. DARS JADVALLARI (ADMIN UCHUN) ---
 @dp.callback_query(F.data == "admin_schedules_main")
 async def admin_schedules_main(callback: types.CallbackQuery):
     """Dars jadvallarini boshqarish"""
@@ -1906,7 +1523,10 @@ async def admin_schedules_main(callback: types.CallbackQuery):
     try:
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(text="📋 O'qituvchiga jadval qo'shish", callback_data="admin_add_schedule")
+            InlineKeyboardButton(text="➕ O'qituvchiga jadval qo'shish", callback_data="admin_add_schedule")
+        )
+        builder.row(
+            InlineKeyboardButton(text="📋 Faol dars jadvallari", callback_data="admin_active_schedules")
         )
         builder.row(
             InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back")
@@ -1922,6 +1542,51 @@ async def admin_schedules_main(callback: types.CallbackQuery):
         logging.error(f"admin_schedules_main error: {e}")
         await callback.answer("Xatolik yuz berdi")
 
+@dp.callback_query(F.data == "admin_active_schedules")
+async def admin_active_schedules(callback: types.CallbackQuery):
+    """Barcha faol dars jadvallarini ko'rish"""
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    try:
+        if not schedules:
+            await callback.message.edit_text("📭 Hali dars jadvallari mavjud emas.")
+            await callback.answer()
+            return
+        
+        text = "📋 **Faol dars jadvallari**\n\n"
+        for schedule_id, schedule in schedules.items():
+            teacher_name = user_names.get(schedule['user_id'], f"ID: {schedule['user_id']}")
+            branch = schedule['branch']
+            lesson_type = schedule.get('lesson_type', 'Dars')
+            days_times = ""
+            for day, time in schedule['days'].items():
+                days_times += f"• {day}: {time}\n"
+            
+            text += f"👤 {teacher_name}\n"
+            text += f"🏢 {branch}\n"
+            text += f"📚 {lesson_type}\n"
+            text += f"{days_times}\n"
+            text += "➖➖➖➖➖➖➖\n\n"
+        
+        # Uzun xabarni bo'lib yuborish
+        if len(text) > 4000:
+            parts = [text[i:i+4000] for i in range(0, len(text), 4000)]
+            for i, part in enumerate(parts):
+                await callback.message.answer(part, parse_mode="Markdown")
+            await callback.message.delete()
+        else:
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_schedules_main"))
+            await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+        
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_active_schedules error: {e}")
+        await callback.message.edit_text("❌ Dars jadvallarini olishda xatolik yuz berdi")
+        await callback.answer()
+
 @dp.callback_query(F.data == "admin_add_schedule")
 async def admin_add_schedule_start(callback: types.CallbackQuery, state: FSMContext):
     """Admin o'qituvchiga jadval qo'shish - o'qituvchini tanlash"""
@@ -1930,9 +1595,6 @@ async def admin_add_schedule_start(callback: types.CallbackQuery, state: FSMCont
         return
     
     try:
-        user_id = callback.from_user.id
-        lang = user_languages.get(user_id, 'uz')
-        
         # Faol o'qituvchilar ro'yxati
         builder = InlineKeyboardBuilder()
         for uid in user_ids:
@@ -1949,7 +1611,7 @@ async def admin_add_schedule_start(callback: types.CallbackQuery, state: FSMCont
         
         await state.set_state(AdminAddSchedule.selecting_teacher)
         await callback.message.edit_text(
-            get_text(user_id, 'select_teacher'),
+            "👤 O'qituvchini tanlang:",
             reply_markup=builder.as_markup()
         )
         await callback.answer()
@@ -1963,9 +1625,6 @@ async def admin_add_schedule_teacher(callback: types.CallbackQuery, state: FSMCo
     try:
         teacher_id = int(callback.data.replace("admin_teacher_", ""))
         await state.update_data(teacher_id=teacher_id)
-        
-        user_id = callback.from_user.id
-        lang = user_languages.get(user_id, 'uz')
         
         # Filiallar ro'yxati
         builder = InlineKeyboardBuilder()
@@ -2004,7 +1663,7 @@ async def admin_add_schedule_branch(callback: types.CallbackQuery, state: FSMCon
         
         await state.set_state(AdminAddSchedule.selecting_lesson_type)
         await callback.message.edit_text(
-            get_text(user_id, 'select_lesson_type'),
+            "📚 Dars turini tanlang:",
             reply_markup=builder.as_markup()
         )
         await callback.answer()
@@ -2204,7 +1863,7 @@ async def admin_save_schedule(message: types.Message, state: FSMContext):
         await message.answer("❌ Jadvalni saqlashda xatolik yuz berdi")
         await state.clear()
 
-# --- 5. FILIALLAR (YANGILANGAN) ---
+# --- 5. FILIALLAR (ADMIN UCHUN) ---
 @dp.callback_query(F.data == "admin_locations_main")
 async def admin_locations_main(callback: types.CallbackQuery):
     """Filiallarni boshqarish menyusi"""
@@ -2240,7 +1899,6 @@ async def admin_location_list(callback: types.CallbackQuery):
         return
     
     try:
-        # Barcha tugmalarni bitta builderda yig'amiz
         builder = InlineKeyboardBuilder()
         
         for loc in LOCATIONS:
@@ -2324,73 +1982,45 @@ async def admin_location_add_coords(message: types.Message, state: FSMContext):
     
     await state.clear()
 
-# --- 6. BACKUP ---
-@dp.callback_query(F.data == "admin_backup")
-async def admin_backup(callback: types.CallbackQuery):
-    """Backup yaratish"""
-    if not check_admin(callback.message.chat.id):
-        await callback.answer("Ruxsat yo'q!")
-        return
-    
-    try:
-        await callback.message.edit_text("⏳ Backup yaratilmoqda...")
-        
-        # Ma'lumotlarni pickle bilan saqlash
-        backup_data = {
-            'daily_attendance_log': list(daily_attendance_log),
-            'attendance_counter': dict(attendance_counter),
-            'user_languages': user_languages,
-            'user_ids': list(user_ids),
-            'user_names': user_names,
-            'user_status': user_status,
-            'schedules': schedules,
-            'user_schedules': dict(user_schedules),
-            'broadcast_history': broadcast_history,
-            'locations': LOCATIONS,
-            'timestamp': datetime.now(UZB_TZ).isoformat()
-        }
-        
-        backup_bytes = io.BytesIO()
-        pickle.dump(backup_data, backup_bytes)
-        backup_bytes.seek(0)
-        
-        filename = f"backup_{datetime.now(UZB_TZ).strftime('%Y%m%d_%H%M%S')}.pkl"
-        
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back"))
-        
-        await callback.message.answer_document(
-            types.BufferedInputFile(backup_bytes.getvalue(), filename=filename),
-            caption=f"✅ Backup yaratildi\n\n📅 {datetime.now(UZB_TZ).strftime('%Y-%m-%d %H:%M:%S')}",
-            reply_markup=builder.as_markup()
-        )
-        
-        await callback.answer()
-        
-    except Exception as e:
-        logging.error(f"admin_backup error: {e}")
-        await callback.message.edit_text(f"❌ Backup yaratishda xatolik: {e}")
-        await callback.answer()
-
-# --- 7. PDF HISOBOT (TAKOMILLASHTIRILGAN) ---
+# --- 6. PDF HISOBOT (TAKOMILLASHTIRILGAN) ---
 @dp.callback_query(F.data == "admin_pdf_report")
-async def admin_pdf_report(callback: types.CallbackQuery):
-    """PDF hisobot yaratish - kunlik batafsil"""
+async def admin_pdf_report_start(callback: types.CallbackQuery, state: FSMContext):
+    """PDF hisobot - sanani kiritish"""
     if not check_admin(callback.message.chat.id):
         await callback.answer("Ruxsat yo'q!")
         return
     
     try:
-        await callback.message.edit_text("⏳ PDF hisobot yaratilmoqda...")
+        await state.set_state(PDFReport.waiting_for_date)
+        await callback.message.edit_text(
+            "📅 Hisobot olish uchun sanani kiriting (format: YYYY-MM-DD)\n"
+            "Masalan: 2026-03-01"
+        )
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_pdf_report_start error: {e}")
+        await callback.answer("Xatolik yuz berdi")
+
+@dp.message(PDFReport.waiting_for_date)
+async def admin_pdf_report_date(message: types.Message, state: FSMContext):
+    """Sanani qabul qilish va PDF yaratish"""
+    if not check_admin(message.chat.id):
+        await state.clear()
+        return
+    
+    try:
+        date_str = message.text.strip()
+        # Sanani tekshirish
+        report_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        report_date_str = report_date.strftime("%Y-%m-%d")
         
-        now_uzb = datetime.now(UZB_TZ)
-        today = now_uzb.strftime("%Y-%m-%d")
+        await message.answer("⏳ PDF hisobot yaratilmoqda...")
         
-        # Bugungi davomatlar
-        today_attendances = []
+        # Shu kungi davomatlar
+        day_attendances = []
         for att in daily_attendance_log:
-            if att[2] == today:
-                today_attendances.append(att)
+            if att[2] == report_date_str:
+                day_attendances.append(att)
         
         # PDF yaratish
         pdf_buffer = io.BytesIO()
@@ -2406,23 +2036,22 @@ async def admin_pdf_report(callback: types.CallbackQuery):
             alignment=1,
             spaceAfter=30
         )
-        elements.append(Paragraph(f"Davomat Hisoboti - {now_uzb.strftime('%d.%m.%Y')}", title_style))
+        elements.append(Paragraph(f"Davomat Hisoboti - {report_date.strftime('%d.%m.%Y')}", title_style))
         
-        # Sana
-        elements.append(Paragraph(f"Hisobot yaratilgan vaqt: {now_uzb.strftime('%H:%M:%S')}", styles['Normal']))
+        elements.append(Paragraph(f"Hisobot yaratilgan vaqt: {datetime.now(UZB_TZ).strftime('%H:%M:%S')}", styles['Normal']))
         elements.append(Spacer(1, 20))
         
         # Umumiy statistika
-        total_attendances = len(today_attendances)
-        unique_teachers = len(set(att[0] for att in today_attendances))
-        unique_branches = len(set(att[1] for att in today_attendances))
+        total_attendances = len(day_attendances)
+        unique_teachers = len(set(att[0] for att in day_attendances))
+        unique_branches = len(set(att[1] for att in day_attendances))
         
         stats_data = [
             ['Ko\'rsatkich', 'Qiymat'],
             ['Jami davomatlar', str(total_attendances)],
             ['O\'qituvchilar soni', str(unique_teachers)],
             ['Filiallar soni', str(unique_branches)],
-            ['Sana', now_uzb.strftime('%d.%m.%Y')]
+            ['Sana', report_date.strftime('%d.%m.%Y')]
         ]
         
         stats_table = Table(stats_data, colWidths=[3*inch, 2*inch])
@@ -2440,11 +2069,11 @@ async def admin_pdf_report(callback: types.CallbackQuery):
         elements.append(Spacer(1, 20))
         
         # Batafsil davomatlar jadvali
-        if today_attendances:
-            elements.append(Paragraph("Bugungi davomatlar (batafsil)", styles['Heading2']))
+        if day_attendances:
+            elements.append(Paragraph(f"{report_date.strftime('%d.%m.%Y')} dagi davomatlar", styles['Heading2']))
             
             data = [['№', 'Vaqt', 'O\'qituvchi', 'Filial']]
-            for i, (uid, branch, date, time) in enumerate(sorted(today_attendances, key=lambda x: x[3]), 1):
+            for i, (uid, branch, date, time) in enumerate(sorted(day_attendances, key=lambda x: x[3]), 1):
                 teacher_name = user_names.get(uid, f"ID: {uid}")
                 data.append([str(i), time, teacher_name, branch])
             
@@ -2458,6 +2087,8 @@ async def admin_pdf_report(callback: types.CallbackQuery):
                 ('FONTSIZE', (0, 0), (-1, -1), 10)
             ]))
             elements.append(table)
+        else:
+            elements.append(Paragraph("Bu kunda davomat yo'q", styles['Normal']))
         
         # PDF ni saqlash
         doc.build(elements)
@@ -2466,21 +2097,23 @@ async def admin_pdf_report(callback: types.CallbackQuery):
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back"))
         
-        await callback.message.answer_document(
+        await message.answer_document(
             types.BufferedInputFile(pdf_buffer.getvalue(), 
-                                    filename=f"davomat_{now_uzb.strftime('%Y%m%d')}.pdf"),
-            caption=f"📊 Bugungi davomat hisoboti\n\n{now_uzb.strftime('%d.%m.%Y %H:%M')}",
+                                    filename=f"davomat_{report_date_str}.pdf"),
+            caption=f"📊 {report_date.strftime('%d.%m.%Y')} kunlik davomat hisoboti",
             reply_markup=builder.as_markup()
         )
         
-        await callback.answer()
+        await state.clear()
         
+    except ValueError:
+        await message.answer("❌ Noto'g'ri sana formati. Qaytadan urinib ko'ring:\nFormat: YYYY-MM-DD")
     except Exception as e:
-        logging.error(f"admin_pdf_report error: {e}")
-        await callback.message.edit_text(f"❌ PDF yaratishda xatolik: {e}")
-        await callback.answer()
+        logging.error(f"admin_pdf_report_date error: {e}")
+        await message.answer(f"❌ PDF yaratishda xatolik: {e}")
+        await state.clear()
 
-# --- 8. ORTGA QAYTISH ---
+# --- 7. ORTGA QAYTISH ---
 @dp.callback_query(F.data == "admin_back")
 async def admin_back(callback: types.CallbackQuery):
     """Admin panelga qaytish"""
@@ -2500,9 +2133,6 @@ async def admin_back(callback: types.CallbackQuery):
         )
         builder.row(
             InlineKeyboardButton(text="🏢 Filiallar", callback_data="admin_locations_main"),
-            InlineKeyboardButton(text="📥 Backup", callback_data="admin_backup")
-        )
-        builder.row(
             InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report")
         )
         
