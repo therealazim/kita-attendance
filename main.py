@@ -34,7 +34,12 @@ import pickle
 logging.basicConfig(level=logging.INFO)
 
 # --- SOZLAMALAR ---
-TOKEN = "8268187024:AAGVlMOzOUTXMyrB8ePj9vHcayshkZ4PGW4"
+# Tokenni Render'dagi "BOT_TOKEN" dan oladi (agar topilmasa xech narsa o'chmasligi uchun eski tokenni ishlatadi)
+TOKEN = os.environ.get("BOT_TOKEN", "8268187024:AAGVlMOzOUTXMyrB8ePj9vHcayshkZ4PGW4")
+
+# Bazani Render'dagi "DATABASE_URL" dan oladi
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
 ADMIN_GROUP_ID = -1003885800610 
 UZB_TZ = pytz.timezone('Asia/Tashkent') 
 
@@ -42,8 +47,19 @@ UZB_TZ = pytz.timezone('Asia/Tashkent')
 WEATHER_API_KEY = "2b7818365e4ac19cebd34c34a135a669"
 WEATHER_API_URL = "http://api.openweathermap.org/data/2.5/weather"
 
-# Bot va Dispatcher obyektlarini yaratish
+# Bot va Baza obyektlarini yaratish
 bot = Bot(token=TOKEN)
+
+# DIQQAT: Hozirgi kodda Database klassi yo'q. Dastur ishga tushganda xato (NameError) bermasligi uchun 
+# quyidagi vaqtinchalik klass qo'shildi. Agar o'zingizda alohida Database fayli bo'lsa, 
+# tepada import qilasiz (masalan: from db import Database)
+class Database:
+    def __init__(self, url):
+        self.url = url
+
+db = Database(DATABASE_URL)
+
+# Dispatcher obyektini yaratish
 dp = Dispatcher()
 
 # Foydalanuvchi ism-familiyalarini saqlash uchun
@@ -59,10 +75,10 @@ user_status = {}  # {user_id: 'active' or 'blocked'}
 admins = {ADMIN_GROUP_ID: True}
 
 # Broadcast xabarlar tarixi
-broadcast_history = []  # [{text: '...', date: '...', sent_count: 0, specialty: '...'}]
+broadcast_history = []  #[{text: '...', date: '...', sent_count: 0, specialty: '...'}]
 
 # BARCHA LOKATSIYALAR RO'YXATI
-LOCATIONS = [
+LOCATIONS =[
     {"name": "Kimyo Xalqaro Universiteti", "lat": 41.257490, "lon": 69.220109},
     {"name": "78-Maktab", "lat": 41.282791, "lon": 69.173290},
     {"name": "126-Maktab", "lat": 41.260249, "lon": 69.153216},
@@ -129,7 +145,7 @@ def load_data():
             user_names = data.get('user_names', {})
             user_specialty = data.get('user_specialty', {})
             user_status = data.get('user_status', {})
-            broadcast_history = data.get('broadcast_history', [])
+            broadcast_history = data.get('broadcast_history',[])
             daily_attendance_log = data.get('daily_attendance_log', set())
             attendance_counter = data.get('attendance_counter', {})
             user_languages = data.get('user_languages', {})
@@ -181,9 +197,9 @@ class PDFReport(StatesGroup):
 
 # Hafta kunlari
 WEEKDAYS = {
-    'uz': ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba'],
-    'ru': ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'],
-    'kr': ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일']
+    'uz':['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba'],
+    'ru':['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'],
+    'kr':['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일']
 }
 
 # Hafta kunlari tartibi (saralash uchun)
@@ -193,13 +209,13 @@ WEEKDAY_ORDER = {
 
 # Dars turlari
 LESSON_TYPES = {
-    'uz': ['IT', 'Koreys tili'],
+    'uz':['IT', 'Koreys tili'],
     'ru': ['IT', 'Корейский язык'],
     'kr': ['IT', '한국어']
 }
 
 # Hafta kunlari nomlari (eslatma uchun)
-WEEKDAYS_UZ = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
+WEEKDAYS_UZ =["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
 
 # Ob-havo shartlariga mos tavsiyalar
 WEATHER_RECOMMENDATIONS = {
@@ -308,7 +324,7 @@ TRANSLATIONS = {
         'stats': "\U0001F4CA Ваша статистика:",
         'no_stats': "\U0001F4AD Вы еще не отмечались",
         'branches': "\U0001F3E2 Доступные филиалы (локация):",
-        'help': "\U0001F916 Руководство по использованию:\n\n\U0001F4CD Для отметки:\n• Нажмите кнопку \"📍 Подтвердить прибытие\"\n• Отправьте свою геолокацию\n\n\U0001F4CA Статистика:\n• \"📊 Моя статистика\" - история отметок\n• \"🏢 Филиалы\" - список всех филиалов\n\n⚠️ Примечания:\n• В каждом филиале можно отмечаться только 1 раз в день\n• Отметки записываются по ташкентскому времени",
+        'help': "\U0001F916 Руководство по использования:\n\n\U0001F4CD Для отметки:\n• Нажмите кнопку \"📍 Подтвердить прибытие\"\n• Отправьте свою геолокацию\n\n\U0001F4CA Статистика:\n• \"📊 Моя статистика\" - история отметок\n• \"🏢 Филиалы\" - список всех филиалов\n\n⚠️ Примечания:\n• В каждом филиале можно отмечаться только 1 раз в день\n• Отметки записываются по ташкентскому времени",
         'attendance_success': "✅ Отметка подтверждена!\n\n\U0001F3EB Филиал: {branch}\n\U0001F4C5 Дата: {date}\n⏰ Время: {time}\n\U0001F4CA Посещений в этом месяце: {count}\n\U0001F4CD Расстояние: {distance:.1f} м",
         'already_attended': "⚠️ Вы уже отмечались сегодня в филиале {branch}!",
         'not_in_area': "❌ Вы не находитесь в зоне учебных заведений!",
@@ -329,7 +345,7 @@ TRANSLATIONS = {
         'select_lesson_type': "📚 Выберите тип урока:",
         'active_schedules': "📋 Активные расписания",
         'no_active_schedules': "📭 Нет активных расписаний.",
-        'schedule_info': "{teacher} [{specialty}]\n🏢 {branch}\n📚 {lesson_type}\n{days_times}",
+        'schedule_info': "{teacher}[{specialty}]\n🏢 {branch}\n📚 {lesson_type}\n{days_times}",
         'enter_date': "📅 Введите дату для отчета (формат: YYYY-MM-DD)\nНапример: 2026-03-01",
         'invalid_date': "❌ Неверный формат даты. Попробуйте снова:",
         'select_broadcast_specialty': "📢 Каким учителям отправить сообщение?",
@@ -496,7 +512,7 @@ async def create_schedule_pdf(user_id: int) -> io.BytesIO:
     """Foydalanuvchi uchun dars jadvali PDF yaratish"""
     pdf_buffer = io.BytesIO()
     doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
-    elements = []
+    elements =[]
     styles = getSampleStyleSheet()
     
     # Sarlavha
@@ -815,15 +831,15 @@ async def my_stats(message: types.Message):
     lang = user_languages.get(user_id, 'uz')
     if lang == 'uz':
         month_names = month_names_uz
-        weekdays = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
+        weekdays =["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
         current_month_text = "(joriy oy)"
     elif lang == 'ru':
         month_names = month_names_ru
-        weekdays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+        weekdays =["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
         current_month_text = "(текущий месяц)"
     else:
         month_names = month_names_kr
-        weekdays = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
+        weekdays =["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
         current_month_text = "(이번 달)"
     
     text = get_text(user_id, 'stats') + "\n\n"
@@ -1242,7 +1258,7 @@ async def admin_stats_general(callback: types.CallbackQuery):
         top_teacher_id = max(teacher_stats.items(), key=lambda x: x[1]) if teacher_stats else (None, 0)
         top_teacher_name = user_names.get(top_teacher_id[0], "Noma'lum") if top_teacher_id[0] else "Yo'q"
         top_teacher_specialty = user_specialty.get(top_teacher_id[0], '')
-        top_teacher_display = f"{top_teacher_name} [{top_teacher_specialty}]" if top_teacher_specialty else top_teacher_name
+        top_teacher_display = f"{top_teacher_name}[{top_teacher_specialty}]" if top_teacher_specialty else top_teacher_name
         
         text = f"""
 📊 Umumiy statistika
@@ -1451,7 +1467,7 @@ async def admin_user_info(callback: types.CallbackQuery):
         
         # Foydalanuvchi statistikasi
         user_attendances = len([k for k in daily_attendance_log if k[0] == uid])
-        user_schedules_count = len(user_schedules.get(uid, []))
+        user_schedules_count = len(user_schedules.get(uid,[]))
         
         # Oxirgi davomat
         last_attendance = "Yo'q"
@@ -1589,7 +1605,7 @@ async def admin_users_active(callback: types.CallbackQuery):
         return
     
     try:
-        active = [uid for uid in user_ids if user_status.get(uid) != 'blocked']
+        active =[uid for uid in user_ids if user_status.get(uid) != 'blocked']
         
         if not active:
             await callback.message.edit_text("📭 Faol foydalanuvchilar yo'q.")
@@ -1625,7 +1641,7 @@ async def admin_users_blocked(callback: types.CallbackQuery):
         return
     
     try:
-        blocked = [uid for uid in user_ids if user_status.get(uid) == 'blocked']
+        blocked =[uid for uid in user_ids if user_status.get(uid) == 'blocked']
         
         if not blocked:
             await callback.message.edit_text("📭 Bloklangan foydalanuvchilar yo'q.")
@@ -1729,10 +1745,10 @@ async def admin_broadcast_message(message: types.Message, state: FSMContext):
         specialty = data.get('specialty')
         
         if specialty:
-            target_users = [uid for uid in user_ids if user_status.get(uid) != 'blocked' and user_specialty.get(uid) == specialty]
+            target_users =[uid for uid in user_ids if user_status.get(uid) != 'blocked' and user_specialty.get(uid) == specialty]
             specialty_text = f" ({specialty})"
         else:
-            target_users = [uid for uid in user_ids if user_status.get(uid) != 'blocked']
+            target_users =[uid for uid in user_ids if user_status.get(uid) != 'blocked']
             specialty_text = " (barcha)"
         
         total_users = len(target_users)
@@ -1763,9 +1779,9 @@ async def admin_broadcast_confirm(callback: types.CallbackQuery, state: FSMConte
         specialty = data.get('specialty')
         
         if specialty:
-            target_users = [uid for uid in user_ids if user_status.get(uid) != 'blocked' and user_specialty.get(uid) == specialty]
+            target_users =[uid for uid in user_ids if user_status.get(uid) != 'blocked' and user_specialty.get(uid) == specialty]
         else:
-            target_users = [uid for uid in user_ids if user_status.get(uid) != 'blocked']
+            target_users =[uid for uid in user_ids if user_status.get(uid) != 'blocked']
         
         await callback.message.edit_text("⏳ Xabarlar yuborilmoqda...")
         
@@ -2137,7 +2153,7 @@ async def admin_edit_schedule_enter_time(message: types.Message, state: FSMConte
     selected_days[current_day] = formatted_time
     await state.update_data(edit_selected_days=selected_days)
     
-    days_without_time = [day for day in selected_days if selected_days[day] is None]
+    days_without_time =[day for day in selected_days if selected_days[day] is None]
     
     if days_without_time:
         await state.update_data(edit_current_day=days_without_time[0])
@@ -2389,7 +2405,7 @@ async def admin_add_schedule_weekdays_next(callback: types.CallbackQuery, state:
             await callback.answer("Hech bo'lmaganda 1 kun tanlang!", show_alert=True)
             return
         
-        days_without_time = [day for day in selected_days if selected_days[day] is None]
+        days_without_time =[day for day in selected_days if selected_days[day] is None]
         
         if days_without_time:
             await state.update_data(current_day=days_without_time[0])
@@ -2670,7 +2686,7 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
         # PDF yaratish
         pdf_buffer = io.BytesIO()
         doc = SimpleDocTemplate(pdf_buffer, pagesize=landscape(letter))
-        elements = []
+        elements =[]
         styles = getSampleStyleSheet()
         
         # Sarlavha
@@ -2719,14 +2735,9 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
                     late_minutes_total += late_mins
         
         stats_data = [
-            ['Ko\'rsatkich', 'Qiymat'],
-            ['Jami davomatlar', str(total_attendances)],
-            ['O\'qituvchilar soni', str(unique_teachers)],
+            ['Ko\'rsatkich', 'Qiymat'],['Jami davomatlar', str(total_attendances)],['O\'qituvchilar soni', str(unique_teachers)],
             ['Filiallar soni', str(unique_branches)],
-            ['Vaqtida kelganlar', str(ontime_count)],
-            ['Kechikkanlar', str(late_count)],
-            ['O\'rtacha kechikish', f"{late_minutes_total / max(late_count, 1):.1f} min"],
-            ['Sana', report_date.strftime('%d.%m.%Y')]
+            ['Vaqtida kelganlar', str(ontime_count)],['Kechikkanlar', str(late_count)],['O\'rtacha kechikish', f"{late_minutes_total / max(late_count, 1):.1f} min"],['Sana', report_date.strftime('%d.%m.%Y')]
         ]
         
         stats_table = Table(stats_data, colWidths=[3*inch, 2*inch])
@@ -2993,3 +3004,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
