@@ -37,7 +37,7 @@ dp = Dispatcher()
 # Foydalanuvchi ism-familiyalarini saqlash uchun
 user_names = {}  # {user_id: full_name}
 
-# BARCHA LOKATSIYALAR RO'YXATI (YANGI MAKTABLAR QO'SHILDI)
+# BARCHA LOKATSIYALAR RO'YXATI
 LOCATIONS = [
     {"name": "Kimyo Xalqaro Universiteti", "lat": 41.257490, "lon": 69.220109},
     {"name": "78-Maktab", "lat": 41.282791, "lon": 69.173290},
@@ -56,8 +56,8 @@ LOCATIONS = [
     {"name": "200-Maktab", "lat": 41.263860, "lon": 69.181538},
     {"name": "Selxoz litseyi", "lat": 41.362532, "lon": 69.340768},
     {"name": "294-Maktab", "lat": 41.281633, "lon": 69.289237},
-    {"name": "Umnie Deti School", "lat": 41.315790, "lon": 69.209515},  # Yangi
-    {"name": "Cambridge School", "lat": 41.342296, "lon": 69.167571}     # Yangi
+    {"name": "Umnie Deti School", "lat": 41.315790, "lon": 69.209515},
+    {"name": "Cambridge School", "lat": 41.342296, "lon": 69.167571}
 ]
 ALLOWED_DISTANCE = 500
 
@@ -125,31 +125,31 @@ WEATHER_RECOMMENDATIONS = {
 TRANSLATIONS = {
     'uz': {
         'welcome': "\U0001F31F **HANCOM ACADEMYning o'qituvchilar uchun davomat botiga hush kelibsiz, {name}!**\n\nQuyidagi tugmalar orqali:\n• Davomat qilishingiz\n• Statistikangizni ko'rishingiz\n• Filiallar bilan tanishishingiz mumkin",
-        'ask_name': "👤 **Iltimos, ism va familiyangizni kiriting:**\n\nMasalan: Azimjon Yulchiev",
-        'stats': "\U0001F4CA **Sizning statistikangiz:**",
+        'ask_name': "👤 Iltimos, ism va familiyangizni kiriting:\n\nMasalan: Ali Karimov",
+        'stats': "\U0001F4CA Sizning statistikangiz:",
         'no_stats': "\U0001F4AD Hali davomat qilmagansiz",
-        'branches': "\U0001F3E2 **Mavjud filiallar (lokatsiya):**",
-        'help': "\U0001F916 **Botdan foydalanish qo'llanmasi:**\n\n\U0001F4CD **Davomat qilish uchun:**\n• Pastdagi \"📍 Kelganimni tasdiqlash\" tugmasini bosing\n• Joylashuvingizni yuboring\n\n\U0001F4CA **Statistika:**\n• \"📊 Mening statistikam\" - shaxsiy davomat tarixingiz\n• \"🏢 Filiallar\" - barcha mavjud filiallar ro'yxati\n\n⚠️ **Eslatmalar:**\n• Har bir filialda kuniga faqat 1 marta davomat qilish mumkin\n• Davomat faqat Toshkent vaqti bilan hisoblanadi",
-        'attendance_success': "✅ **Davomat tasdiqlandi!**\n\n\U0001F3EB **Filial:** {branch}\n\U0001F4C5 **Sana:** {date}\n⏰ **Vaqt:** {time}\n\U0001F4CA **Bu oydagi tashriflar:** {count} marta\n\U0001F4CD **Masofa:** {distance:.1f} metr",
+        'branches': "\U0001F3E2 Mavjud filiallar (lokatsiya):",
+        'help': "\U0001F916 Botdan foydalanish qo'llanmasi:\n\n\U0001F4CD Davomat qilish uchun:\n• Pastdagi \"📍 Kelganimni tasdiqlash\" tugmasini bosing\n• Joylashuvingizni yuboring\n\n\U0001F4CA Statistika:\n• \"📊 Mening statistikam\" - shaxsiy davomat tarixingiz\n• \"🏢 Filiallar\" - barcha mavjud filiallar ro'yxati\n\n⚠️ Eslatmalar:\n• Har bir filialda kuniga faqat 1 marta davomat qilish mumkin\n• Davomat faqat Toshkent vaqti bilan hisoblanadi",
+        'attendance_success': "✅ Davomat tasdiqlandi!\n\n\U0001F3EB Filial: {branch}\n\U0001F4C5 Sana: {date}\n⏰ Vaqt: {time}\n\U0001F4CA Bu oydagi tashriflar: {count} marta\n\U0001F4CD Masofa: {distance:.1f} metr",
         'already_attended': "⚠️ Siz bugun **{branch}** hududida allaqachon davomatdan o'tgansiz!",
         'not_in_area': "❌ Siz belgilangan ta'lim muassasalari hududida emassiz!",
-        'daily_reminder': "⏰ **Eslatma!** Bugun hali davomat qilmagansiz. Ish kuningizni boshlash uchun davomatni tasdiqlang!",
-        'weekly_top': "\U0001F3C6 **Haftaning eng faol o'qituvchilari:**\n\n{top_list}",
-        'monthly_report': "\U0001F4CA **{month} oyi uchun hisobot**\n\n{report}",
+        'daily_reminder': "⏰ Eslatma! Bugun hali davomat qilmagansiz. Ish kuningizni boshlash uchun davomatni tasdiqlang!",
+        'weekly_top': "\U0001F3C6 Haftaning eng faol o'qituvchilari:\n\n{top_list}",
+        'monthly_report': "\U0001F4CA {month} oyi uchun hisobot\n\n{report}",
         'language_changed': "✅ Til o'zgartirildi: O'zbek tili",
         'language_prompt': "Iltimos, tilni tanlang:",
-        'view_schedules': "\U0001F4CB **Dars jadvallaringiz**",
+        'view_schedules': "\U0001F4CB Dars jadvallaringiz",
         'no_schedules': "\U0001F4AD Sizda hali dars jadvallari mavjud emas.\n\n\U00002795 Jadval qo'shish tugmasi orqali yangi jadval qo'shishingiz mumkin.",
-        'add_schedule_start': "\U0001F4C5 **Yangi dars jadvali qo'shish**\n\nQaysi filialda dars berasiz?",
-        'select_weekdays': "\U0001F4C5 **Qaysi kunlarda dars berasiz?**\n\nQuyidagi kunlardan tanlang (bir nechta tanlashingiz mumkin):",
+        'add_schedule_start': "\U0001F4C5 Yangi dars jadvali qo'shish\n\nQaysi filialda dars berasiz?",
+        'select_weekdays': "\U0001F4C5 Qaysi kunlarda dars berasiz?\n\nQuyidagi kunlardan tanlang (bir nechta tanlashingiz mumkin):",
         'next_button': "➡️ Keyingisi",
         'done_button': "✅ Tugatish",
-        'enter_time': "⏰ **{weekday} kuni soat nechida dars boshlanadi?**\n\nFormat: HH:MM (masalan: 09:00)",
-        'schedule_saved': "✅ **Dars jadvali muvaffaqiyatli saqlandi!**\n\n\U0001F4C5 Filial: {branch}\n\U0001F4C6 Kunlar: {days}\n⏰ Vaqtlar: {times}",
-        'schedule_detail': "\U0001F4C5 **{branch}**\n\n{days_times}",
-        'schedule_deleted': "✅ **Dars jadvali o'chirildi!**\n\n\U0001F4C5 {branch} filialidagi jadval o'chirildi.",
-        'confirm_delete': "❓ **Haqiqatan ham bu jadvalni o'chirmoqchimisiz?**",
-        'reminder': "⏰ **Eslatma!**\n\nBugun soat {time} da {branch} filialida darsingiz bor.\nDavomat qilishni unutmang!",
+        'enter_time': "⏰ {weekday} kuni soat nechida dars boshlanadi?\n\nFormat: HH:MM (masalan: 09:00)",
+        'schedule_saved': "✅ Dars jadvali muvaffaqiyatli saqlandi!\n\n\U0001F4C5 Filial: {branch}\n\U0001F4C6 Kunlar: {days}\n⏰ Vaqtlar: {times}",
+        'schedule_detail': "\U0001F4C5 {branch}\n\n{days_times}",
+        'schedule_deleted': "✅ Dars jadvali o'chirildi!\n\n\U0001F4C5 {branch} filialidagi jadval o'chirildi.",
+        'confirm_delete': "❓ Haqiqatan ham bu jadvalni o'chirmoqchimisiz?",
+        'reminder': "⏰ Eslatma!\n\nBugun soat {time} da {branch} filialida darsingiz bor.\nDavomat qilishni unutmang!",
         'buttons': {
             'attendance': "\U0001F4CD Kelganimni tasdiqlash",
             'my_stats': "\U0001F4CA Mening statistikam",
@@ -163,31 +163,31 @@ TRANSLATIONS = {
     },
     'ru': {
         'welcome': "\U0001F31F **Добро пожаловать в бот для отметок HANCOM ACADEMY для учителей, {name}!**\n\nС помощью кнопок ниже вы можете:\n• Отметиться\n• Посмотреть статистику\n• Ознакомиться с филиалами",
-        'ask_name': "👤 **Пожалуйста, введите ваше имя и фамилию:**\n\nНапример: Azimjon Yulchiev",
-        'stats': "\U0001F4CA **Ваша статистика:**",
+        'ask_name': "👤 Пожалуйста, введите ваше имя и фамилию:\n\nНапример: Ali Karimov",
+        'stats': "\U0001F4CA Ваша статистика:",
         'no_stats': "\U0001F4AD Вы еще не отмечались",
-        'branches': "\U0001F3E2 **Доступные филиалы (локация):**",
-        'help': "\U0001F916 **Руководство по использованию:**\n\n\U0001F4CD **Для отметки:**\n• Нажмите кнопку \"📍 Подтвердить прибытие\"\n• Отправьте свою геолокацию\n\n\U0001F4CA **Статистика:**\n• \"📊 Моя статистика\" - история отметок\n• \"🏢 Филиалы\" - список всех филиалов\n\n⚠️ **Примечания:**\n• В каждом филиале можно отмечаться только 1 раз в день\n• Отметки записываются по ташкентскому времени",
-        'attendance_success': "✅ **Отметка подтверждена!**\n\n\U0001F3EB **Филиал:** {branch}\n\U0001F4C5 **Дата:** {date}\n⏰ **Время:** {time}\n\U0001F4CA **Посещений в этом месяце:** {count}\n\U0001F4CD **Расстояние:** {distance:.1f} м",
+        'branches': "\U0001F3E2 Доступные филиалы (локация):",
+        'help': "\U0001F916 Руководство по использованию:\n\n\U0001F4CD Для отметки:\n• Нажмите кнопку \"📍 Подтвердить прибытие\"\n• Отправьте свою геолокацию\n\n\U0001F4CA Статистика:\n• \"📊 Моя статистика\" - история отметок\n• \"🏢 Филиалы\" - список всех филиалов\n\n⚠️ Примечания:\n• В каждом филиале можно отмечаться только 1 раз в день\n• Отметки записываются по ташкентскому времени",
+        'attendance_success': "✅ Отметка подтверждена!\n\n\U0001F3EB Филиал: {branch}\n\U0001F4C5 Дата: {date}\n⏰ Время: {time}\n\U0001F4CA Посещений в этом месяце: {count}\n\U0001F4CD Расстояние: {distance:.1f} м",
         'already_attended': "⚠️ Вы уже отмечались сегодня в филиале **{branch}**!",
         'not_in_area': "❌ Вы не находитесь в зоне учебных заведений!",
-        'daily_reminder': "⏰ **Напоминание!** Вы еще не отметились сегодня. Подтвердите свое прибытие для начала рабочего дня!",
-        'weekly_top': "\U0001F3C6 **Самые активные учителя недели:**\n\n{top_list}",
-        'monthly_report': "\U0001F4CA **Отчет за {month}**\n\n{report}",
+        'daily_reminder': "⏰ Напоминание! Вы еще не отметились сегодня. Подтвердите свое прибытие для начала рабочего дня!",
+        'weekly_top': "\U0001F3C6 Самые активные учителя недели:\n\n{top_list}",
+        'monthly_report': "\U0001F4CA Отчет за {month}\n\n{report}",
         'language_changed': "✅ Язык изменен: Русский язык",
         'language_prompt': "Пожалуйста, выберите язык:",
-        'view_schedules': "\U0001F4CB **Ваши расписания уроков**",
+        'view_schedules': "\U0001F4CB Ваши расписания уроков",
         'no_schedules': "\U0001F4AD У вас еще нет расписаний уроков.\n\n\U00002795 Вы можете добавить новое расписание через кнопку 'Добавить расписание'.",
-        'add_schedule_start': "\U0001F4C5 **Добавление нового расписания**\n\nВ каком филиале вы преподаете?",
-        'select_weekdays': "\U0001F4C5 **В какие дни вы преподаете?**\n\nВыберите дни (можно выбрать несколько):",
+        'add_schedule_start': "\U0001F4C5 Добавление нового расписания\n\nВ каком филиале вы преподаете?",
+        'select_weekdays': "\U0001F4C5 В какие дни вы преподаете?\n\nВыберите дни (можно выбрать несколько):",
         'next_button': "➡️ Далее",
         'done_button': "✅ Завершить",
-        'enter_time': "⏰ **Во сколько начинается урок в {weekday}?**\n\nФормат: ЧЧ:ММ (например: 09:00)",
-        'schedule_saved': "✅ **Расписание успешно сохранено!**\n\n\U0001F4C5 Филиал: {branch}\n\U0001F4C6 Дни: {days}\n⏰ Время: {times}",
-        'schedule_detail': "\U0001F4C5 **{branch}**\n\n{days_times}",
-        'schedule_deleted': "✅ **Расписание удалено!**\n\n\U0001F4C5 Расписание для филиала {branch} удалено.",
-        'confirm_delete': "❓ **Вы действительно хотите удалить это расписание?**",
-        'reminder': "⏰ **Напоминание!**\n\nСегодня в {time} у вас урок в филиале {branch}.\nНе забудьте отметиться!",
+        'enter_time': "⏰ Во сколько начинается урок в {weekday}?\n\nФормат: ЧЧ:ММ (например: 09:00)",
+        'schedule_saved': "✅ Расписание успешно сохранено!\n\n\U0001F4C5 Филиал: {branch}\n\U0001F4C6 Дни: {days}\n⏰ Время: {times}",
+        'schedule_detail': "\U0001F4C5 {branch}\n\n{days_times}",
+        'schedule_deleted': "✅ Расписание удалено!\n\n\U0001F4C5 Расписание для филиала {branch} удалено.",
+        'confirm_delete': "❓ Вы действительно хотите удалить это расписание?",
+        'reminder': "⏰ Напоминание!\n\nСегодня в {time} у вас урок в филиале {branch}.\nНе забудьте отметиться!",
         'buttons': {
             'attendance': "\U0001F4CD Подтвердить прибытие",
             'my_stats': "\U0001F4CA Моя статистика",
@@ -201,31 +201,31 @@ TRANSLATIONS = {
     },
     'kr': {
         'welcome': "\U0001F31F **HANCOM ACADEMY 교사용 출석 체크 봇에 오신 것을 환영합니다, {name}!**\n\n아래 버튼을 통해:\n• 출석 체크하기\n• 내 통계 보기\n• 지점 목록 보기",
-        'ask_name': "👤 **이름과 성을 입력하세요:**\n\n예: Azimjon Yulchiev",
-        'stats': "\U0001F4CA **내 통계:**",
+        'ask_name': "👤 이름과 성을 입력하세요:\n\n예: Ali Karimov",
+        'stats': "\U0001F4CA 내 통계:",
         'no_stats': "\U0001F4AD 아직 출석 체크하지 않았습니다",
-        'branches': "\U0001F3E2 **등록된 지점 (위치):**",
-        'help': "\U0001F916 **사용 설명서:**\n\n\U0001F4CD **출석 체크 방법:**\n• 하단의 \"📍 출석 확인\" 버튼을 누르세요\n• 위치를 전송하세요\n\n\U0001F4CA **통계:**\n• \"📊 내 통계\" - 개인 출석 기록\n• \"🏢 지점\" - 모든 지점 목록\n\n⚠️ **참고사항:**\n• 각 지점에서 하루에 한 번만 출석 체크 가능\n• 출석은 타슈켄트 시간 기준으로 기록됨",
-        'attendance_success': "✅ **출석이 확인되었습니다!**\n\n\U0001F3EB **지점:** {branch}\n\U0001F4C5 **날짜:** {date}\n⏰ **시간:** {time}\n\U0001F4CA **이번 달 출석:** {count}회\n\U0001F4CD **거리:** {distance:.1f}미터",
+        'branches': "\U0001F3E2 등록된 지점 (위치):",
+        'help': "\U0001F916 사용 설명서:\n\n\U0001F4CD 출석 체크 방법:\n• 하단의 \"📍 출석 확인\" 버튼을 누르세요\n• 위치를 전송하세요\n\n\U0001F4CA 통계:\n• \"📊 내 통계\" - 개인 출석 기록\n• \"🏢 지점\" - 모든 지점 목록\n\n⚠️ 참고사항:\n• 각 지점에서 하루에 한 번만 출석 체크 가능\n• 출석은 타슈켄트 시간 기준으로 기록됨",
+        'attendance_success': "✅ 출석이 확인되었습니다!\n\n\U0001F3EB 지점: {branch}\n\U0001F4C5 날짜: {date}\n⏰ 시간: {time}\n\U0001F4CA 이번 달 출석: {count}회\n\U0001F4CD 거리: {distance:.1f}미터",
         'already_attended': "⚠️ 오늘 이미 **{branch}** 지점에서 출석 체크하셨습니다!",
         'not_in_area': "❌ 지정된 교육 기관 구역 내에 있지 않습니다!",
-        'daily_reminder': "⏰ **알림!** 오늘 아직 출석 체크하지 않으셨습니다. 업무 시작을 위해 출석을 확인하세요!",
-        'weekly_top': "\U0001F3C6 **이번 주 가장 활발한 교사:**\n\n{top_list}",
-        'monthly_report': "\U0001F4CA **{month}월 보고서**\n\n{report}",
+        'daily_reminder': "⏰ 알림! 오늘 아직 출석 체크하지 않으셨습니다. 업무 시작을 위해 출석을 확인하세요!",
+        'weekly_top': "\U0001F3C6 이번 주 가장 활발한 교사:\n\n{top_list}",
+        'monthly_report': "\U0001F4CA {month}월 보고서\n\n{report}",
         'language_changed': "✅ 언어가 변경되었습니다: 한국어",
         'language_prompt': "언어를 선택하세요:",
-        'view_schedules': "\U0001F4CB **내 수업 시간표**",
+        'view_schedules': "\U0001F4CB 내 수업 시간표",
         'no_schedules': "\U0001F4AD 아직 수업 시간표가 없습니다.\n\n\U00002795 '시간표 추가' 버튼을 통해 새 시간표를 추가할 수 있습니다.",
-        'add_schedule_start': "\U0001F4C5 **새 수업 시간표 추가**\n\n어느 지점에서 수업하시나요?",
-        'select_weekdays': "\U0001F4C5 **어느 요일에 수업하시나요?**\n\n요일을 선택하세요 (여러 개 선택 가능):",
+        'add_schedule_start': "\U0001F4C5 새 수업 시간표 추가\n\n어느 지점에서 수업하시나요?",
+        'select_weekdays': "\U0001F4C5 어느 요일에 수업하시나요?\n\n요일을 선택하세요 (여러 개 선택 가능):",
         'next_button': "➡️ 다음",
         'done_button': "✅ 완료",
-        'enter_time': "⏰ **{weekday} 수업 시작 시간은 몇 시인가요?**\n\n형식: HH:MM (예: 09:00)",
-        'schedule_saved': "✅ **시간표가 성공적으로 저장되었습니다!**\n\n\U0001F4C5 지점: {branch}\n\U0001F4C6 요일: {days}\n⏰ 시간: {times}",
-        'schedule_detail': "\U0001F4C5 **{branch}**\n\n{days_times}",
-        'schedule_deleted': "✅ **시간표가 삭제되었습니다!**\n\n\U0001F4C5 {branch} 지점의 시간표가 삭제되었습니다.",
-        'confirm_delete': "❓ **이 시간표를 삭제하시겠습니까?**",
-        'reminder': "⏰ **알림!**\n\n오늘 {time}에 {branch} 지점에서 수업이 있습니다.\n출석 체크를 잊지 마세요!",
+        'enter_time': "⏰ {weekday} 수업 시작 시간은 몇 시인가요?\n\n형식: HH:MM (예: 09:00)",
+        'schedule_saved': "✅ 시간표가 성공적으로 저장되었습니다!\n\n\U0001F4C5 지점: {branch}\n\U0001F4C6 요일: {days}\n⏰ 시간: {times}",
+        'schedule_detail': "\U0001F4C5 {branch}\n\n{days_times}",
+        'schedule_deleted': "✅ 시간표가 삭제되었습니다!\n\n\U0001F4C5 {branch} 지점의 시간표가 삭제되었습니다.",
+        'confirm_delete': "❓ 이 시간표를 삭제하시겠습니까?",
+        'reminder': "⏰ 알림!\n\n오늘 {time}에 {branch} 지점에서 수업이 있습니다.\n출석 체크를 잊지 마세요!",
         'buttons': {
             'attendance': "\U0001F4CD 출석 확인",
             'my_stats': "\U0001F4CA 내 통계",
@@ -376,18 +376,18 @@ def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
     time_text = "Vaqt" if lang == 'uz' else "Время" if lang == 'ru' else "시간"
     
     message = f"""
-{emoji} **Ob-havo ma'lumoti**
+{emoji} Ob-havo ma'lumoti
 
-\U0001F4CD **Joy:** {city}
-🌡️ **{temp_text}:** {temp:.1f}°C ({feels_text}: {feels_like:.1f}°C)
-💧 **{humidity_text}:** {humidity}%
-💨 **{wind_text}:** {wind_speed:.1f} m/s
-📊 **{pressure_text}:** {pressure_mmhg:.1f} mmHg
+\U0001F4CD Joy: {city}
+🌡️ {temp_text}: {temp:.1f}°C ({feels_text}: {feels_like:.1f}°C)
+💧 {humidity_text}: {humidity}%
+💨 {wind_text}: {wind_speed:.1f} m/s
+📊 {pressure_text}: {pressure_mmhg:.1f} mmHg
 
-💡 **{recommendation_title}:**
+💡 {recommendation_title}:
 {recommendation}
 
-⏰ **{time_text}:** {datetime.now(UZB_TZ).strftime('%H:%M')}
+⏰ {time_text}: {datetime.now(UZB_TZ).strftime('%H:%M')}
 """
     return message
 
@@ -831,7 +831,7 @@ async def my_stats(message: types.Message):
     text = get_text(user_id, 'stats') + "\n\n"
     
     for branch, date_time_list in user_attendances.items():
-        text += f"\U0001F3E2 **{branch}**\n"
+        text += f"\U0001F3E2 {branch}\n"
         
         dates_by_month = defaultdict(list)
         for date_str, time_str in date_time_list:
@@ -846,7 +846,7 @@ async def my_stats(message: types.Message):
             if year_month == current_month:
                 month_display += f" {current_month_text}"
             
-            text += f"   \U0001F4C5 **{month_display}**\n"
+            text += f"   \U0001F4C5 {month_display}\n"
             
             for date_str, time_str in sorted(month_data, reverse=True):
                 date_parts = date_str.split('-')
@@ -886,21 +886,21 @@ async def show_branches(message: types.Message):
         elif "Maktab" in branch['name'] or "School" in branch['name'] or "Umnie Deti" in branch['name']:
             schools.append(branch)
     
-    # Tilga mos sarlavhalar
+    # Tilga mos sarlavhalar - ** BELGILARI OLIB TASHLANDI
     if lang == 'uz':
-        uni_title = "\U0001F3DB **Universitetlar**"
-        lyceum_title = "\U0001F4DA **Litseylar**"
-        school_title = "\U0001F3EB **Maktablar**"
+        uni_title = "\U0001F3DB Universitetlar"
+        lyceum_title = "\U0001F4DA Litseylar"
+        school_title = "\U0001F3EB Maktablar"
         header = f"{uni_title}\n{lyceum_title}\n{school_title}"
     elif lang == 'ru':
-        uni_title = "\U0001F3DB **Университеты**"
-        lyceum_title = "\U0001F4DA **Лицеи**"
-        school_title = "\U0001F3EB **Школы**"
+        uni_title = "\U0001F3DB Университеты"
+        lyceum_title = "\U0001F4DA Лицеи"
+        school_title = "\U0001F3EB Школы"
         header = f"{uni_title}\n{lyceum_title}\n{school_title}"
     else:
-        uni_title = "\U0001F3DB **대학교**"
-        lyceum_title = "\U0001F4DA **고등학교**"
-        school_title = "\U0001F3EB **초중학교**"
+        uni_title = "\U0001F3DB 대학교"
+        lyceum_title = "\U0001F4DA 고등학교"
+        school_title = "\U0001F3EB 초중학교"
         header = f"{uni_title}\n{lyceum_title}\n{school_title}"
     
     # Barcha tugmalarni bitta builderda yig'amiz
@@ -922,7 +922,7 @@ async def show_branches(message: types.Message):
                 InlineKeyboardButton(text=f"\U0001F4CD {lyceum['name']}", url=maps_link)
             )
     
-    # Maktablar (yangi qo'shilgan maktablar bilan)
+    # Maktablar
     if schools:
         for school in schools:
             maps_link = get_yandex_maps_link(school['lat'], school['lon'])
