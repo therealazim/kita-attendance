@@ -207,11 +207,14 @@ TRANSLATIONS = {
         'no_schedules': "📭 Sizga hali dars jadvali biriktirilmagan.",
         'schedule_updated': "📢 Sizning dars jadvalingiz yangilandi!",
         'schedule_deleted_notify': "📢 Sizning dars jadvalingiz o'chirildi.",
+        'reminder': "⏰ Eslatma!\n\nBugun soat {time} da {branch} filialida darsingiz bor.\nDavomat qilishni unutmang!",
+        'lesson_started_attended': "✅ Dars boshlandi va siz muvaffaqiyatli davomatni amalga oshirdingiz!\n\nE'tiboringizni darsga qaratishingiz mumkin.\nDarsga kelgan o'quvchilarni davomat qilishni yodingizdan chiqarmang.\n\nHayrli kun!",
+        'lesson_started_not_attended': "⚠️ Sizning darsingiz boshlandi, lekin hali davomat qilmadingiz!\n\n📌 {branch} filialida soat {time} da darsingiz boshlangan.\n📍 Iltimos, darhol davomat qiling yoki sababini admin xabardor qiling.\n\nDavomat qilish uchun 📍 Kelganimni tasdiqlash tugmasini bosing.",
         'select_teacher': "👤 O'qituvchini tanlang:",
         'select_lesson_type': "📚 Dars turini tanlang:",
         'active_schedules': "📋 Faol dars jadvallari",
         'no_active_schedules': "📭 Hali dars jadvallari mavjud emas.",
-        'schedule_info': "{teacher} [{specialty}]\n🏢 {branch}\n📚 {lesson_type}\n📆 {days_times}",
+        'schedule_info': "{teacher} [{specialty}]\n🏢 {branch}\n📚 {lesson_type}\n{days_times}",
         'enter_date': "📅 Hisobot olish uchun sanani kiriting (format: YYYY-MM-DD)\nMasalan: 2026-03-01",
         'invalid_date': "❌ Noto'g'ri sana formati. Qaytadan urinib ko'ring:",
         'select_broadcast_specialty': "📢 Qaysi fan o'qituvchilariga xabar yubormoqchisiz?",
@@ -221,6 +224,8 @@ TRANSLATIONS = {
         'select_new_lesson_type': "📚 Yangi dars turini tanlang:",
         'select_new_weekdays': "📅 Yangi kunlarni tanlang:",
         'enter_new_time': "⏰ {weekday} kuni uchun yangi vaqtni kiriting:\n\nFormat: HH:MM (masalan: 09:00)",
+        'ontime': "Vaqtida",
+        'late': "Kechikkan",
         'buttons': {
             'attendance': "\U0001F4CD Kelganimni tasdiqlash",
             'my_stats': "\U0001F4CA Mening statistikam",
@@ -254,11 +259,14 @@ TRANSLATIONS = {
         'no_schedules': "📭 Вам еще не назначено расписание.",
         'schedule_updated': "📢 Ваше расписание обновлено!",
         'schedule_deleted_notify': "📢 Ваше расписание удалено.",
+        'reminder': "⏰ Напоминание!\n\nСегодня в {time} у вас урок в филиале {branch}.\nНе забудьте отметиться!",
+        'lesson_started_attended': "✅ Урок начался и вы успешно отметились!\n\nМожете сосредоточиться на уроке.\nНе забудьте отметить присутствующих учеников.\n\nХорошего дня!",
+        'lesson_started_not_attended': "⚠️ Ваш урок начался, но вы еще не отметились!\n\n📌 В филиале {branch} в {time} начался ваш урок.\n📍 Пожалуйста, немедленно отметьтесь или сообщите причину администратору.\n\nДля отметки нажмите кнопку 📍 Подтвердить прибытие.",
         'select_teacher': "👤 Выберите учителя:",
         'select_lesson_type': "📚 Выберите тип урока:",
         'active_schedules': "📋 Активные расписания",
         'no_active_schedules': "📭 Нет активных расписаний.",
-        'schedule_info': "{teacher} [{specialty}]\n🏢 {branch}\n📚 {lesson_type}\n📆 {days_times}",
+        'schedule_info': "{teacher} [{specialty}]\n🏢 {branch}\n📚 {lesson_type}\n{days_times}",
         'enter_date': "📅 Введите дату для отчета (формат: YYYY-MM-DD)\nНапример: 2026-03-01",
         'invalid_date': "❌ Неверный формат даты. Попробуйте снова:",
         'select_broadcast_specialty': "📢 Каким учителям отправить сообщение?",
@@ -268,6 +276,8 @@ TRANSLATIONS = {
         'select_new_lesson_type': "📚 Выберите новый тип урока:",
         'select_new_weekdays': "📅 Выберите новые дни:",
         'enter_new_time': "⏰ Введите новое время для {weekday}:\n\nФормат: HH:MM (например: 09:00)",
+        'ontime': "Вовремя",
+        'late': "Опоздал",
         'buttons': {
             'attendance': "\U0001F4CD Подтвердить прибытие",
             'my_stats': "\U0001F4CA Моя статистика",
@@ -301,11 +311,14 @@ TRANSLATIONS = {
         'no_schedules': "📭 아직 시간표가 배정되지 않았습니다.",
         'schedule_updated': "📢 시간표가 업데이트되었습니다!",
         'schedule_deleted_notify': "📢 시간표가 삭제되었습니다.",
+        'reminder': "⏰ 알림!\n\n오늘 {time}에 {branch} 지점에서 수업이 있습니다.\n출석 체크를 잊지 마세요!",
+        'lesson_started_attended': "✅ 수업이 시작되었고 출석이 확인되었습니다!\n\n수업에 집중하세요.\n학생들 출석 체크하는 것을 잊지 마세요.\n\n좋은 하루 되세요!",
+        'lesson_started_not_attended': "⚠️ 수업이 시작되었지만 아직 출석 체크하지 않으셨습니다!\n\n📌 {branch} 지점에서 {time}에 수업이 시작되었습니다.\n📍 즉시 출석 체크하거나 관리자에게 사유를 알려주세요.\n\n출석 체크를 위해 📍 출석 확인 버튼을 누르세요.",
         'select_teacher': "👤 교사를 선택하세요:",
         'select_lesson_type': "📚 수업 유형을 선택하세요:",
         'active_schedules': "📋 활성 시간표",
         'no_active_schedules': "📭 활성 시간표가 없습니다.",
-        'schedule_info': "{teacher} [{specialty}]\n🏢 {branch}\n📚 {lesson_type}\n📆 {days_times}",
+        'schedule_info': "{teacher} [{specialty}]\n🏢 {branch}\n📚 {lesson_type}\n{days_times}",
         'enter_date': "📅 보고서 날짜를 입력하세요 (형식: YYYY-MM-DD)\n예: 2026-03-01",
         'invalid_date': "❌ 잘못된 날짜 형식입니다. 다시 시도하세요:",
         'select_broadcast_specialty': "📢 어떤 선생님들에게 메시지를 보낼까요?",
@@ -315,6 +328,8 @@ TRANSLATIONS = {
         'select_new_lesson_type': "📚 새 수업 유형을 선택하세요:",
         'select_new_weekdays': "📅 새 요일을 선택하세요:",
         'enter_new_time': "⏰ {weekday} 요일의 새 시간을 입력하세요:\n\n형식: HH:MM (예: 09:00)",
+        'ontime': "정시",
+        'late': "지각",
         'buttons': {
             'attendance': "\U0001F4CD 출석 확인",
             'my_stats': "\U0001F4CA 내 통계",
@@ -368,6 +383,61 @@ def get_specialty_display(specialty: str, lang: str = 'uz') -> str:
 def sort_weekdays(days_dict):
     """Hafta kunlarini tartiblash"""
     return dict(sorted(days_dict.items(), key=lambda x: WEEKDAY_ORDER.get(x[0], 0)))
+
+def calculate_lateness(attendance_time: str, lesson_time: str) -> tuple:
+    """Kechikishni hisoblash"""
+    try:
+        att_dt = datetime.strptime(attendance_time, "%H:%M")
+        les_dt = datetime.strptime(lesson_time, "%H:%M")
+        
+        if att_dt <= les_dt:
+            return True, 0  # Vaqtida
+        else:
+            diff = att_dt - les_dt
+            minutes_late = int(diff.total_seconds() / 60)
+            return False, minutes_late  # Kechikkan
+    except:
+        return True, 0
+
+async def main_keyboard(user_id: int):
+    """Asosiy menyu tugmalarini yaratish"""
+    builder = ReplyKeyboardBuilder()
+    builder.add(
+        KeyboardButton(text=get_button_text(user_id, 'attendance'), request_location=True),
+        KeyboardButton(text=get_button_text(user_id, 'my_stats')),
+        KeyboardButton(text=get_button_text(user_id, 'branches')),
+        KeyboardButton(text=get_button_text(user_id, 'top_week')),
+        KeyboardButton(text=get_button_text(user_id, 'view_schedules')),
+        KeyboardButton(text=get_button_text(user_id, 'help')),
+        KeyboardButton(text=get_button_text(user_id, 'language'))
+    )
+    builder.adjust(1, 2, 2, 2)
+    return builder.as_markup(resize_keyboard=True)
+
+async def language_selection_keyboard():
+    """Til tanlash uchun keyboard"""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="🇺🇿 O'zbekcha", callback_data="lang_uz"),
+        InlineKeyboardButton(text="🇷🇺 Русский", callback_data="lang_ru"),
+        InlineKeyboardButton(text="🇰🇷 한국어", callback_data="lang_kr")
+    )
+    return builder.as_markup()
+
+async def specialty_keyboard(user_id: int):
+    """Mutaxassislik tanlash uchun keyboard"""
+    lang = user_languages.get(user_id, 'uz')
+    builder = ReplyKeyboardBuilder()
+    builder.add(
+        KeyboardButton(text=TRANSLATIONS[lang]['specialty_it']),
+        KeyboardButton(text=TRANSLATIONS[lang]['specialty_korean'])
+    )
+    builder.adjust(1)
+    return builder.as_markup(resize_keyboard=True)
+
+def get_yandex_maps_link(lat: float, lon: float) -> str:
+    """Yandex Maps link yaratish"""
+    return f"https://yandex.com/maps/?pt={lon},{lat}&z=17&l=map"
 
 async def create_schedule_pdf(user_id: int) -> io.BytesIO:
     """Foydalanuvchi uchun dars jadvali PDF yaratish"""
@@ -513,142 +583,6 @@ async def cmd_start(message: types.Message, state: FSMContext):
         parse_mode="Markdown"
     )
 
-async def main_keyboard(user_id: int):
-    """Asosiy menyu tugmalarini yaratish"""
-    builder = ReplyKeyboardBuilder()
-    builder.add(
-        KeyboardButton(text=get_button_text(user_id, 'attendance'), request_location=True),
-        KeyboardButton(text=get_button_text(user_id, 'my_stats')),
-        KeyboardButton(text=get_button_text(user_id, 'branches')),
-        KeyboardButton(text=get_button_text(user_id, 'top_week')),
-        KeyboardButton(text=get_button_text(user_id, 'view_schedules')),
-        KeyboardButton(text=get_button_text(user_id, 'help')),
-        KeyboardButton(text=get_button_text(user_id, 'language'))
-    )
-    builder.adjust(1, 2, 2, 2)
-    return builder.as_markup(resize_keyboard=True)
-
-async def language_selection_keyboard():
-    """Til tanlash uchun keyboard"""
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="🇺🇿 O'zbekcha", callback_data="lang_uz"),
-        InlineKeyboardButton(text="🇷🇺 Русский", callback_data="lang_ru"),
-        InlineKeyboardButton(text="🇰🇷 한국어", callback_data="lang_kr")
-    )
-    return builder.as_markup()
-
-async def specialty_keyboard(user_id: int):
-    """Mutaxassislik tanlash uchun keyboard"""
-    lang = user_languages.get(user_id, 'uz')
-    builder = ReplyKeyboardBuilder()
-    builder.add(
-        KeyboardButton(text=TRANSLATIONS[lang]['specialty_it']),
-        KeyboardButton(text=TRANSLATIONS[lang]['specialty_korean'])
-    )
-    builder.adjust(1)
-    return builder.as_markup(resize_keyboard=True)
-
-def get_yandex_maps_link(lat: float, lon: float) -> str:
-    """Yandex Maps link yaratish"""
-    return f"https://yandex.com/maps/?pt={lon},{lat}&z=17&l=map"
-
-# --- OB-HAVO FUNKSIYALAR ---
-async def get_weather_by_coords(lat: float, lon: float):
-    """Koordinatalar bo'yicha ob-havo ma'lumotini olish"""
-    params = {
-        "lat": lat,
-        "lon": lon,
-        "appid": WEATHER_API_KEY,
-        "units": "metric",
-        "lang": "uz"
-    }
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(WEATHER_API_URL, params=params) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data
-                else:
-                    logging.error(f"Weather API error: {response.status}")
-                    return None
-    except Exception as e:
-        logging.error(f"Error fetching weather: {e}")
-        return None
-
-def get_weather_emoji(weather_condition: str) -> str:
-    """Ob-havo holatiga mos emoji qaytarish"""
-    emoji_map = {
-        "Clear": "☀️",
-        "Clouds": "☁️",
-        "Rain": "🌧️",
-        "Drizzle": "🌦️",
-        "Thunderstorm": "⛈️",
-        "Snow": "❄️",
-        "Mist": "🌫️",
-        "Fog": "🌫️",
-        "Haze": "🌫️"
-    }
-    return emoji_map.get(weather_condition, "🌡️")
-
-def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
-    """Ob-havo ma'lumotlarini formatlash"""
-    if not weather_data:
-        return ""
-    
-    city = weather_data.get('name', 'Noma\'lum')
-    if city == "" or city is None:
-        city = "Toshkent"
-        
-    main = weather_data.get('main', {})
-    weather = weather_data.get('weather', [{}])[0]
-    wind = weather_data.get('wind', {})
-    
-    temp = main.get('temp', 0)
-    feels_like = main.get('feels_like', 0)
-    humidity = main.get('humidity', 0)
-    pressure = main.get('pressure', 0)
-    condition = weather.get('main', 'Unknown')
-    description = weather.get('description', '')
-    wind_speed = wind.get('speed', 0)
-    
-    emoji = get_weather_emoji(condition)
-    
-    # Asosiy tavsiya
-    recommendation = WEATHER_RECOMMENDATIONS.get(condition, {}).get(lang, "")
-    if not recommendation:
-        recommendation = WEATHER_RECOMMENDATIONS.get('Clear', {}).get(lang, "")
-    
-    # Bosimni mmHg ga o'tkazish
-    pressure_mmhg = pressure * 0.750062
-    
-    # Tilga mos ravishda matnlar
-    temp_text = "Harorat" if lang == 'uz' else "Температура" if lang == 'ru' else "기온"
-    feels_text = "his qilinadi" if lang == 'uz' else "ощущается" if lang == 'ru' else "체감"
-    humidity_text = "Namlik" if lang == 'uz' else "Влажность" if lang == 'ru' else "습도"
-    wind_text = "Shamol" if lang == 'uz' else "Ветер" if lang == 'ru' else "바람"
-    pressure_text = "Bosim" if lang == 'uz' else "Давление" if lang == 'ru' else "기압"
-    recommendation_title = "Tavsiya" if lang == 'uz' else "Рекомендация" if lang == 'ru' else "추천"
-    time_text = "Vaqt" if lang == 'uz' else "Время" if lang == 'ru' else "시간"
-    
-    message = f"""
-{emoji} Ob-havo ma'lumoti
-
-\U0001F4CD Joy: {city}
-🌡️ {temp_text}: {temp:.1f}°C ({feels_text}: {feels_like:.1f}°C)
-💧 {humidity_text}: {humidity}%
-💨 {wind_text}: {wind_speed:.1f} m/s
-📊 {pressure_text}: {pressure_mmhg:.1f} mmHg
-
-💡 {recommendation_title}:
-{recommendation}
-
-⏰ {time_text}: {datetime.now(UZB_TZ).strftime('%H:%M')}
-"""
-    return message
-
-# --- HANDLERS (DAVOMI) ---
 @dp.message(Registration.waiting_for_name)
 async def process_name(message: types.Message, state: FSMContext):
     """Foydalanuvchi ismini qabul qilish"""
@@ -1054,6 +988,101 @@ async def handle_location(message: types.Message):
             get_text(user_id, 'not_in_area'),
             parse_mode="Markdown"
         )
+
+# --- OB-HAVO FUNKSIYALAR ---
+async def get_weather_by_coords(lat: float, lon: float):
+    """Koordinatalar bo'yicha ob-havo ma'lumotini olish"""
+    params = {
+        "lat": lat,
+        "lon": lon,
+        "appid": WEATHER_API_KEY,
+        "units": "metric",
+        "lang": "uz"
+    }
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(WEATHER_API_URL, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data
+                else:
+                    logging.error(f"Weather API error: {response.status}")
+                    return None
+    except Exception as e:
+        logging.error(f"Error fetching weather: {e}")
+        return None
+
+def get_weather_emoji(weather_condition: str) -> str:
+    """Ob-havo holatiga mos emoji qaytarish"""
+    emoji_map = {
+        "Clear": "☀️",
+        "Clouds": "☁️",
+        "Rain": "🌧️",
+        "Drizzle": "🌦️",
+        "Thunderstorm": "⛈️",
+        "Snow": "❄️",
+        "Mist": "🌫️",
+        "Fog": "🌫️",
+        "Haze": "🌫️"
+    }
+    return emoji_map.get(weather_condition, "🌡️")
+
+def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
+    """Ob-havo ma'lumotlarini formatlash"""
+    if not weather_data:
+        return ""
+    
+    city = weather_data.get('name', 'Noma\'lum')
+    if city == "" or city is None:
+        city = "Toshkent"
+        
+    main = weather_data.get('main', {})
+    weather = weather_data.get('weather', [{}])[0]
+    wind = weather_data.get('wind', {})
+    
+    temp = main.get('temp', 0)
+    feels_like = main.get('feels_like', 0)
+    humidity = main.get('humidity', 0)
+    pressure = main.get('pressure', 0)
+    condition = weather.get('main', 'Unknown')
+    description = weather.get('description', '')
+    wind_speed = wind.get('speed', 0)
+    
+    emoji = get_weather_emoji(condition)
+    
+    # Asosiy tavsiya
+    recommendation = WEATHER_RECOMMENDATIONS.get(condition, {}).get(lang, "")
+    if not recommendation:
+        recommendation = WEATHER_RECOMMENDATIONS.get('Clear', {}).get(lang, "")
+    
+    # Bosimni mmHg ga o'tkazish
+    pressure_mmhg = pressure * 0.750062
+    
+    # Tilga mos ravishda matnlar
+    temp_text = "Harorat" if lang == 'uz' else "Температура" if lang == 'ru' else "기온"
+    feels_text = "his qilinadi" if lang == 'uz' else "ощущается" if lang == 'ru' else "체감"
+    humidity_text = "Namlik" if lang == 'uz' else "Влажность" if lang == 'ru' else "습도"
+    wind_text = "Shamol" if lang == 'uz' else "Ветер" if lang == 'ru' else "바람"
+    pressure_text = "Bosim" if lang == 'uz' else "Давление" if lang == 'ru' else "기압"
+    recommendation_title = "Tavsiya" if lang == 'uz' else "Рекомендация" if lang == 'ru' else "추천"
+    time_text = "Vaqt" if lang == 'uz' else "Время" if lang == 'ru' else "시간"
+    
+    message = f"""
+{emoji} Ob-havo ma'lumoti
+
+\U0001F4CD Joy: {city}
+🌡️ {temp_text}: {temp:.1f}°C ({feels_text}: {feels_like:.1f}°C)
+💧 {humidity_text}: {humidity}%
+💨 {wind_text}: {wind_speed:.1f} m/s
+📊 {pressure_text}: {pressure_mmhg:.1f} mmHg
+
+💡 {recommendation_title}:
+{recommendation}
+
+⏰ {time_text}: {datetime.now(UZB_TZ).strftime('%H:%M')}
+"""
+    return message
 
 # --- ADMIN PANEL - KENGAYTIRILGAN ---
 @dp.message(Command("admin"))
@@ -2098,10 +2127,6 @@ async def admin_save_edited_schedule(message: types.Message, state: FSMContext):
         
         # O'qituvchiga xabar yuborish
         try:
-            schedule_text = ""
-            for day, time in sorted(new_days.items(), key=lambda x: WEEKDAY_ORDER.get(x[0], 0)):
-                schedule_text += f"• {day}: {time}\n"
-            
             await bot.send_message(
                 teacher_id,
                 get_text(teacher_id, 'schedule_updated'),
@@ -2386,8 +2411,6 @@ async def admin_save_new_schedule(message: types.Message, state: FSMContext):
         }
         user_schedules[teacher_id].append(schedule_id)
         
-        teacher_name = user_names.get(teacher_id, f"ID: {teacher_id}")
-        
         # O'qituvchiga xabar yuborish
         try:
             await bot.send_message(
@@ -2538,7 +2561,7 @@ async def admin_location_add_coords(message: types.Message, state: FSMContext):
     
     await state.clear()
 
-# --- 6. PDF HISOBOT (ORTGA QAYTISH TUGMASIZ) ---
+# --- 6. PDF HISOBOT (KENGAYTIRILGAN - KECHIKISH STATISTIKASI BILAN) ---
 @dp.callback_query(F.data == "admin_pdf_report")
 async def admin_pdf_report_start(callback: types.CallbackQuery, state: FSMContext):
     """PDF hisobot - sanani kiritish"""
@@ -2559,7 +2582,7 @@ async def admin_pdf_report_start(callback: types.CallbackQuery, state: FSMContex
 
 @dp.message(PDFReport.waiting_for_date)
 async def admin_pdf_report_date(message: types.Message, state: FSMContext):
-    """Sanani qabul qilish va PDF yaratish"""
+    """Sanani qabul qilish va PDF yaratish (kechikish statistikasi bilan)"""
     if not check_admin(message.chat.id):
         await state.clear()
         return
@@ -2602,11 +2625,41 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
         unique_teachers = len(set(att[0] for att in day_attendances))
         unique_branches = len(set(att[1] for att in day_attendances))
         
+        # Kechikish statistikasi
+        ontime_count = 0
+        late_count = 0
+        late_minutes_total = 0
+        
+        for att in day_attendances:
+            user_id, branch, date, att_time = att
+            
+            # O'qituvchining shu kundagi dars vaqtini topish
+            lesson_time = None
+            if user_id in user_schedules:
+                for schedule_id in user_schedules[user_id]:
+                    schedule = schedules.get(schedule_id)
+                    if schedule and schedule['branch'] == branch:
+                        current_day_name = WEEKDAYS_UZ[report_date.weekday()]
+                        if current_day_name in schedule['days']:
+                            lesson_time = schedule['days'][current_day_name]
+                            break
+            
+            if lesson_time:
+                ontime, late_mins = calculate_lateness(att_time, lesson_time)
+                if ontime:
+                    ontime_count += 1
+                else:
+                    late_count += 1
+                    late_minutes_total += late_mins
+        
         stats_data = [
             ['Ko\'rsatkich', 'Qiymat'],
             ['Jami davomatlar', str(total_attendances)],
             ['O\'qituvchilar soni', str(unique_teachers)],
             ['Filiallar soni', str(unique_branches)],
+            ['Vaqtida kelganlar', str(ontime_count)],
+            ['Kechikkanlar', str(late_count)],
+            ['O\'rtacha kechikish', f"{late_minutes_total / max(late_count, 1):.1f} min"],
             ['Sana', report_date.strftime('%d.%m.%Y')]
         ]
         
@@ -2624,17 +2677,44 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
         elements.append(stats_table)
         elements.append(Spacer(1, 20))
         
-        # Batafsil davomatlar jadvali
+        # Batafsil davomatlar jadvali (kechikish bilan)
         if day_attendances:
             elements.append(Paragraph(f"{report_date.strftime('%d.%m.%Y')} dagi davomatlar", styles['Heading2']))
             
-            data = [['№', 'Vaqt', 'O\'qituvchi', 'Mutaxassislik', 'Filial']]
-            for i, (uid, branch, date, time) in enumerate(sorted(day_attendances, key=lambda x: x[3]), 1):
+            data = [['№', 'Vaqt', 'O\'qituvchi', 'Mutaxassislik', 'Filial', 'Holat', 'Kechikish']]
+            for i, (uid, branch, date, att_time) in enumerate(sorted(day_attendances, key=lambda x: x[3]), 1):
                 teacher_name = user_names.get(uid, f"ID: {uid}")
                 specialty = user_specialty.get(uid, '')
-                data.append([str(i), time, teacher_name, specialty, branch])
+                
+                # Kechikishni hisoblash
+                lesson_time = None
+                if uid in user_schedules:
+                    for schedule_id in user_schedules[uid]:
+                        schedule = schedules.get(schedule_id)
+                        if schedule and schedule['branch'] == branch:
+                            current_day_name = WEEKDAYS_UZ[report_date.weekday()]
+                            if current_day_name in schedule['days']:
+                                lesson_time = schedule['days'][current_day_name]
+                                break
+                
+                if lesson_time:
+                    ontime, late_mins = calculate_lateness(att_time, lesson_time)
+                    status = get_text(uid, 'ontime') if ontime else get_text(uid, 'late')
+                    late_text = "0" if ontime else f"{late_mins} min"
+                    
+                    # Ranglar - qizil va yashil
+                    if ontime:
+                        status_color = colors.green
+                    else:
+                        status_color = colors.red
+                else:
+                    status = "Noma'lum"
+                    late_text = "-"
+                    status_color = colors.black
+                
+                data.append([str(i), att_time, teacher_name, specialty, branch, status, late_text])
             
-            table = Table(data, colWidths=[0.5*inch, 1*inch, 2*inch, 1.5*inch, 2*inch])
+            table = Table(data, colWidths=[0.5*inch, 1*inch, 2*inch, 1.2*inch, 1.8*inch, 1*inch, 1*inch])
             table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -2643,6 +2723,19 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
                 ('GRID', (0, 0), (-1, -1), 1, colors.black),
                 ('FONTSIZE', (0, 0), (-1, -1), 10)
             ]))
+            
+            # Holat ustuniga rang qo'shish
+            for i in range(1, len(data)):
+                status = data[i][5]
+                if status == get_text(0, 'ontime'):
+                    table.setStyle(TableStyle([
+                        ('TEXTCOLOR', (5, i), (5, i), colors.green)
+                    ]))
+                elif status == get_text(0, 'late'):
+                    table.setStyle(TableStyle([
+                        ('TEXTCOLOR', (5, i), (5, i), colors.red)
+                    ]))
+            
             elements.append(table)
         else:
             elements.append(Paragraph("Bu kunda davomat yo'q", styles['Normal']))
@@ -2659,7 +2752,7 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
         
         await state.clear()
         
-        # Ortga qaytish tugmasisiz, admin panelga qaytish uchun alohida xabar
+        # Admin panelga qaytish
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="🔙 Admin panel", callback_data="admin_back"))
         await message.answer("Admin panelga qaytish:", reply_markup=builder.as_markup())
@@ -2705,7 +2798,7 @@ async def admin_back(callback: types.CallbackQuery):
         await callback.message.edit_text("❌ Admin panelga qaytishda xatolik yuz berdi")
         await callback.answer()
 
-# --- ESLATMA LOOPLARI ---
+# --- ESLATMA LOOPLARI (YANGILANGAN) ---
 async def send_daily_reminders():
     """Har kuni soat 08:00 da eslatma yuborish"""
     now_uzb = datetime.now(UZB_TZ)
@@ -2732,11 +2825,12 @@ async def send_daily_reminders():
     logging.info(f"Daily reminders sent: {sent_count} users")
 
 async def check_schedule_reminders():
-    """Dars vaqtlarini tekshirib, eslatma yuborish"""
+    """Dars vaqtlarini tekshirib, eslatma yuborish (kengaytirilgan)"""
     while True:
         now_uzb = datetime.now(UZB_TZ)
         current_time = now_uzb.strftime("%H:%M")
         current_weekday = now_uzb.weekday()
+        today_date = now_uzb.strftime("%Y-%m-%d")
         
         current_day_name = WEEKDAYS_UZ[current_weekday]
         
@@ -2753,11 +2847,22 @@ async def check_schedule_reminders():
                 lesson_time = days[current_day_name]
                 
                 lesson_dt = datetime.strptime(lesson_time, "%H:%M")
+                
+                # Dars boshlanishidan 15 daqiqa oldin eslatma
                 reminder_dt = lesson_dt - timedelta(minutes=15)
                 reminder_time = reminder_dt.strftime("%H:%M")
                 
+                # Dars boshlangan vaqt
+                lesson_start_time = lesson_dt.strftime("%H:%M")
+                
+                # Dars boshlanganidan 5 daqiqa o'tgach eslatma
+                lesson_passed_dt = lesson_dt + timedelta(minutes=5)
+                lesson_passed_time = lesson_passed_dt.strftime("%H:%M")
+                
+                lang = user_languages.get(user_id, 'uz')
+                
+                # 1. Dars boshlanishidan 15 daqiqa oldin eslatma
                 if current_time == reminder_time:
-                    lang = user_languages.get(user_id, 'uz')
                     try:
                         await bot.send_message(
                             user_id,
@@ -2767,6 +2872,38 @@ async def check_schedule_reminders():
                         logging.info(f"Reminder sent to {user_id} for {branch} at {lesson_time}")
                     except Exception as e:
                         logging.error(f"Failed to send reminder to {user_id}: {e}")
+                
+                # 2. Dars boshlanganida (davomat qilgan bo'lsa) xabar
+                elif current_time == lesson_start_time:
+                    # Bugun shu filialda davomat qilganmi?
+                    attended_today = any(k[0] == user_id and k[1] == branch and k[2] == today_date for k in daily_attendance_log)
+                    
+                    if attended_today:
+                        try:
+                            await bot.send_message(
+                                user_id,
+                                get_text(user_id, 'lesson_started_attended'),
+                                parse_mode="Markdown"
+                            )
+                            logging.info(f"Lesson started message sent to {user_id} for {branch}")
+                        except Exception as e:
+                            logging.error(f"Failed to send lesson started message to {user_id}: {e}")
+                
+                # 3. Dars boshlanganidan 5 daqiqa o'tgach (hali davomat qilmagan bo'lsa)
+                elif current_time == lesson_passed_time:
+                    # Bugun shu filialda davomat qilmagan bo'lsa
+                    attended_today = any(k[0] == user_id and k[1] == branch and k[2] == today_date for k in daily_attendance_log)
+                    
+                    if not attended_today:
+                        try:
+                            await bot.send_message(
+                                user_id,
+                                get_text(user_id, 'lesson_started_not_attended', time=lesson_time, branch=branch),
+                                parse_mode="Markdown"
+                            )
+                            logging.info(f"Late reminder sent to {user_id} for {branch}")
+                        except Exception as e:
+                            logging.error(f"Failed to send late reminder to {user_id}: {e}")
         
         await asyncio.sleep(60)
 
