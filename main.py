@@ -29,9 +29,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 import pickle
-
-# --- DATABASE IMPORTS ---
-import os
+import asyncpg
 from database import Database
 
 # --- LOGGING ---
@@ -211,24 +209,24 @@ WEATHER_RECOMMENDATIONS = {
 # Tillar uchun matnlar
 TRANSLATIONS = {
     'uz': {
-        'welcome': "\U0001F31F HANCOM ACADEMYning o'qituvchilar uchun davomat botiga hush kelibsiz, {name}!",
+        'welcome': "🌟 HANCOM ACADEMYning o'qituvchilar uchun davomat botiga hush kelibsiz, {name}!",
         'ask_name': "👤 Iltimos, ism va familiyangizni kiriting:\n\nMasalan: Ali Karimov",
         'ask_specialty': "📚 Qaysi fan o'qituvchisisiz?",
         'specialty_it': "💻 IT",
         'specialty_korean': "🇰🇷 Koreys tili",
-        'stats': "\U0001F4CA Sizning statistikangiz:",
-        'no_stats': "\U0001F4AD Hali davomat qilmagansiz",
-        'branches': "\U0001F3E2 Mavjud filiallar (lokatsiya):",
-        'help': "\U0001F916 Botdan foydalanish qo'llanmasi:\n\n\U0001F4CD Davomat qilish uchun:\n• Pastdagi \"📍 Kelganimni tasdiqlash\" tugmasini bosing\n• Joylashuvingizni yuboring\n\n\U0001F4CA Statistika:\n• \"📊 Mening statistikam\" - shaxsiy davomat tarixingiz\n• \"🏢 Filiallar\" - barcha mavjud filiallar ro'yxati\n\n⚠️ Eslatmalar:\n• Har bir filialda kuniga faqat 1 marta davomat qilish mumkin\n• Davomat faqat Toshkent vaqti bilan hisoblanadi",
-        'attendance_success': "✅ Davomat tasdiqlandi!\n\n\U0001F3EB Filial: {branch}\n\U0001F4C5 Sana: {date}\n⏰ Vaqt: {time}\n\U0001F4CA Bu oydagi tashriflar: {count} marta\n\U0001F4CD Masofa: {distance:.1f} metr",
+        'stats': "📊 Sizning statistikangiz:",
+        'no_stats': "📭 Hali davomat qilmagansiz",
+        'branches': "🏢 Mavjud filiallar (lokatsiya):",
+        'help': "🤖 Botdan foydalanish qo'llanmasi:\n\n📍 Davomat qilish uchun:\n• Pastdagi \"📍 Kelganimni tasdiqlash\" tugmasini bosing\n• Joylashuvingizni yuboring\n\n📊 Statistika:\n• \"📊 Mening statistikam\" - shaxsiy davomat tarixingiz\n• \"🏢 Filiallar\" - barcha mavjud filiallar ro'yxati\n\n⚠️ Eslatmalar:\n• Har bir filialda kuniga faqat 1 marta davomat qilish mumkin\n• Davomat faqat Toshkent vaqti bilan hisoblanadi",
+        'attendance_success': "✅ Davomat tasdiqlandi!\n\n🏫 Filial: {branch}\n📅 Sana: {date}\n⏰ Vaqt: {time}\n📊 Bu oydagi tashriflar: {count} marta\n📍 Masofa: {distance:.1f} metr",
         'already_attended': "⚠️ Siz bugun {branch} hududida allaqachon davomatdan o'tgansiz!",
         'not_in_area': "❌ Siz belgilangan ta'lim muassasalari hududida emassiz!",
         'daily_reminder': "⏰ Eslatma! Bugun hali davomat qilmagansiz. Ish kuningizni boshlash uchun davomatni tasdiqlang!",
-        'weekly_top': "\U0001F3C6 Haftaning eng faol o'qituvchilari:\n\n{top_list}",
-        'monthly_report': "\U0001F4CA {month} oyi uchun hisobot\n\n{report}",
+        'weekly_top': "🏆 Haftaning eng faol o'qituvchilari:\n\n{top_list}",
+        'monthly_report': "📊 {month} oyi uchun hisobot\n\n{report}",
         'language_changed': "✅ Til o'zgartirildi: O'zbek tili",
         'language_prompt': "Iltimos, tilni tanlang:",
-        'view_schedules': "\U0001F4CB Dars jadvalim (PDF)",
+        'view_schedules': "📋 Dars jadvalim (PDF)",
         'my_schedule': "📅 Sizning dars jadvalingiz PDF formatida tayyorlandi!",
         'no_schedules': "📭 Sizga hali dars jadvali biriktirilmagan.",
         'schedule_updated': "📢 Sizning dars jadvalingiz yangilandi!",
@@ -253,34 +251,34 @@ TRANSLATIONS = {
         'ontime': "Vaqtida",
         'late': "Kechikkan",
         'buttons': {
-            'attendance': "\U0001F4CD Kelganimni tasdiqlash",
-            'my_stats': "\U0001F4CA Mening statistikam",
-            'branches': "\U0001F3E2 Filiallar",
-            'top_week': "\U0001F3C6 Hafta topi",
-            'view_schedules': "\U0001F4CB Dars jadvalim (PDF)",
-            'help': "\u2753 Yordam",
-            'language': "\U0001F310 Til"
+            'attendance': "📍 Kelganimni tasdiqlash",
+            'my_stats': "📊 Mening statistikam",
+            'branches': "🏢 Filiallar",
+            'top_week': "🏆 Hafta topi",
+            'view_schedules': "📋 Dars jadvalim (PDF)",
+            'help': "❓ Yordam",
+            'language': "🌐 Til"
         }
     },
     'ru': {
-        'welcome': "\U0001F31F Добро пожаловать в бот для отметок HANCOM ACADEMY для учителей, {name}!",
+        'welcome': "🌟 Добро пожаловать в бот для отметок HANCOM ACADEMY для учителей, {name}!",
         'ask_name': "👤 Пожалуйста, введите ваше имя и фамилию:\n\nНапример: Ali Karimov",
         'ask_specialty': "📚 Какой предмет вы преподаете?",
         'specialty_it': "💻 IT",
         'specialty_korean': "🇰🇷 Корейский язык",
-        'stats': "\U0001F4CA Ваша статистика:",
-        'no_stats': "\U0001F4AD Вы еще не отмечались",
-        'branches': "\U0001F3E2 Доступные филиалы (локация):",
-        'help': "\U0001F916 Руководство по использованию:\n\n\U0001F4CD Для отметки:\n• Нажмите кнопку \"📍 Подтвердить прибытие\"\n• Отправьте свою геолокацию\n\n\U0001F4CA Статистика:\n• \"📊 Моя статистика\" - история отметок\n• \"🏢 Филиалы\" - список всех филиалов\n\n⚠️ Примечания:\n• В каждом филиале можно отмечаться только 1 раз в день\n• Отметки записываются по ташкентскому времени",
-        'attendance_success': "✅ Отметка подтверждена!\n\n\U0001F3EB Филиал: {branch}\n\U0001F4C5 Дата: {date}\n⏰ Время: {time}\n\U0001F4CA Посещений в этом месяце: {count}\n\U0001F4CD Расстояние: {distance:.1f} м",
+        'stats': "📊 Ваша статистика:",
+        'no_stats': "📭 Вы еще не отмечались",
+        'branches': "🏢 Доступные филиалы (локация):",
+        'help': "🤖 Руководство по использованию:\n\n📍 Для отметки:\n• Нажмите кнопку \"📍 Подтвердить прибытие\"\n• Отправьте свою геолокацию\n\n📊 Статистика:\n• \"📊 Моя статистика\" - история отметок\n• \"🏢 Филиалы\" - список всех филиалов\n\n⚠️ Примечания:\n• В каждом филиале можно отмечаться только 1 раз в день\n• Отметки записываются по ташкентскому времени",
+        'attendance_success': "✅ Отметка подтверждена!\n\n🏫 Филиал: {branch}\n📅 Дата: {date}\n⏰ Время: {time}\n📊 Посещений в этом месяце: {count}\n📍 Расстояние: {distance:.1f} м",
         'already_attended': "⚠️ Вы уже отмечались сегодня в филиале {branch}!",
         'not_in_area': "❌ Вы не находитесь в зоне учебных заведений!",
         'daily_reminder': "⏰ Напоминание! Вы еще не отметились сегодня. Подтвердите свое прибытие для начала рабочего дня!",
-        'weekly_top': "\U0001F3C6 Самые активные учителя недели:\n\n{top_list}",
-        'monthly_report': "\U0001F4CA Отчет за {month}\n\n{report}",
+        'weekly_top': "🏆 Самые активные учителя недели:\n\n{top_list}",
+        'monthly_report': "📊 Отчет за {month}\n\n{report}",
         'language_changed': "✅ Язык изменен: Русский язык",
         'language_prompt': "Пожалуйста, выберите язык:",
-        'view_schedules': "\U0001F4CB Мое расписание (PDF)",
+        'view_schedules': "📋 Мое расписание (PDF)",
         'my_schedule': "📅 Ваше расписание уроков готово в формате PDF!",
         'no_schedules': "📭 Вам еще не назначено расписание.",
         'schedule_updated': "📢 Ваше расписание обновлено!",
@@ -305,34 +303,34 @@ TRANSLATIONS = {
         'ontime': "Вовремя",
         'late': "Опоздал",
         'buttons': {
-            'attendance': "\U0001F4CD Подтвердить прибытие",
-            'my_stats': "\U0001F4CA Моя статистика",
-            'branches': "\U0001F3E2 Филиалы",
-            'top_week': "\U0001F3C6 Топ недели",
-            'view_schedules': "\U0001F4CB Мое расписание (PDF)",
-            'help': "\u2753 Помощь",
-            'language': "\U0001F310 Язык"
+            'attendance': "📍 Подтвердить прибытие",
+            'my_stats': "📊 Моя статистика",
+            'branches': "🏢 Филиалы",
+            'top_week': "🏆 Топ недели",
+            'view_schedules': "📋 Мое расписание (PDF)",
+            'help': "❓ Помощь",
+            'language': "🌐 Язык"
         }
     },
     'kr': {
-        'welcome': "\U0001F31F HANCOM ACADEMY 교사용 출석 체크 봇에 오신 것을 환영합니다, {name}!",
+        'welcome': "🌟 HANCOM ACADEMY 교사용 출석 체크 봇에 오신 것을 환영합니다, {name}!",
         'ask_name': "👤 이름과 성을 입력하세요:\n\n예: Ali Karimov",
         'ask_specialty': "📚 어떤 과목을 가르치시나요?",
         'specialty_it': "💻 IT",
         'specialty_korean': "🇰🇷 한국어",
-        'stats': "\U0001F4CA 내 통계:",
-        'no_stats': "\U0001F4AD 아직 출석 체크하지 않았습니다",
-        'branches': "\U0001F3E2 등록된 지점 (위치):",
-        'help': "\U0001F916 사용 설명서:\n\n\U0001F4CD 출석 체크 방법:\n• 하단의 \"📍 출석 확인\" 버튼을 누르세요\n• 위치를 전송하세요\n\n\U0001F4CA 통계:\n• \"📊 내 통계\" - 개인 출석 기록\n• \"🏢 지점\" - 모든 지점 목록\n\n⚠️ 참고사항:\n• 각 지점에서 하루에 한 번만 출석 체크 가능\n• 출석은 타슈켄트 시간 기준으로 기록됨",
-        'attendance_success': "✅ 출석이 확인되었습니다!\n\n\U0001F3EB 지점: {branch}\n\U0001F4C5 날짜: {date}\n⏰ 시간: {time}\n\U0001F4CA 이번 달 출석: {count}회\n\U0001F4CD 거리: {distance:.1f}미터",
+        'stats': "📊 내 통계:",
+        'no_stats': "📭 아직 출석 체크하지 않았습니다",
+        'branches': "🏢 등록된 지점 (위치):",
+        'help': "🤖 사용 설명서:\n\n📍 출석 체크 방법:\n• 하단의 \"📍 출석 확인\" 버튼을 누르세요\n• 위치를 전송하세요\n\n📊 통계:\n• \"📊 내 통계\" - 개인 출석 기록\n• \"🏢 지점\" - 모든 지점 목록\n\n⚠️ 참고사항:\n• 각 지점에서 하루에 한 번만 출석 체크 가능\n• 출석은 타슈켄트 시간 기준으로 기록됨",
+        'attendance_success': "✅ 출석이 확인되었습니다!\n\n🏫 지점: {branch}\n📅 날짜: {date}\n⏰ 시간: {time}\n📊 이번 달 출석: {count}회\n📍 거리: {distance:.1f}미터",
         'already_attended': "⚠️ 오늘 이미 {branch} 지점에서 출석 체크하셨습니다!",
         'not_in_area': "❌ 지정된 교육 기관 구역 내에 있지 않습니다!",
         'daily_reminder': "⏰ 알림! 오늘 아직 출석 체크하지 않으셨습니다. 업무 시작을 위해 출석을 확인하세요!",
-        'weekly_top': "\U0001F3C6 이번 주 가장 활발한 교사:\n\n{top_list}",
-        'monthly_report': "\U0001F4CA {month}월 보고서\n\n{report}",
+        'weekly_top': "🏆 이번 주 가장 활발한 교사:\n\n{top_list}",
+        'monthly_report': "📊 {month}월 보고서\n\n{report}",
         'language_changed': "✅ 언어가 변경되었습니다: 한국어",
         'language_prompt': "언어를 선택하세요:",
-        'view_schedules': "\U0001F4CB 내 시간표 (PDF)",
+        'view_schedules': "📋 내 시간표 (PDF)",
         'my_schedule': "📅 내 수업 시간표가 PDF 형식으로 준비되었습니다!",
         'no_schedules': "📭 아직 시간표가 배정되지 않았습니다.",
         'schedule_updated': "📢 시간표가 업데이트되었습니다!",
@@ -357,13 +355,13 @@ TRANSLATIONS = {
         'ontime': "정시",
         'late': "지각",
         'buttons': {
-            'attendance': "\U0001F4CD 출석 확인",
-            'my_stats': "\U0001F4CA 내 통계",
-            'branches': "\U0001F3E2 지점",
-            'top_week': "\U0001F3C6 주간 TOP",
-            'view_schedules': "\U0001F4CB 내 시간표 (PDF)",
-            'help': "\u2753 도움말",
-            'language': "\U0001F310 언어"
+            'attendance': "📍 출석 확인",
+            'my_stats': "📊 내 통계",
+            'branches': "🏢 지점",
+            'top_week': "🏆 주간 TOP",
+            'view_schedules': "📋 내 시간표 (PDF)",
+            'help': "❓ 도움말",
+            'language': "🌐 언어"
         }
     }
 }
@@ -692,7 +690,7 @@ async def set_initial_language(callback: types.CallbackQuery, state: FSMContext)
         logging.error(f"set_initial_language error: {e}")
         await callback.answer("Xatolik yuz berdi")
 
-@dp.message(F.text.in_({'\U0001F310 Til', '\U0001F310 Язык', '\U0001F310 언어'}))
+@dp.message(F.text.in_({'🌐 Til', '🌐 Язык', '🌐 언어'}))
 async def change_language(message: types.Message):
     user_id = message.from_user.id
     builder = InlineKeyboardBuilder()
@@ -730,7 +728,7 @@ async def set_changed_language(callback: types.CallbackQuery):
         await callback.answer("Xatolik yuz berdi")
 
 # --- FOYDALANUVCHI UCHUN DARS JADVALINI PDF KO'RISH ---
-@dp.message(F.text.in_({'\U0001F4CB Dars jadvalim (PDF)', '\U0001F4CB Мое расписание (PDF)', '\U0001F4CB 내 시간표 (PDF)'}))
+@dp.message(F.text.in_({'📋 Dars jadvalim (PDF)', '📋 Мое расписание (PDF)', '📋 내 시간표 (PDF)'}))
 async def view_my_schedule_pdf(message: types.Message):
     """Foydalanuvchi o'zining dars jadvalini PDF formatida ko'rish"""
     user_id = message.from_user.id
@@ -757,7 +755,7 @@ async def view_my_schedule_pdf(message: types.Message):
         await message.answer("❌ PDF yaratishda xatolik yuz berdi")
 
 # --- BOSHQA FOYDALANUVCHI HANDLERLARI ---
-@dp.message(F.text.in_({'\U0001F4CA Mening statistikam', '\U0001F4CA Моя статистика', '\U0001F4CA 내 통계'}))
+@dp.message(F.text.in_({'📊 Mening statistikam', '📊 Моя статистика', '📊 내 통계'}))
 async def my_stats(message: types.Message):
     user_id = message.from_user.id
     
@@ -813,7 +811,7 @@ async def my_stats(message: types.Message):
     text = get_text(user_id, 'stats') + "\n\n"
     
     for branch, date_time_list in user_attendances.items():
-        text += f"\U0001F3E2 {branch}\n"
+        text += f"📍 {branch}\n"
         
         dates_by_month = defaultdict(list)
         for date_str, time_str in date_time_list:
@@ -828,7 +826,7 @@ async def my_stats(message: types.Message):
             if year_month == current_month:
                 month_display += f" {current_month_text}"
             
-            text += f"   \U0001F4C5 {month_display}\n"
+            text += f"   📅 {month_display}\n"
             
             for date_str, time_str in sorted(month_data, reverse=True):
                 date_parts = date_str.split('-')
@@ -851,7 +849,7 @@ async def my_stats(message: types.Message):
     
     await message.answer(text, parse_mode="Markdown")
 
-@dp.message(F.text.in_({'\U0001F3E2 Filiallar', '\U0001F3E2 Филиалы', '\U0001F3E2 지점'}))
+@dp.message(F.text.in_({'🏢 Filiallar', '🏢 Филиалы', '🏢 지점'}))
 async def show_branches(message: types.Message):
     user_id = message.from_user.id
     
@@ -865,15 +863,15 @@ async def show_branches(message: types.Message):
     for loc in LOCATIONS:
         maps_link = get_yandex_maps_link(loc['lat'], loc['lon'])
         builder.row(
-            InlineKeyboardButton(text=f"\U0001F4CD {loc['name']}", url=maps_link)
+            InlineKeyboardButton(text=f"📍 {loc['name']}", url=maps_link)
         )
     
     await message.answer(
-        "\U0001F3E2 Mavjud filiallar (lokatsiya uchun bosing):",
+        "🏢 Mavjud filiallar (lokatsiya uchun bosing):",
         reply_markup=builder.as_markup()
     )
 
-@dp.message(F.text.in_({'\u2753 Yordam', '\u2753 Помощь', '\u2753 도움말'}))
+@dp.message(F.text.in_({'❓ Yordam', '❓ Помощь', '❓ 도움말'}))
 async def help_command(message: types.Message):
     user_id = message.from_user.id
     
@@ -886,7 +884,7 @@ async def help_command(message: types.Message):
         parse_mode="Markdown"
     )
 
-@dp.message(F.text.in_({'\U0001F3C6 Hafta topi', '\U0001F3C6 Топ недели', '\U0001F3C6 주간 TOP'}))
+@dp.message(F.text.in_({'🏆 Hafta topi', '🏆 Топ недели', '🏆 주간 TOP'}))
 async def weekly_top(message: types.Message):
     user_id = message.from_user.id
     
@@ -907,11 +905,11 @@ async def weekly_top(message: types.Message):
     if not weekly_stats:
         lang = user_languages.get(user_id, 'uz')
         if lang == 'uz':
-            no_data_msg = "\U0001F4AD Bu hafta hali davomat yo'q"
+            no_data_msg = "📭 Bu hafta hali davomat yo'q"
         elif lang == 'ru':
-            no_data_msg = "\U0001F4AD На этой неделе еще нет отметок"
+            no_data_msg = "📭 На этой неделе еще нет отметок"
         else:
-            no_data_msg = "\U0001F4AD 이번 주에는 아직 출석 기록이 없습니다"
+            no_data_msg = "📭 이번 주에는 아직 출석 기록이 없습니다"
         
         await message.answer(no_data_msg)
         return
@@ -1003,11 +1001,11 @@ async def handle_location(message: types.Message):
         report = (
             f"✅ Yangi Davomat\n\n"
             f"👤 O'qituvchi: {full_name}{specialty_display}\n"
-            f"\U0001F4CD Manzil: {found_branch}\n"
-            f"\U0001F4C5 Sana: {today_date}\n"
+            f"📍 Manzil: {found_branch}\n"
+            f"📅 Sana: {today_date}\n"
             f"⏰ Vaqt: {now_time}\n"
-            f"\U0001F4CA Shu oydagi tashrif: {visit_number}-marta\n"
-            f"\U0001F4CD Masofa: {min_distance:.1f} metr"
+            f"📊 Shu oydagi tashrif: {visit_number}-marta\n"
+            f"📍 Masofa: {min_distance:.1f} metr"
         )
         
         builder = InlineKeyboardBuilder()
@@ -1031,10 +1029,14 @@ async def handle_location(message: types.Message):
                 distance=min_distance
             )
             
+            # Ob-havo ma'lumotini olish
             weather_data = await get_weather_by_coords(user_coords[0], user_coords[1])
-            weather_message = format_weather_message(weather_data, user_languages.get(user_id, 'uz'))
+            if weather_data:
+                weather_message = format_weather_message(weather_data, user_languages.get(user_id, 'uz'))
+                full_response = f"{success_text}\n\n{weather_message}"
+            else:
+                full_response = success_text
             
-            full_response = f"{success_text}\n\n{weather_message}"
             await message.answer(full_response, parse_mode="Markdown")
             
         except Exception as e:
@@ -1127,7 +1129,7 @@ def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
     message = f"""
 {emoji} Ob-havo ma'lumoti
 
-\U0001F4CD Joy: {city}
+📍 Joy: {city}
 🌡️ {temp_text}: {temp:.1f}°C ({feels_text}: {feels_like:.1f}°C)
 💧 {humidity_text}: {humidity}%
 💨 {wind_text}: {wind_speed:.1f} m/s
@@ -1140,41 +1142,466 @@ def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
 """
     return message
 
-# --- MAIN ---
-async def main():
-    asyncio.create_task(start_web_server())
+# --- ADMIN PANEL - TO'LIQ FUNKSIYALAR BILAN ---
+@dp.message(Command("admin"))
+async def admin_panel(message: types.Message):
+    """Admin panel asosiy menyusi"""
+    chat_id = message.chat.id
     
-    # PostgreSQL ulanishini sozlash
-    if db:
-        try:
-            await db.create_pool()
-            await db.init_tables()
-            print("✅ PostgreSQL muvaffaqiyatli ulandi")
-            
-            # RAMdagi ma'lumotlarni DB ga ko'chirish (faqat birinchi marta)
-            if user_ids:
-                print("🔄 RAMdagi ma'lumotlar PostgreSQLga ko'chirilmoqda...")
-                await db.migrate_from_ram(
-                    user_names=user_names,
-                    user_specialty=user_specialty,
-                    user_status=user_status,
-                    user_languages=user_languages,
-                    daily_attendance_log=daily_attendance_log,
-                    schedules=schedules,
-                    user_schedules=user_schedules
-                )
-                print("✅ Ma'lumotlar muvaffaqiyatli ko'chirildi")
-        except Exception as e:
-            print(f"❌ PostgreSQL ulanishida xatolik: {e}")
-            print("⚠️ Bot RAM bilan ishlashda davom etadi...")
-    else:
-        print("⚠️ DATABASE_URL sozlanmagan. Bot RAM bilan ishlaydi.")
+    # Debug uchun
+    logging.info(f"Admin komandasi keldi. Chat ID: {chat_id}, Admin ID: {ADMIN_GROUP_ID}")
     
-    asyncio.create_task(reminder_loop())
-    asyncio.create_task(check_schedule_reminders())
+    if not check_admin(chat_id):
+        await message.answer(f"⛔ Ruxsat yo'q!\nSizning ID: {chat_id}\nAdmin ID: {ADMIN_GROUP_ID}")
+        return
     
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
+    try:
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="📊 Statistika", callback_data="admin_stats_main"),
+            InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main")
+        )
+        builder.row(
+            InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast"),
+            InlineKeyboardButton(text="📅 Dars jadvallari", callback_data="admin_schedules_main")
+        )
+        builder.row(
+            InlineKeyboardButton(text="🏢 Filiallar", callback_data="admin_locations_main"),
+            InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report")
+        )
+        builder.row(
+            InlineKeyboardButton(text="📥 Backup", callback_data="admin_backup"),
+            InlineKeyboardButton(text="⚙️ Sozlamalar", callback_data="admin_settings")
+        )
+        
+        await message.answer(
+            "👨‍💼 Admin Panel\n\nKerakli bo'limni tanlang:",
+            reply_markup=builder.as_markup(),
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logging.error(f"admin_panel error: {e}")
+        await message.answer(f"❌ Admin panelni ochishda xatolik: {e}")
+
+# --- STATISTIKA BO'LIMI ---
+@dp.callback_query(F.data == "admin_stats_main")
+async def admin_stats_main(callback: types.CallbackQuery):
+    """Statistika asosiy menyusi"""
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    try:
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="📊 Umumiy statistika", callback_data="admin_stats_general"),
+            InlineKeyboardButton(text="📈 Grafiklar", callback_data="admin_stats_charts")
+        )
+        builder.row(
+            InlineKeyboardButton(text="🏆 Filiallar reytingi", callback_data="admin_stats_branches"),
+            InlineKeyboardButton(text="👥 O'qituvchilar reytingi", callback_data="admin_stats_teachers")
+        )
+        builder.row(
+            InlineKeyboardButton(text="📅 Oylik hisobot", callback_data="admin_monthly"),
+            InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back")
+        )
+        
+        await callback.message.edit_text(
+            "📊 Statistika bo'limi\n\nKerakli statistikani tanlang:",
+            reply_markup=builder.as_markup(),
+            parse_mode="Markdown"
+        )
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_stats_main error: {e}")
+        await callback.answer("Xatolik yuz berdi")
+
+@dp.callback_query(F.data == "admin_stats_general")
+async def admin_stats_general(callback: types.CallbackQuery):
+    """Umumiy statistika"""
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    try:
+        now_uzb = datetime.now(UZB_TZ)
+        today = now_uzb.strftime("%Y-%m-%d")
+        current_month = now_uzb.strftime("%Y-%m")
+        
+        total_users = len(user_ids)
+        active_users = len([uid for uid in user_ids if user_status.get(uid) == 'active'])
+        blocked_users = len([uid for uid in user_ids if user_status.get(uid) == 'blocked'])
+        total_attendances = len(daily_attendance_log)
+        today_attendances = len([k for k in daily_attendance_log if k[2] == today])
+        monthly_attendances = len([k for k in daily_attendance_log if k[2].startswith(current_month)])
+        
+        # IT va Koreys tili o'qituvchilari soni
+        it_teachers = len([uid for uid in user_ids if user_specialty.get(uid) == 'IT'])
+        korean_teachers = len([uid for uid in user_ids if user_specialty.get(uid) == 'Koreys tili'])
+        
+        # Eng faol filial
+        branch_stats = defaultdict(int)
+        for (uid, branch, date, time) in daily_attendance_log:
+            branch_stats[branch] += 1
+        top_branch = max(branch_stats.items(), key=lambda x: x[1]) if branch_stats else ("Yo'q", 0)
+        
+        # Eng faol o'qituvchi
+        teacher_stats = defaultdict(int)
+        for (uid, branch, date, time) in daily_attendance_log:
+            teacher_stats[uid] += 1
+        top_teacher_id = max(teacher_stats.items(), key=lambda x: x[1]) if teacher_stats else (None, 0)
+        top_teacher_name = user_names.get(top_teacher_id[0], "Noma'lum") if top_teacher_id[0] else "Yo'q"
+        top_teacher_specialty = user_specialty.get(top_teacher_id[0], '')
+        top_teacher_display = f"{top_teacher_name} [{top_teacher_specialty}]" if top_teacher_specialty else top_teacher_name
+        
+        text = f"""
+📊 Umumiy statistika
+
+👥 Foydalanuvchilar:
+• Jami: {total_users}
+• Faol: {active_users}
+• Bloklangan: {blocked_users}
+• 💻 IT: {it_teachers}
+• 🇰🇷 Koreys tili: {korean_teachers}
+
+📋 Davomatlar:
+• Jami: {total_attendances}
+• Bugun: {today_attendances}
+• Shu oyda: {monthly_attendances}
+
+🏆 Eng faol filial: {top_branch[0]} ({top_branch[1]} ta)
+
+👑 Eng faol o'qituvchi: {top_teacher_display} ({top_teacher_id[1]} ta)
+
+📅 Oxirgi yangilanish: {now_uzb.strftime('%Y-%m-%d %H:%M')}
+"""
+        
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_stats_main"))
+        
+        await callback.message.edit_text(
+            text,
+            reply_markup=builder.as_markup(),
+            parse_mode="Markdown"
+        )
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_stats_general error: {e}")
+        await callback.message.edit_text("❌ Statistikani olishda xatolik yuz berdi")
+        await callback.answer()
+
+@dp.callback_query(F.data == "admin_stats_charts")
+async def admin_stats_charts(callback: types.CallbackQuery):
+    """Grafikli statistika"""
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    try:
+        # So'nggi 7 kunlik davomatlar
+        now_uzb = datetime.now(UZB_TZ)
+        dates = []
+        counts = []
+        
+        for i in range(6, -1, -1):
+            date = (now_uzb - timedelta(days=i)).strftime("%Y-%m-%d")
+            dates.append((now_uzb - timedelta(days=i)).strftime("%d.%m"))
+            count = len([k for k in daily_attendance_log if k[2] == date])
+            counts.append(count)
+        
+        # Grafik yaratish
+        plt.figure(figsize=(10, 6))
+        plt.bar(dates, counts, color='skyblue')
+        plt.title(f"So'nggi 7 kunlik davomatlar", fontsize=16)
+        plt.xlabel("Sanalar", fontsize=12)
+        plt.ylabel("Davomatlar soni", fontsize=12)
+        plt.grid(axis='y', alpha=0.3)
+        
+        for i, v in enumerate(counts):
+            plt.text(i, v + 0.1, str(v), ha='center', va='bottom')
+        
+        # Grafikni saqlash
+        img_bytes = io.BytesIO()
+        plt.savefig(img_bytes, format='png', dpi=100, bbox_inches='tight')
+        img_bytes.seek(0)
+        plt.close()
+        
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_stats_main"))
+        
+        await callback.message.answer_photo(
+            photo=types.BufferedInputFile(img_bytes.getvalue(), filename="chart.png"),
+            caption="📊 So'nggi 7 kunlik davomatlar statistikasi",
+            reply_markup=builder.as_markup()
+        )
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_stats_charts error: {e}")
+        await callback.message.answer("❌ Grafik yaratishda xatolik yuz berdi")
+        await callback.answer()
+
+@dp.callback_query(F.data == "admin_stats_branches")
+async def admin_stats_branches(callback: types.CallbackQuery):
+    """Filiallar reytingi"""
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    try:
+        branch_stats = defaultdict(int)
+        for (uid, branch, date, time) in daily_attendance_log:
+            branch_stats[branch] += 1
+        
+        if not branch_stats:
+            await callback.message.edit_text("📭 Hali davomat ma'lumotlari yo'q.")
+            await callback.answer()
+            return
+        
+        sorted_branches = sorted(branch_stats.items(), key=lambda x: x[1], reverse=True)
+        
+        text = "🏆 Filiallar reytingi\n\n"
+        for i, (branch, count) in enumerate(sorted_branches, 1):
+            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+            text += f"{medal} {branch}: {count} ta davomat\n"
+        
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_stats_main"))
+        
+        await callback.message.edit_text(
+            text,
+            reply_markup=builder.as_markup(),
+            parse_mode="Markdown"
+        )
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_stats_branches error: {e}")
+        await callback.message.edit_text("❌ Filiallar reytingini olishda xatolik yuz berdi")
+        await callback.answer()
+
+@dp.callback_query(F.data == "admin_stats_teachers")
+async def admin_stats_teachers(callback: types.CallbackQuery):
+    """O'qituvchilar reytingi"""
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    try:
+        teacher_stats = defaultdict(int)
+        for (uid, branch, date, time) in daily_attendance_log:
+            teacher_stats[uid] += 1
+        
+        if not teacher_stats:
+            await callback.message.edit_text("📭 Hali davomat ma'lumotlari yo'q.")
+            await callback.answer()
+            return
+        
+        sorted_teachers = sorted(teacher_stats.items(), key=lambda x: x[1], reverse=True)[:20]
+        
+        text = "👥 Eng faol o'qituvchilar\n\n"
+        for i, (uid, count) in enumerate(sorted_teachers, 1):
+            name = user_names.get(uid, f"ID: {uid}")
+            specialty = user_specialty.get(uid, '')
+            specialty_display = f" [{specialty}]" if specialty else ""
+            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+            text += f"{medal} {name}{specialty_display}: {count} ta davomat\n"
+        
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_stats_main"))
+        
+        await callback.message.edit_text(
+            text,
+            reply_markup=builder.as_markup(),
+            parse_mode="Markdown"
+        )
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_stats_teachers error: {e}")
+        await callback.message.edit_text("❌ O'qituvchilar reytingini olishda xatolik yuz berdi")
+        await callback.answer()
+
+@dp.callback_query(F.data == "admin_monthly")
+async def admin_monthly(callback: types.CallbackQuery):
+    """Oylik hisobot"""
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    try:
+        now_uzb = datetime.now(UZB_TZ)
+        current_month = now_uzb.strftime("%Y-%m")
+        month_name = now_uzb.strftime("%B %Y")
+        
+        monthly_stats = defaultdict(lambda: defaultdict(int))
+        for (uid, branch, date, time) in daily_attendance_log:
+            if date.startswith(current_month):
+                monthly_stats[branch][uid] += 1
+        
+        if not monthly_stats:
+            await callback.message.edit_text("📭 Shu oy uchun davomat ma'lumotlari yo'q.")
+            await callback.answer()
+            return
+        
+        report = f"📊 {month_name} oyi uchun hisobot\n\n"
+        
+        for branch, users in monthly_stats.items():
+            total = sum(users.values())
+            unique_users = len(users)
+            report += f"📍 {branch}\n"
+            report += f"   Jami: {total} ta davomat\n"
+            report += f"   O'qituvchilar: {unique_users} ta\n\n"
+        
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_stats_main"))
+        
+        await callback.message.edit_text(
+            report,
+            reply_markup=builder.as_markup(),
+            parse_mode="Markdown"
+        )
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_monthly error: {e}")
+        await callback.message.edit_text("❌ Oylik hisobotni olishda xatolik yuz berdi")
+        await callback.answer()
+
+# --- FOYDALANUVCHILARNI BOSHQARISH ---
+@dp.callback_query(F.data == "admin_users_main")
+async def admin_users_main(callback: types.CallbackQuery):
+    """Foydalanuvchilarni boshqarish menyusi"""
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    try:
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="✅ Foydalanuvchilar ro'yxati", callback_data="admin_users_active")
+        )
+        builder.row(
+            InlineKeyboardButton(text="⛔ Bloklanganlar", callback_data="admin_users_blocked")
+        )
+        builder.row(
+            InlineKeyboardButton(text="🔍 Qidirish", callback_data="admin_users_search"),
+            InlineKeyboardButton(text="📊 Statistika", callback_data="admin_users_stats")
+        )
+        builder.row(
+            InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back")
+        )
+        
+        await callback.message.edit_text(
+            "👥 Foydalanuvchilarni boshqarish\n\nKerakli amalni tanlang:",
+            reply_markup=builder.as_markup(),
+            parse_mode="Markdown"
+        )
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_users_main error: {e}")
+        await callback.answer("Xatolik yuz berdi")
+
+@dp.callback_query(F.data == "admin_users_active")
+async def admin_users_active(callback: types.CallbackQuery):
+    """Faol foydalanuvchilar ro'yxati"""
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    try:
+        active = [uid for uid in user_ids if user_status.get(uid) != 'blocked']
+        
+        if not active:
+            await callback.message.edit_text("📭 Faol foydalanuvchilar yo'q.")
+            await callback.answer()
+            return
+        
+        text = "✅ Faol foydalanuvchilar:\n\n"
+        for uid in sorted(active)[:20]:
+            name = user_names.get(uid, f"ID: {uid}")
+            specialty = user_specialty.get(uid, '')
+            spec_display = f" [{specialty}]" if specialty else ""
+            text += f"• {name}{spec_display}\n"
+        
+        if len(active) > 20:
+            text += f"\n... va yana {len(active) - 20} ta"
+        
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_users_main"))
+        
+        await callback.message.edit_text(text, reply_markup=builder.as_markup())
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_users_active error: {e}")
+        await callback.message.edit_text("❌ Xatolik yuz berdi")
+        await callback.answer()
+
+@dp.callback_query(F.data == "admin_users_blocked")
+async def admin_users_blocked(callback: types.CallbackQuery):
+    """Bloklangan foydalanuvchilar"""
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    try:
+        blocked = [uid for uid in user_ids if user_status.get(uid) == 'blocked']
+        
+        if not blocked:
+            await callback.message.edit_text("📭 Bloklangan foydalanuvchilar yo'q.")
+            await callback.answer()
+            return
+        
+        text = "⛔ Bloklangan foydalanuvchilar:\n\n"
+        for uid in blocked[:20]:
+            name = user_names.get(uid, f"ID: {uid}")
+            specialty = user_specialty.get(uid, '')
+            spec_display = f" [{specialty}]" if specialty else ""
+            text += f"• {name}{spec_display}\n"
+        
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_users_main"))
+        
+        await callback.message.edit_text(text, reply_markup=builder.as_markup())
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_users_blocked error: {e}")
+        await callback.message.edit_text("❌ Xatolik yuz berdi")
+        await callback.answer()
+
+# --- ORTGA QAYTISH ---
+@dp.callback_query(F.data == "admin_back")
+async def admin_back(callback: types.CallbackQuery):
+    """Admin panelga qaytish"""
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    try:
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="📊 Statistika", callback_data="admin_stats_main"),
+            InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main")
+        )
+        builder.row(
+            InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast"),
+            InlineKeyboardButton(text="📅 Dars jadvallari", callback_data="admin_schedules_main")
+        )
+        builder.row(
+            InlineKeyboardButton(text="🏢 Filiallar", callback_data="admin_locations_main"),
+            InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report")
+        )
+        builder.row(
+            InlineKeyboardButton(text="📥 Backup", callback_data="admin_backup"),
+            InlineKeyboardButton(text="⚙️ Sozlamalar", callback_data="admin_settings")
+        )
+        
+        await callback.message.edit_text(
+            "👨‍💼 Admin Panel\n\nKerakli bo'limni tanlang:",
+            reply_markup=builder.as_markup(),
+            parse_mode="Markdown"
+        )
+        await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_back error: {e}")
+        await callback.message.edit_text("❌ Admin panelga qaytishda xatolik yuz berdi")
+        await callback.answer()
 
 # --- ESLATMA LOOPLARI ---
 async def send_daily_reminders():
@@ -1293,6 +1720,42 @@ async def reminder_loop():
             await send_daily_reminders()
             await asyncio.sleep(60)
         await asyncio.sleep(30)
+
+# --- MAIN ---
+async def main():
+    asyncio.create_task(start_web_server())
+    
+    # PostgreSQL ulanishini sozlash
+    if db:
+        try:
+            await db.create_pool()
+            await db.init_tables()
+            print("✅ PostgreSQL muvaffaqiyatli ulandi")
+            
+            # RAMdagi ma'lumotlarni DB ga ko'chirish (faqat birinchi marta)
+            if user_ids:
+                print("🔄 RAMdagi ma'lumotlar PostgreSQLga ko'chirilmoqda...")
+                await db.migrate_from_ram(
+                    user_names=user_names,
+                    user_specialty=user_specialty,
+                    user_status=user_status,
+                    user_languages=user_languages,
+                    daily_attendance_log=daily_attendance_log,
+                    schedules=schedules,
+                    user_schedules=user_schedules
+                )
+                print("✅ Ma'lumotlar muvaffaqiyatli ko'chirildi")
+        except Exception as e:
+            print(f"❌ PostgreSQL ulanishida xatolik: {e}")
+            print("⚠️ Bot RAM bilan ishlashda davom etadi...")
+    else:
+        print("⚠️ DATABASE_URL sozlanmagan. Bot RAM bilan ishlaydi.")
+    
+    asyncio.create_task(reminder_loop())
+    asyncio.create_task(check_schedule_reminders())
+    
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
