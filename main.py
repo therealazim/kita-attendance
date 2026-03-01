@@ -2010,7 +2010,7 @@ async def admin_edit_schedule_branch(callback: types.CallbackQuery, state: FSMCo
         await callback.answer()
     except Exception as e:
         logging.error(f"admin_edit_schedule_branch error: {e}")
-        await callback.answer("Xatolik yuz berdi")
+        await callback.answer("❌ Xatolik yuz berdi")
 
 @dp.callback_query(AdminEditSchedule.editing_lesson_type, F.data.startswith("edit_lesson_"))
 async def admin_edit_schedule_lesson(callback: types.CallbackQuery, state: FSMContext):
@@ -2285,8 +2285,8 @@ async def admin_add_schedule_branch(callback: types.CallbackQuery, state: FSMCon
         branch = callback.data.replace("admin_branch_", "")
         await state.update_data(branch=branch)
         
-        user_id = callback.from_user.id(callback.from_user.id)
-        lang = user_languages.get(callback.from_user.id, 'uz')
+        user_id = callback.from_user.id
+        lang = user_languages.get(user_id, 'uz')
         lesson_types = LESSON_TYPES.get(lang, LESSON_TYPES['uz'])
         
         # Dars turini tanlash
@@ -2304,7 +2304,7 @@ async def admin_add_schedule_branch(callback: types.CallbackQuery, state: FSMCon
         await callback.answer()
     except Exception as e:
         logging.error(f"admin_add_schedule_branch error: {e}")
-        await callback.answer("Xatolik yuz berdi")
+        await callback.answer("❌ Xatolik yuz berdi")
 
 @dp.callback_query(AdminAddSchedule.selecting_lesson_type, F.data.startswith("admin_lesson_"))
 async def admin_add_schedule_lesson(callback: types.CallbackQuery, state: FSMContext):
