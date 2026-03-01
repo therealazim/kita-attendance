@@ -114,7 +114,6 @@ TRANSLATIONS = {
         'stats': "\U0001F4CA **Sizning statistikangiz:**",
         'no_stats': "\U0001F4AD Hali davomat qilmagansiz",
         'branches': "\U0001F3E2 **Mavjud filiallar (lokatsiya):**",
-        'distance_info': "\U0001F4CD Barcha filiallar {distance} metr masofada aniqlanadi",
         'help': "\U0001F916 **Botdan foydalanish qo'llanmasi:**\n\n\U0001F4CD **Davomat qilish uchun:**\n• Pastdagi \"📍 Kelganimni tasdiqlash\" tugmasini bosing\n• Joylashuvingizni yuboring\n\n\U0001F4CA **Statistika:**\n• \"📊 Mening statistikam\" - shaxsiy davomat tarixingiz\n• \"🏢 Filiallar\" - barcha mavjud filiallar ro'yxati\n\n⚠️ **Eslatmalar:**\n• Har bir filialda kuniga faqat 1 marta davomat qilish mumkin\n• Davomat faqat Toshkent vaqti bilan hisoblanadi",
         'attendance_success': "✅ **Davomat tasdiqlandi!**\n\n\U0001F3EB **Filial:** {branch}\n\U0001F4C5 **Sana:** {date}\n⏰ **Vaqt:** {time}\n\U0001F4CA **Bu oydagi tashriflar:** {count} marta\n\U0001F4CD **Masofa:** {distance:.1f} metr",
         'already_attended': "⚠️ Siz bugun **{branch}** hududida allaqachon davomatdan o'tgansiz!",
@@ -133,6 +132,8 @@ TRANSLATIONS = {
         'enter_time': "⏰ **{weekday} kuni soat nechida dars boshlanadi?**\n\nFormat: HH:MM (masalan: 09:00)",
         'schedule_saved': "✅ **Dars jadvali muvaffaqiyatli saqlandi!**\n\n\U0001F4C5 Filial: {branch}\n\U0001F4C6 Kunlar: {days}\n⏰ Vaqtlar: {times}",
         'schedule_detail': "\U0001F4C5 **{branch}**\n\n{days_times}",
+        'schedule_deleted': "✅ **Dars jadvali o'chirildi!**\n\n\U0001F4C5 {branch} filialidagi jadval o'chirildi.",
+        'confirm_delete': "❓ **Haqiqatan ham bu jadvalni o'chirmoqchimisiz?**",
         'reminder': "⏰ **Eslatma!**\n\nBugun soat {time} da {branch} filialida darsingiz bor.\nDavomat qilishni unutmang!",
         'buttons': {
             'attendance': "\U0001F4CD Kelganimni tasdiqlash",
@@ -150,7 +151,6 @@ TRANSLATIONS = {
         'stats': "\U0001F4CA **Ваша статистика:**",
         'no_stats': "\U0001F4AD Вы еще не отмечались",
         'branches': "\U0001F3E2 **Доступные филиалы (локация):**",
-        'distance_info': "\U0001F4CD Все филиалы определяются в радиусе {distance} метров",
         'help': "\U0001F916 **Руководство по использованию:**\n\n\U0001F4CD **Для отметки:**\n• Нажмите кнопку \"📍 Подтвердить прибытие\"\n• Отправьте свою геолокацию\n\n\U0001F4CA **Статистика:**\n• \"📊 Моя статистика\" - история отметок\n• \"🏢 Филиалы\" - список всех филиалов\n\n⚠️ **Примечания:**\n• В каждом филиале можно отмечаться только 1 раз в день\n• Отметки записываются по ташкентскому времени",
         'attendance_success': "✅ **Отметка подтверждена!**\n\n\U0001F3EB **Филиал:** {branch}\n\U0001F4C5 **Дата:** {date}\n⏰ **Время:** {time}\n\U0001F4CA **Посещений в этом месяце:** {count}\n\U0001F4CD **Расстояние:** {distance:.1f} м",
         'already_attended': "⚠️ Вы уже отмечались сегодня в филиале **{branch}**!",
@@ -169,6 +169,8 @@ TRANSLATIONS = {
         'enter_time': "⏰ **Во сколько начинается урок в {weekday}?**\n\nФормат: ЧЧ:ММ (например: 09:00)",
         'schedule_saved': "✅ **Расписание успешно сохранено!**\n\n\U0001F4C5 Филиал: {branch}\n\U0001F4C6 Дни: {days}\n⏰ Время: {times}",
         'schedule_detail': "\U0001F4C5 **{branch}**\n\n{days_times}",
+        'schedule_deleted': "✅ **Расписание удалено!**\n\n\U0001F4C5 Расписание для филиала {branch} удалено.",
+        'confirm_delete': "❓ **Вы действительно хотите удалить это расписание?**",
         'reminder': "⏰ **Напоминание!**\n\nСегодня в {time} у вас урок в филиале {branch}.\nНе забудьте отметиться!",
         'buttons': {
             'attendance': "\U0001F4CD Подтвердить прибытие",
@@ -186,7 +188,6 @@ TRANSLATIONS = {
         'stats': "\U0001F4CA **내 통계:**",
         'no_stats': "\U0001F4AD 아직 출석 체크하지 않았습니다",
         'branches': "\U0001F3E2 **등록된 지점 (위치):**",
-        'distance_info': "\U0001F4CD 모든 지점은 {distance}미터 반경 내에서 확인됩니다",
         'help': "\U0001F916 **사용 설명서:**\n\n\U0001F4CD **출석 체크 방법:**\n• 하단의 \"📍 출석 확인\" 버튼을 누르세요\n• 위치를 전송하세요\n\n\U0001F4CA **통계:**\n• \"📊 내 통계\" - 개인 출석 기록\n• \"🏢 지점\" - 모든 지점 목록\n\n⚠️ **참고사항:**\n• 각 지점에서 하루에 한 번만 출석 체크 가능\n• 출석은 타슈켄트 시간 기준으로 기록됨",
         'attendance_success': "✅ **출석이 확인되었습니다!**\n\n\U0001F3EB **지점:** {branch}\n\U0001F4C5 **날짜:** {date}\n⏰ **시간:** {time}\n\U0001F4CA **이번 달 출석:** {count}회\n\U0001F4CD **거리:** {distance:.1f}미터",
         'already_attended': "⚠️ 오늘 이미 **{branch}** 지점에서 출석 체크하셨습니다!",
@@ -205,6 +206,8 @@ TRANSLATIONS = {
         'enter_time': "⏰ **{weekday} 수업 시작 시간은 몇 시인가요?**\n\n형식: HH:MM (예: 09:00)",
         'schedule_saved': "✅ **시간표가 성공적으로 저장되었습니다!**\n\n\U0001F4C5 지점: {branch}\n\U0001F4C6 요일: {days}\n⏰ 시간: {times}",
         'schedule_detail': "\U0001F4C5 **{branch}**\n\n{days_times}",
+        'schedule_deleted': "✅ **시간표가 삭제되었습니다!**\n\n\U0001F4C5 {branch} 지점의 시간표가 삭제되었습니다.",
+        'confirm_delete': "❓ **이 시간표를 삭제하시겠습니까?**",
         'reminder': "⏰ **알림!**\n\n오늘 {time}에 {branch} 지점에서 수업이 있습니다.\n출석 체크를 잊지 마세요!",
         'buttons': {
             'attendance': "\U0001F4CD 출석 확인",
@@ -489,8 +492,7 @@ async def view_schedules(message: types.Message):
         await message.answer(get_text(user_id, 'no_schedules'))
         return
     
-    text = get_text(user_id, 'view_schedules') + "\n\n"
-    
+    # Har bir jadval uchun alohida xabar va o'chirish tugmasi
     for schedule_id in user_schedules[user_id]:
         schedule = schedules.get(schedule_id)
         if schedule and schedule['user_id'] == user_id:
@@ -499,10 +501,65 @@ async def view_schedules(message: types.Message):
             for day, time in schedule['days'].items():
                 days_times += f"• {day}: {time}\n"
             
+            # O'chirish tugmasi bilan keyboard
+            builder = InlineKeyboardBuilder()
+            builder.row(
+                InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"delete_schedule_{schedule_id}")
+            )
+            
             await message.answer(
                 get_text(user_id, 'schedule_detail', branch=branch, days_times=days_times),
+                reply_markup=builder.as_markup(),
                 parse_mode="Markdown"
             )
+
+@dp.callback_query(F.data.startswith("delete_schedule_"))
+async def confirm_delete_schedule(callback: types.CallbackQuery):
+    """Jadvalni o'chirishni tasdiqlash"""
+    schedule_id = callback.data.replace("delete_schedule_", "")
+    user_id = callback.from_user.id
+    
+    # Tasdiqlash tugmalari
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="✅ Ha", callback_data=f"confirm_delete_{schedule_id}"),
+        InlineKeyboardButton(text="❌ Yo'q", callback_data="cancel_delete")
+    )
+    
+    await callback.message.edit_text(
+        get_text(user_id, 'confirm_delete'),
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("confirm_delete_"))
+async def delete_schedule(callback: types.CallbackQuery):
+    """Jadvalni o'chirish"""
+    schedule_id = callback.data.replace("confirm_delete_", "")
+    user_id = callback.from_user.id
+    
+    # Jadvalni o'chirish
+    if schedule_id in schedules and schedules[schedule_id]['user_id'] == user_id:
+        branch = schedules[schedule_id]['branch']
+        del schedules[schedule_id]
+        
+        # Foydalanuvchi jadvallari ro'yxatidan o'chirish
+        if user_id in user_schedules and schedule_id in user_schedules[user_id]:
+            user_schedules[user_id].remove(schedule_id)
+        
+        await callback.message.edit_text(
+            get_text(user_id, 'schedule_deleted', branch=branch)
+        )
+    else:
+        await callback.message.edit_text("❌ Jadval topilmadi yoki sizga tegishli emas!")
+    
+    await callback.answer()
+
+@dp.callback_query(F.data == "cancel_delete")
+async def cancel_delete(callback: types.CallbackQuery):
+    """O'chirishni bekor qilish"""
+    await callback.message.delete()
+    await callback.answer("Bekor qilindi")
 
 @dp.message(F.text.in_({'\u2795 Jadval qo\'shish', '\u2795 Добавить расписание', '\u2795 시간표 추가'}))
 async def add_schedule_start(message: types.Message, state: FSMContext):
@@ -798,58 +855,54 @@ async def show_branches(message: types.Message):
         elif "Maktab" in branch['name']:
             schools.append(branch)
     
+    # Tilga mos sarlavhalar
     if lang == 'uz':
         uni_title = "\U0001F3DB **Universitetlar**"
         lyceum_title = "\U0001F4DA **Litseylar**"
         school_title = "\U0001F3EB **Maktablar**"
+        header = f"{uni_title}\n{lyceum_title}\n{school_title}"
     elif lang == 'ru':
         uni_title = "\U0001F3DB **Университеты**"
         lyceum_title = "\U0001F4DA **Лицеи**"
         school_title = "\U0001F3EB **Школы**"
+        header = f"{uni_title}\n{lyceum_title}\n{school_title}"
     else:
         uni_title = "\U0001F3DB **대학교**"
         lyceum_title = "\U0001F4DA **고등학교**"
         school_title = "\U0001F3EB **초중학교**"
+        header = f"{uni_title}\n{lyceum_title}\n{school_title}"
     
+    # Barcha tugmalarni bitta builderda yig'amiz
+    builder = InlineKeyboardBuilder()
+    
+    # Universitetlar
     if universities:
-        builder = InlineKeyboardBuilder()
         for uni in universities:
             maps_link = get_yandex_maps_link(uni['lat'], uni['lon'])
             builder.row(
                 InlineKeyboardButton(text=f"\U0001F4CD {uni['name']}", url=maps_link)
             )
-        await message.answer(
-            uni_title,
-            reply_markup=builder.as_markup()
-        )
     
+    # Litseylar
     if lyceums:
-        builder = InlineKeyboardBuilder()
         for lyceum in lyceums:
             maps_link = get_yandex_maps_link(lyceum['lat'], lyceum['lon'])
             builder.row(
                 InlineKeyboardButton(text=f"\U0001F4CD {lyceum['name']}", url=maps_link)
             )
-        await message.answer(
-            lyceum_title,
-            reply_markup=builder.as_markup()
-        )
     
+    # Maktablar
     if schools:
-        builder = InlineKeyboardBuilder()
         for school in schools:
             maps_link = get_yandex_maps_link(school['lat'], school['lon'])
             builder.row(
                 InlineKeyboardButton(text=f"\U0001F4CD {school['name']}", url=maps_link)
             )
-        await message.answer(
-            school_title,
-            reply_markup=builder.as_markup()
-        )
     
+    # Bitta xabar - barcha tugmalar
     await message.answer(
-        get_text(user_id, 'distance_info', distance=ALLOWED_DISTANCE),
-        parse_mode="Markdown"
+        header,
+        reply_markup=builder.as_markup()
     )
 
 @dp.message(F.text.in_({'\u2753 Yordam', '\u2753 Помощь', '\u2753 도움말'}))
