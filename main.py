@@ -2343,8 +2343,9 @@ async def admin_save_edited_schedule(message: types.Message, state: FSMContext):
         }
         user_schedules[teacher_id].append(new_schedule_id)
         
+        # PostgreSQL ga saqlash
         await db.add_schedule(new_schedule_id, teacher_id, new_branch, new_lesson_type, new_days)
-await db.delete_schedule(schedule_id)
+        await db.delete_schedule(schedule_id)
         
         try:
             await bot.send_message(
@@ -2370,6 +2371,7 @@ await db.delete_schedule(schedule_id)
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="🔙 Admin panel", callback_data="admin_back"))
         await message.answer("Admin panelga qaytish:", reply_markup=builder.as_markup())
+        
     except Exception as e:
         logging.error(f"admin_save_edited_schedule error: {e}")
         await message.answer("❌ Jadvalni tahrirlashda xatolik yuz berdi")
