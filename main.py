@@ -328,7 +328,10 @@ class AddLocation(StatesGroup):
 class PDFReport(StatesGroup):
     waiting_for_date = State()
 
-# Hafta kunlari
+# --- YANGI: Profil tahrirlash uchun FSM ---
+class ProfileEdit(StatesGroup):
+    waiting_for_new_name = State()
+    # Hafta kunlari
 WEEKDAYS = {
     'uz':['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba'],
     'ru':['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'],
@@ -391,7 +394,7 @@ WEATHER_RECOMMENDATIONS = {
     }
 }
 
-# Tillar uchun matnlar
+# Tillar uchun matnlar (YANGI QO'SHIMCHALAR BILAN)
 TRANSLATIONS = {
     'uz': {
         'welcome': "\U0001F31F HANCOM ACADEMYning o'qituvchilar uchun davomat botiga hush kelibsiz, {name}!",
@@ -435,6 +438,13 @@ TRANSLATIONS = {
         'enter_new_time': "⏰ {weekday} kuni uchun yangi vaqtni kiriting:\n\nFormat: HH:MM (masalan: 09:00)",
         'ontime': "Vaqtida",
         'late': "Kechikkan",
+        # YANGI QO'SHIMCHALAR
+        'my_profile': "👤 Mening profilim",
+        'profile_info': "👤 Sizning profilingiz:\n\nIsm: {name}\nMutaxassislik: {specialty}\nTil: {lang}",
+        'edit_name': "✏️ Ismni o'zgartirish",
+        'enter_new_name': "Yangi ism va familiyangizni kiriting:",
+        'name_updated': "✅ Ismingiz muvaffaqiyatli yangilandi!",
+        'back_to_menu': "🔙 Menyuga qaytish",
         'buttons': {
             'attendance': "\U0001F4CD Kelganimni tasdiqlash",
             'my_stats': "\U0001F4CA Mening statistikam",
@@ -487,6 +497,13 @@ TRANSLATIONS = {
         'enter_new_time': "⏰ Введите новое время для {weekday}:\n\nФормат: HH:MM (например: 09:00)",
         'ontime': "Вовремя",
         'late': "Опоздал",
+        # YANGI QO'SHIMCHALAR
+        'my_profile': "👤 Мой профиль",
+        'profile_info': "👤 Ваш профиль:\n\nИмя: {name}\nСпециальность: {specialty}\nЯзык: {lang}",
+        'edit_name': "✏️ Изменить имя",
+        'enter_new_name': "Введите новое имя и фамилию:",
+        'name_updated': "✅ Ваше имя успешно обновлено!",
+        'back_to_menu': "🔙 Вернуться в меню",
         'buttons': {
             'attendance': "\U0001F4CD Подтвердить прибытие",
             'my_stats': "\U0001F4CA Моя статистика",
@@ -539,6 +556,13 @@ TRANSLATIONS = {
         'enter_new_time': "⏰ {weekday} 요일의 새 시간을 입력하세요:\n\n형식: HH:MM (예: 09:00)",
         'ontime': "정시",
         'late': "지각",
+        # YANGI QO'SHIMCHALAR
+        'my_profile': "👤 내 프로필",
+        'profile_info': "👤 내 프로필:\n\n이름: {name}\n전공: {specialty}\n언어: {lang}",
+        'edit_name': "✏️ 이름 변경",
+        'enter_new_name': "새 이름과 성을 입력하세요:",
+        'name_updated': "✅ 이름이 업데이트되었습니다!",
+        'back_to_menu': "🔙 메뉴로 돌아가기",
         'buttons': {
             'attendance': "\U0001F4CD 출석 확인",
             'my_stats': "\U0001F4CA 내 통계",
@@ -598,6 +622,7 @@ def calculate_lateness(attendance_time: str, lesson_time: str) -> tuple:
     except:
         return True, 0
 
+# --- YANGILANGAN: Asosiy menyu tugmalari (Profil tugmasi qo'shilgan) ---
 async def main_keyboard(user_id: int):
     """Asosiy menyu tugmalarini yaratish"""
     builder = ReplyKeyboardBuilder()
@@ -607,10 +632,11 @@ async def main_keyboard(user_id: int):
         KeyboardButton(text=get_button_text(user_id, 'branches')),
         KeyboardButton(text=get_button_text(user_id, 'top_week')),
         KeyboardButton(text=get_button_text(user_id, 'view_schedules')),
+        KeyboardButton(text=get_text(user_id, 'my_profile')),  # YANGI TUGMA
         KeyboardButton(text=get_button_text(user_id, 'help')),
         KeyboardButton(text=get_button_text(user_id, 'language'))
     )
-    builder.adjust(1, 2, 2, 2)
+    builder.adjust(1, 2, 2, 2, 2)  # 5 qator qilib sozlandi
     return builder.as_markup(resize_keyboard=True)
 
 async def language_selection_keyboard():
@@ -707,8 +733,7 @@ async def create_schedule_pdf(user_id: int) -> io.BytesIO:
     doc.build(elements)
     pdf_buffer.seek(0)
     return pdf_buffer
-
-# --- WEB SERVER ---
+    # --- WEB SERVER ---
 async def handle(request):
     now_uzb = datetime.now(UZB_TZ)
     return web.Response(
@@ -881,6 +906,120 @@ async def set_changed_language(callback: types.CallbackQuery):
     except Exception as e:
         logging.error(f"set_changed_language error: {e}")
         await callback.answer("Xatolik yuz berdi")
+
+# --- YANGI: Profil handlerlari ---
+@dp.message(F.text == "👤 Mening profilim")
+async def show_profile(message: types.Message):
+    """Foydalanuvchi profilini ko'rsatish"""
+    user_id = message.from_user.id
+    
+    if user_status.get(user_id) == 'blocked':
+        await message.answer(get_text(user_id, 'blocked_user'))
+        return
+    
+    # Foydalanuvchi ma'lumotlarini olish
+    name = user_names.get(user_id, "Noma'lum")
+    specialty = user_specialty.get(user_id, "Ko'rsatilmagan")
+    lang = user_languages.get(user_id, 'uz')
+    
+    # Tilga mos ravishda mutaxassislik nomi
+    if lang == 'uz':
+        specialty_display = "💻 IT" if specialty == 'IT' else "🇰🇷 Koreys tili" if specialty == 'Koreys tili' else specialty
+    elif lang == 'ru':
+        specialty_display = "💻 IT" if specialty == 'IT' else "🇰🇷 Корейский язык" if specialty == 'Koreys tili' else specialty
+    else:
+        specialty_display = "💻 IT" if specialty == 'IT' else "🇰🇷 한국어" if specialty == 'Koreys tili' else specialty
+    
+    # Til nomi
+    lang_names = {'uz': "O'zbekcha", 'ru': "Русский", 'kr': "한국어"}
+    lang_display = lang_names.get(lang, lang)
+    
+    # Profil ma'lumotlari
+    profile_text = get_text(user_id, 'profile_info', 
+                           name=name, 
+                           specialty=specialty_display, 
+                           lang=lang_display)
+    
+    # Tugmalar
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text=get_text(user_id, 'edit_name'), callback_data="edit_name")
+    )
+    builder.row(
+        InlineKeyboardButton(text=get_text(user_id, 'back_to_menu'), callback_data="back_to_main")
+    )
+    
+    await message.answer(
+        profile_text,
+        reply_markup=builder.as_markup(),
+        parse_mode="Markdown"
+    )
+
+@dp.callback_query(F.data == "edit_name")
+async def edit_name_start(callback: types.CallbackQuery, state: FSMContext):
+    """Ism o'zgartirishni boshlash"""
+    user_id = callback.from_user.id
+    
+    await callback.answer()
+    
+    await state.set_state(ProfileEdit.waiting_for_new_name)
+    await callback.message.edit_text(
+        get_text(user_id, 'enter_new_name')
+    )
+
+@dp.message(ProfileEdit.waiting_for_new_name)
+async def process_new_name(message: types.Message, state: FSMContext):
+    """Yangi ismni qabul qilish va saqlash"""
+    user_id = message.from_user.id
+    new_name = message.text.strip()
+    
+    if len(new_name) < 3:
+        await message.answer("❌ Ism juda qisqa. Iltimos, qaytadan kiriting:")
+        return
+    
+    # Eski ismni olish
+    old_name = user_names.get(user_id, "Noma'lum")
+    
+    # Yangi ismni RAM ga saqlash
+    user_names[user_id] = new_name
+    
+    # PostgreSQL ga yangilash
+    try:
+        user = await db.get_user(user_id)
+        if user:
+            await db.save_user(
+                user_id=user_id,
+                full_name=new_name,
+                specialty=user['specialty'],
+                language=user['language']
+            )
+    except Exception as e:
+        logging.error(f"PostgreSQL da ism yangilashda xatolik: {e}")
+    
+    await state.clear()
+    
+    # Muvaffaqiyatli yangilandi xabari
+    await message.answer(
+        get_text(user_id, 'name_updated'),
+        parse_mode="Markdown"
+    )
+    
+    # Profilni qayta ko'rsatish
+    await show_profile(message)
+
+@dp.callback_query(F.data == "back_to_main")
+async def back_to_main_menu(callback: types.CallbackQuery):
+    """Asosiy menyuga qaytish"""
+    user_id = callback.from_user.id
+    
+    await callback.answer()
+    await callback.message.delete()
+    
+    keyboard = await main_keyboard(user_id)
+    await callback.message.answer(
+        "🏠 Asosiy menyu",
+        reply_markup=keyboard
+    )
 
 @dp.message(F.text.in_({'\U0001F4CB Dars jadvalim (PDF)', '\U0001F4CB Мое расписание (PDF)', '\U0001F4CB 내 시간표 (PDF)'}))
 async def view_my_schedule_pdf(message: types.Message):
@@ -1269,8 +1408,7 @@ def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
 ⏰ {time_text}: {datetime.now(UZB_TZ).strftime('%H:%M')}
 """
     return message
-
-# --- ADMIN PANEL ---
+    # --- ADMIN PANEL ---
 @dp.message(Command("admin"))
 async def admin_panel(message: types.Message):
     if not check_admin(message.chat.id):
@@ -1938,8 +2076,7 @@ async def admin_broadcast_cancel(callback: types.CallbackQuery, state: FSMContex
     except Exception as e:
         logging.error(f"admin_broadcast_cancel error: {e}")
         await callback.answer("Xatolik yuz berdi")
-
-# DARS JADVALLARI
+        # DARS JADVALLARI
 @dp.callback_query(F.data == "admin_schedules_main")
 async def admin_schedules_main(callback: types.CallbackQuery):
     if not check_admin(callback.message.chat.id):
@@ -2388,8 +2525,7 @@ async def admin_add_schedule_branch(callback: types.CallbackQuery, state: FSMCon
     except Exception as e:
         logging.error(f"admin_add_schedule_branch error: {e}")
         await callback.answer("❌ Xatolik yuz berdi")
-
-@dp.callback_query(AdminAddSchedule.selecting_lesson_type, F.data.startswith("admin_lesson_"))
+        @dp.callback_query(AdminAddSchedule.selecting_lesson_type, F.data.startswith("admin_lesson_"))
 async def admin_add_schedule_lesson(callback: types.CallbackQuery, state: FSMContext):
     try:
         lesson_type = callback.data.replace("admin_lesson_", "")
@@ -2883,8 +3019,7 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
         logging.error(f"admin_pdf_report_date error: {e}")
         await message.answer(f"❌ PDF yaratishda xatolik: {e}")
         await state.clear()
-
-# ORTGA QAYTISH
+        # ORTGA QAYTISH
 @dp.callback_query(F.data == "admin_back")
 async def admin_back(callback: types.CallbackQuery):
     if not check_admin(callback.message.chat.id):
