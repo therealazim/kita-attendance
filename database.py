@@ -59,7 +59,7 @@ class Database:
                 )
             ''')
             
-            # Dars jadvallari jadvali
+            # Dars jadvallari jadvali - MUHIM: days_data ishlatilgan
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS schedules (
                     schedule_id TEXT PRIMARY KEY,
@@ -212,9 +212,9 @@ class Database:
             ''', start_date)
             return {row['branch']: {'count': row['count'], 'teachers': row['teachers']} for row in rows}
     
-    # --- DARS JADVALLARI ---
+    # --- DARS JADVALLARI - MUHIM: days_data ishlatilgan ---
     async def add_schedule(self, schedule_id: str, user_id: int, branch: str, lesson_type: str, days: dict):
-        """Dars jadvali qo'shish"""
+        """Dars jadvali qo'shish - days_data ustuniga saqlaydi"""
         async with self.pool.acquire() as conn:
             await conn.execute('''
                 INSERT INTO schedules (schedule_id, user_id, branch, lesson_type, days_data)
@@ -230,7 +230,7 @@ class Database:
             result = []
             for row in rows:
                 data = dict(row)
-                data['days'] = json.loads(data['days_data'])
+                data['days'] = json.loads(data['days_data'])  # days_data ni days ga o'giramiz
                 result.append(data)
             return result
     
