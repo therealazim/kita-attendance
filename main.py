@@ -2343,8 +2343,8 @@ async def admin_save_edited_schedule(message: types.Message, state: FSMContext):
         }
         user_schedules[teacher_id].append(new_schedule_id)
         
-        await db.save_schedule(new_schedule_id, teacher_id, new_branch, new_lesson_type, new_days)
-        await db.delete_schedule(schedule_id)
+        await db.add_schedule(new_schedule_id, teacher_id, new_branch, new_lesson_type, new_days)
+await db.delete_schedule(schedule_id)
         
         try:
             await bot.send_message(
@@ -2617,7 +2617,7 @@ async def admin_save_new_schedule(message: types.Message, state: FSMContext):
         }
         user_schedules[teacher_id].append(schedule_id)
         
-        await db.save_schedule(schedule_id, teacher_id, branch, lesson_type, days_with_names)
+        await db.add_schedule(schedule_id, teacher_id, branch, lesson_type, days_with_names)
         
         try:
             await bot.send_message(
