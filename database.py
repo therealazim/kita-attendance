@@ -369,3 +369,7 @@ class Database:
         if self.pool:
             await self.pool.close()
             print("🔌 PostgreSQL ulanishi yopildi")
+
+# TEST: database.py yuklanganligini tekshirish
+print("✅ database.py yuklandi!")
+print("📋 Mavjud metodlar:", [method for method in dir(Database) if not method.startswith('_')])
