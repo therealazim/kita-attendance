@@ -1206,13 +1206,12 @@ async def handle_location(message: types.Message):
             if dist < min_distance:
                 min_distance = dist
                 found_branch = branch["name"]
+    
+    logging.info(f"📍 Location from user {user_id}: found_branch={found_branch}, distance={min_distance:.1f}m")
 
     if found_branch:
-        already_attended = False
-        for (uid, branch, date, time) in daily_attendance_log:
-            if uid == user_id and branch == found_branch and date == today_date:
-                already_attended = True
-                break
+        # MUHIM: PostgreSQL dan tekshirish
+        already_attended = await db.check_attendance(user_id, found_branch, today_date)
         
         if already_attended:
             await message.answer(
@@ -1225,9 +1224,11 @@ async def handle_location(message: types.Message):
         attendance_counter[counter_key] = attendance_counter.get(counter_key, 0) + 1
         visit_number = attendance_counter[counter_key]
         
-        daily_attendance_log.add((user_id, found_branch, today_date, now_time))
-        
+        # PostgreSQL ga saqlash
         await db.save_attendance(user_id, found_branch, today_date, now_time)
+        
+        # RAM dagi set'ni ham yangilash
+        daily_attendance_log.add((user_id, found_branch, today_date, now_time))
         
         full_name = user_names.get(user_id, message.from_user.full_name)
         specialty = user_specialty.get(user_id, '')
