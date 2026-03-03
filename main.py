@@ -335,6 +335,13 @@ class PDFReport(StatesGroup):
 class ProfileEdit(StatesGroup):
     waiting_for_new_name = State()
 
+# ===== YANGI QO'SHIMCHA KODLAR =====
+
+class AdminPDFReport(StatesGroup):
+    waiting_for_report_type = State()
+
+# ===== YANGI QO'SHIMCHA KODLAR TUGASHI =====
+
 WEEKDAYS = {
     'uz':['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba'],
     'ru':['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'],
@@ -1376,6 +1383,8 @@ def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
 """
     return message
 
+# ===== YANGI QO'SHIMCHA KODLAR =====
+
 @dp.message(Command("admin"))
 async def admin_panel(message: types.Message):
     if not check_admin(message.chat.id):
@@ -1393,7 +1402,10 @@ async def admin_panel(message: types.Message):
         )
         builder.row(
             InlineKeyboardButton(text="🏢 Filiallar", callback_data="admin_locations_main"),
-            InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report")
+            InlineKeyboardButton(text="📑 PDF Hisobotlar", callback_data="admin_pdf_menu")  # YANGI TUGMA
+        )
+        builder.row(
+            InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report")  # ESKISI
         )
         
         await message.answer(
@@ -1404,6 +1416,352 @@ async def admin_panel(message: types.Message):
     except Exception as e:
         logging.error(f"admin_panel error: {e}")
         await message.answer("❌ Admin panelni ochishda xatolik yuz berdi")
+
+@dp.callback_query(F.data == "admin_pdf_menu")
+async def admin_pdf_menu(callback: types.CallbackQuery):
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📊 Umumiy statistika", callback_data="pdf_general"),
+        InlineKeyboardButton(text="🏆 Filiallar reytingi", callback_data="pdf_branches")
+    )
+    builder.row(
+        InlineKeyboardButton(text="👥 O'qituvchilar reytingi", callback_data="pdf_teachers"),
+        InlineKeyboardButton(text="📅 Oylik hisobot", callback_data="pdf_monthly")
+    )
+    builder.row(
+        InlineKeyboardButton(text="📑 Barcha statistikalar", callback_data="pdf_all"),
+        InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back")
+    )
+    
+    await callback.message.edit_text(
+        "📑 PDF hisobot turini tanlang:",
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+async def create_general_stats_pdf() -> io.BytesIO:
+    """Umumiy statistika PDF"""
+    pdf_buffer = io.BytesIO()
+    doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Sarlavha
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        alignment=1,
+        spaceAfter=30
+    )
+    elements.append(Paragraph("📊 Umumiy statistika", title_style))
+    elements.append(Paragraph(f"Hisobot yaratilgan sana: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
+    elements.append(Spacer(1, 20))
+    
+    now_uzb = datetime.now(UZB_TZ)
+    today = now_uzb.strftime("%Y-%m-%d")
+    current_month = now_uzb.strftime("%Y-%m")
+    
+    total_users = len(user_ids)
+    active_users = len([uid for uid in user_ids if user_status.get(uid) == 'active'])
+    blocked_users = len([uid for uid in user_ids if user_status.get(uid) == 'blocked'])
+    total_attendances = len(daily_attendance_log)
+    today_attendances = len([k for k in daily_attendance_log if k[2] == today])
+    monthly_attendances = len([k for k in daily_attendance_log if k[2].startswith(current_month)])
+    
+    it_teachers = len([uid for uid in user_ids if user_specialty.get(uid) == 'IT'])
+    korean_teachers = len([uid for uid in user_ids if user_specialty.get(uid) == 'Koreys tili'])
+    
+    data = [
+        ['Ko\'rsatkich', 'Qiymat'],
+        ['Jami foydalanuvchilar', str(total_users)],
+        ['Faol foydalanuvchilar', str(active_users)],
+        ['Bloklanganlar', str(blocked_users)],
+        ['IT o\'qituvchilar', str(it_teachers)],
+        ['Koreys tili o\'qituvchilar', str(korean_teachers)],
+        ['Jami davomatlar', str(total_attendances)],
+        ['Bugungi davomatlar', str(today_attendances)],
+        ['Shu oydagi davomatlar', str(monthly_attendances)],
+    ]
+    
+    table = Table(data, colWidths=[3*inch, 2*inch])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTSIZE', (0, 0), (-1, -1), 12)
+    ]))
+    elements.append(table)
+    
+    doc.build(elements)
+    pdf_buffer.seek(0)
+    return pdf_buffer
+
+async def create_branches_stats_pdf() -> io.BytesIO:
+    """Filiallar reytingi PDF"""
+    pdf_buffer = io.BytesIO()
+    doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        alignment=1,
+        spaceAfter=30
+    )
+    elements.append(Paragraph("🏆 Filiallar reytingi", title_style))
+    elements.append(Paragraph(f"Hisobot yaratilgan sana: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
+    elements.append(Spacer(1, 20))
+    
+    branch_stats = defaultdict(int)
+    for (uid, branch, date, time) in daily_attendance_log:
+        branch_stats[branch] += 1
+    
+    sorted_branches = sorted(branch_stats.items(), key=lambda x: x[1], reverse=True)
+    
+    data = [['№', 'Filial', 'Davomatlar soni']]
+    for i, (branch, count) in enumerate(sorted_branches, 1):
+        data.append([str(i), branch, str(count)])
+    
+    table = Table(data, colWidths=[0.5*inch, 3.5*inch, 1.5*inch])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+    ]))
+    elements.append(table)
+    
+    doc.build(elements)
+    pdf_buffer.seek(0)
+    return pdf_buffer
+
+async def create_teachers_stats_pdf() -> io.BytesIO:
+    """O'qituvchilar reytingi PDF"""
+    pdf_buffer = io.BytesIO()
+    doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        alignment=1,
+        spaceAfter=30
+    )
+    elements.append(Paragraph("👥 O'qituvchilar reytingi", title_style))
+    elements.append(Paragraph(f"Hisobot yaratilgan sana: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
+    elements.append(Spacer(1, 20))
+    
+    teacher_stats = defaultdict(int)
+    teacher_info = {}
+    
+    for (uid, branch, date, time) in daily_attendance_log:
+        teacher_stats[uid] += 1
+        if uid not in teacher_info:
+            teacher_info[uid] = {
+                'name': user_names.get(uid, f"ID: {uid}"),
+                'specialty': user_specialty.get(uid, '')
+            }
+    
+    sorted_teachers = sorted(teacher_stats.items(), key=lambda x: x[1], reverse=True)
+    
+    data = [['№', 'O\'qituvchi', 'Mutaxassislik', 'Davomatlar']]
+    for i, (uid, count) in enumerate(sorted_teachers[:50], 1):  # Eng faol 50 ta
+        info = teacher_info.get(uid, {'name': f"ID: {uid}", 'specialty': ''})
+        data.append([str(i), info['name'], info['specialty'], str(count)])
+    
+    table = Table(data, colWidths=[0.5*inch, 2.5*inch, 1.5*inch, 1*inch])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+    ]))
+    elements.append(table)
+    
+    doc.build(elements)
+    pdf_buffer.seek(0)
+    return pdf_buffer
+
+async def create_monthly_stats_pdf() -> io.BytesIO:
+    """Oylik hisobot PDF"""
+    pdf_buffer = io.BytesIO()
+    doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    now_uzb = datetime.now(UZB_TZ)
+    current_month = now_uzb.strftime("%Y-%m")
+    month_name = now_uzb.strftime("%B %Y")
+    
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        alignment=1,
+        spaceAfter=30
+    )
+    elements.append(Paragraph(f"📅 {month_name} oyi hisoboti", title_style))
+    elements.append(Paragraph(f"Hisobot yaratilgan sana: {now_uzb.strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
+    elements.append(Spacer(1, 20))
+    
+    monthly_stats = defaultdict(lambda: defaultdict(int))
+    monthly_teacher_set = set()
+    
+    for (uid, branch, date, time) in daily_attendance_log:
+        if date.startswith(current_month):
+            monthly_stats[branch][uid] += 1
+            monthly_teacher_set.add(uid)
+    
+    data = [['№', 'Filial', 'Jami davomatlar', 'O\'qituvchilar']]
+    for i, (branch, users) in enumerate(sorted(monthly_stats.items(), key=lambda x: sum(x[1].values()), reverse=True), 1):
+        total = sum(users.values())
+        unique_teachers = len(users)
+        data.append([str(i), branch, str(total), str(unique_teachers)])
+    
+    # Umumiy statistika
+    total_attendances = sum(sum(users.values()) for users in monthly_stats.values())
+    total_teachers = len(monthly_teacher_set)
+    total_branches = len(monthly_stats)
+    
+    data.append(['', 'UMUMIY:', str(total_attendances), str(total_teachers)])
+    
+    table = Table(data, colWidths=[0.5*inch, 3*inch, 1.5*inch, 1.5*inch])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('BACKGROUND', (-2, -1), (-1, -1), colors.lightgrey),
+        ('FONTNAME', (-2, -1), (-1, -1), 'Helvetica-Bold'),
+    ]))
+    elements.append(table)
+    
+    doc.build(elements)
+    pdf_buffer.seek(0)
+    return pdf_buffer
+
+async def create_all_stats_pdf() -> io.BytesIO:
+    """Barcha statistikalar PDF"""
+    pdf_buffer = io.BytesIO()
+    doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=20,
+        alignment=1,
+        spaceAfter=30
+    )
+    elements.append(Paragraph("📊 HANCOM ACADEMY", title_style))
+    elements.append(Paragraph("TO'LIQ STATISTIK HISOBOT", title_style))
+    elements.append(Paragraph(f"Hisobot yaratilgan sana: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
+    elements.append(Spacer(1, 30))
+    
+    # 1. Umumiy statistika
+    elements.append(Paragraph("📊 1. Umumiy statistika", styles['Heading2']))
+    elements.append(Spacer(1, 10))
+    
+    general_pdf = await create_general_stats_pdf()
+    elements.append(Paragraph("(Umumiy statistika jadvali)", styles['Normal']))
+    elements.append(Spacer(1, 20))
+    
+    # 2. Filiallar reytingi
+    elements.append(Paragraph("🏆 2. Filiallar reytingi", styles['Heading2']))
+    elements.append(Spacer(1, 10))
+    
+    branch_pdf = await create_branches_stats_pdf()
+    elements.append(Paragraph("(Filiallar reytingi jadvali)", styles['Normal']))
+    elements.append(Spacer(1, 20))
+    
+    # 3. O'qituvchilar reytingi
+    elements.append(Paragraph("👥 3. Eng faol o'qituvchilar", styles['Heading2']))
+    elements.append(Spacer(1, 10))
+    
+    teachers_pdf = await create_teachers_stats_pdf()
+    elements.append(Paragraph("(O'qituvchilar reytingi jadvali)", styles['Normal']))
+    elements.append(Spacer(1, 20))
+    
+    # 4. Oylik hisobot
+    elements.append(Paragraph("📅 4. Joriy oy hisoboti", styles['Heading2']))
+    elements.append(Spacer(1, 10))
+    
+    monthly_pdf = await create_monthly_stats_pdf()
+    elements.append(Paragraph("(Oylik hisobot jadvali)", styles['Normal']))
+    
+    doc.build(elements)
+    pdf_buffer.seek(0)
+    return pdf_buffer
+
+@dp.callback_query(F.data.startswith("pdf_"))
+async def handle_pdf_reports(callback: types.CallbackQuery):
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    report_type = callback.data.replace("pdf_", "")
+    
+    await callback.message.edit_text("⏳ PDF hisobot tayyorlanmoqda, biroz kuting...")
+    
+    try:
+        if report_type == "general":
+            pdf_buffer = await create_general_stats_pdf()
+            filename = f"umumiy_statistika_{datetime.now(UZB_TZ).strftime('%Y%m%d_%H%M')}.pdf"
+            caption = "📊 Umumiy statistika hisoboti"
+            
+        elif report_type == "branches":
+            pdf_buffer = await create_branches_stats_pdf()
+            filename = f"filiallar_reytingi_{datetime.now(UZB_TZ).strftime('%Y%m%d_%H%M')}.pdf"
+            caption = "🏆 Filiallar reytingi"
+            
+        elif report_type == "teachers":
+            pdf_buffer = await create_teachers_stats_pdf()
+            filename = f"oqituvchilar_reytingi_{datetime.now(UZB_TZ).strftime('%Y%m%d_%H%M')}.pdf"
+            caption = "👥 Eng faol o'qituvchilar"
+            
+        elif report_type == "monthly":
+            pdf_buffer = await create_monthly_stats_pdf()
+            filename = f"oylik_hisobot_{datetime.now(UZB_TZ).strftime('%Y%m%d_%H%M')}.pdf"
+            caption = f"📅 {datetime.now(UZB_TZ).strftime('%B %Y')} oyi hisoboti"
+            
+        elif report_type == "all":
+            pdf_buffer = await create_all_stats_pdf()
+            filename = f"toliq_hisobot_{datetime.now(UZB_TZ).strftime('%Y%m%d_%H%M')}.pdf"
+            caption = "📊 To'liq statistik hisobot"
+            
+        else:
+            await callback.message.edit_text("❌ Noto'g'ri so'rov")
+            await callback.answer()
+            return
+        
+        await callback.message.delete()
+        await callback.message.answer_document(
+            types.BufferedInputFile(pdf_buffer.getvalue(), filename=filename),
+            caption=caption
+        )
+        
+    except Exception as e:
+        logging.error(f"PDF yaratishda xatolik: {e}")
+        await callback.message.edit_text(f"❌ PDF yaratishda xatolik: {str(e)}")
+    
+    await callback.answer()
+
+# ===== YANGI QO'SHIMCHA KODLAR TUGASHI =====
 
 @dp.callback_query(F.data == "admin_stats_main")
 async def admin_stats_main(callback: types.CallbackQuery):
@@ -2981,6 +3339,9 @@ async def admin_back(callback: types.CallbackQuery):
         )
         builder.row(
             InlineKeyboardButton(text="🏢 Filiallar", callback_data="admin_locations_main"),
+            InlineKeyboardButton(text="📑 PDF Hisobotlar", callback_data="admin_pdf_menu")
+        )
+        builder.row(
             InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report")
         )
         
