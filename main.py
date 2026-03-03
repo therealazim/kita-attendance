@@ -2052,14 +2052,14 @@ async def admin_user_delete(callback: types.CallbackQuery):
     )
     
     await callback.message.edit_text(
-        f"⚠️ **Foydalanuvchini o'chirish**\n\n"
+        "⚠️ **Foydalanuvchini o'chirish**\n\n"
         f"ID: `{uid}`\n"
-        f"Ism: {user_names.get(uid, 'Noma\'lum')}\n\n"
-        f"Bu foydalanuvchini butunlay o'chirmoqchimisiz?\n"
-        f"Barcha ma'lumotlari (davomatlar, dars jadvallari) ham o'chib ketadi!",
+        f"Ism: {user_names.get(uid, 'Noma\\'lum')}\n\n"
+        "Bu foydalanuvchini butunlay o'chirmoqchimisiz?\n"
+        "Barcha ma'lumotlari (davomatlar, dars jadvallari) ham o'chib ketadi!",
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
-    )
+)
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("admin_user_delete_confirm_"))
