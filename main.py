@@ -1985,6 +1985,7 @@ Til: {lang}
             builder.row(InlineKeyboardButton(text="✅ Faollashtirish", callback_data=f"admin_user_unblock_{uid}"))
         builder.row(
             InlineKeyboardButton(text="📊 Statistika", callback_data=f"admin_user_stats_{uid}"),
+            InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"admin_user_delete_{uid}")  # YANGI TUGMA
         )
         builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_users_main"))
         
@@ -2034,6 +2035,106 @@ async def admin_user_unblock(callback: types.CallbackQuery):
     except Exception as e:
         logging.error(f"admin_user_unblock error: {e}")
         await callback.answer("Xatolik yuz berdi")
+
+@dp.callback_query(F.data.startswith("admin_user_delete_"))
+async def admin_user_delete(callback: types.CallbackQuery):
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    uid = int(callback.data.replace("admin_user_delete_", ""))
+    
+    # Tasdiqlash so'rash
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="✅ Ha, o'chirish", callback_data=f"admin_user_delete_confirm_{uid}"),
+        InlineKeyboardButton(text="❌ Bekor qilish", callback_data=f"admin_user_info_{uid}")
+    )
+    
+    await callback.message.edit_text(
+        f"⚠️ **Foydalanuvchini o'chirish**\n\n"
+        f"ID: `{uid}`\n"
+        f"Ism: {user_names.get(uid, 'Noma\'lum')}\n\n"
+        f"Bu foydalanuvchini butunlay o'chirmoqchimisiz?\n"
+        f"Barcha ma'lumotlari (davomatlar, dars jadvallari) ham o'chib ketadi!",
+        reply_markup=builder.as_markup(),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("admin_user_delete_confirm_"))
+async def admin_user_delete_confirm(callback: types.CallbackQuery):
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    uid = int(callback.data.replace("admin_user_delete_confirm_", ""))
+    
+    try:
+        # Ma'lumotlar bazasidan o'chirish
+        async with db.pool.acquire() as conn:
+            # Avval bog'liq ma'lumotlarni o'chirish
+            await conn.execute("DELETE FROM attendance WHERE user_id = $1", uid)
+            await conn.execute("DELETE FROM schedules WHERE user_id = $1", uid)
+            # Foydalanuvchini o'chirish
+            await conn.execute("DELETE FROM users WHERE user_id = $1", uid)
+        
+        # RAM dan o'chirish
+        if uid in user_ids:
+            user_ids.remove(uid)
+        user_names.pop(uid, None)
+        user_specialty.pop(uid, None)
+        user_status.pop(uid, None)
+        user_languages.pop(uid, None)
+        
+        # daily_attendance_log dan o'chirish
+        to_remove = [k for k in daily_attendance_log if k[0] == uid]
+        for k in to_remove:
+            daily_attendance_log.remove(k)
+        
+        # schedules dan o'chirish
+        if uid in user_schedules:
+            for schedule_id in user_schedules[uid]:
+                schedules.pop(schedule_id, None)
+            user_schedules.pop(uid, None)
+        
+        await callback.message.edit_text(
+            f"✅ **Foydalanuvchi o'chirildi!**\n\n"
+            f"ID: `{uid}`\n"
+            f"Ism: {user_names.get(uid, 'Noma\'lum')}\n\n"
+            f"Barcha ma'lumotlari bazadan tozalandi.",
+            parse_mode="Markdown"
+        )
+        
+        # 2 soniyadan keyin foydalanuvchilar ro'yxatiga qaytish
+        await asyncio.sleep(2)
+        
+        # Foydalanuvchilar ro'yxatini qayta ko'rsatish
+        active = [uid for uid in user_ids if user_status.get(uid) != 'blocked']
+        if active:
+            builder = InlineKeyboardBuilder()
+            for uid in sorted(active)[:20]:
+                name = user_names.get(uid, f"ID: {uid}")
+                specialty = user_specialty.get(uid, '')
+                specialty_display = f" [{specialty}]" if specialty else ""
+                builder.row(
+                    InlineKeyboardButton(text=f"✅ {name}{specialty_display}", callback_data=f"admin_user_info_{uid}")
+                )
+            builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_users_main"))
+            
+            await callback.message.answer(
+                "✅ Faol foydalanuvchilar ro'yxati:",
+                reply_markup=builder.as_markup()
+            )
+        else:
+            await callback.message.answer("📭 Faol foydalanuvchilar yo'q.")
+        
+    except Exception as e:
+        logging.error(f"admin_user_delete error: {e}")
+        await callback.message.edit_text(
+            f"❌ Xatolik yuz berdi: {str(e)}"
+        )
+    await callback.answer()
 
 @dp.callback_query(F.data.startswith("admin_user_stats_"))
 async def admin_user_stats(callback: types.CallbackQuery):
