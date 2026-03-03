@@ -266,9 +266,9 @@ async def save_attendance(self, user_id, branch, att_date, att_time):
             """, message_text, sent_count, failed_count, specialty)
     
     async def load_to_ram(self):
-    """RAMdagi ma'lumotlarni PostgreSQLga ko'chirish"""  # 4 probel
-    global user_names, user_specialty, user_status, user_languages, user_ids
-    global daily_attendance_log, attendance_counter, schedules, user_schedules
+        """RAMdagi ma'lumotlarni PostgreSQLga ko'chirish"""  # ✅ TO'G'RI: oldida 4 ta probel
+        global user_names, user_specialty, user_status, user_languages, user_ids
+        global daily_attendance_log, attendance_counter, schedules, user_schedules
     
     users = await self.get_all_users()
     for u in users:
