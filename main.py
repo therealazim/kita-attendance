@@ -1210,8 +1210,12 @@ async def handle_location(message: types.Message):
     logging.info(f"📍 Location from user {user_id}: found_branch={found_branch}, distance={min_distance:.1f}m")
 
     if found_branch:
-        # MUHIM: PostgreSQL dan tekshirish
-        already_attended = await db.check_attendance(user_id, found_branch, today_date)
+        # MUHIM: RAM dan tekshirish (check_attendance ISHLATILMAYDI!)
+        already_attended = False
+        for (uid, branch, date, time) in daily_attendance_log:
+            if uid == user_id and branch == found_branch and date == today_date:
+                already_attended = True
+                break
         
         if already_attended:
             await message.answer(
