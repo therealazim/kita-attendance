@@ -180,11 +180,11 @@ class Database:
     
     # MUHIM: TUZATILGAN METOD
     async def save_attendance(self, user_id, branch, att_date, att_time):
-        async with self.pool.acquire() as conn:  # ✅ To'g'ri: 4 bo'sh joy (indent) bor
-        from datetime import datetime, time
-        date_obj = datetime.strptime(att_date, "%Y-%m-%d").date()
-        time_parts = att_time.split(':')
-        time_obj = time(int(time_parts[0]), int(time_parts[1]), int(time_parts[2]))
+        async with self.pool.acquire() as conn:
+            from datetime import datetime, time
+            date_obj = datetime.strptime(att_date, "%Y-%m-%d").date()
+            time_parts = att_time.split(':')
+            time_obj = time(int(time_parts[0]), int(time_parts[1]), int(time_parts[2]))
         
         await conn.execute("""
             INSERT INTO attendance (user_id, branch, date, time)
