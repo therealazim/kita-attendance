@@ -1218,7 +1218,6 @@ async def handle_location(message: types.Message):
     logging.info(f"📍 Location from user {user_id}: found_branch={found_branch}, distance={min_distance:.1f}m")
 
     if found_branch:
-        # RAM dan tekshirish
         already_attended = False
         for (uid, branch, date, time) in daily_attendance_log:
             if uid == user_id and branch == found_branch and date == today_date:
@@ -1236,10 +1235,8 @@ async def handle_location(message: types.Message):
         attendance_counter[counter_key] = attendance_counter.get(counter_key, 0) + 1
         visit_number = attendance_counter[counter_key]
         
-        # PostgreSQL ga saqlash
         await db.save_attendance(user_id, found_branch, today_date, now_time)
         
-        # RAM dagi set'ni ham yangilash
         daily_attendance_log.add((user_id, found_branch, today_date, now_time))
         
         full_name = user_names.get(user_id, message.from_user.full_name)
@@ -1395,7 +1392,7 @@ async def admin_panel(message: types.Message):
             InlineKeyboardButton(text="📅 Dars jadvallari", callback_data="admin_schedules_main")
         )
         builder.row(
-            InlineKeyboardButton(text="📊 Statistika", callback_data="admin_pdf_menu"),  # Statistika tugmasi (eski PDF Hisobotlar)
+            InlineKeyboardButton(text="📊 Statistika", callback_data="admin_pdf_menu"),
             InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report")
         )
         
@@ -1434,13 +1431,11 @@ async def admin_pdf_menu(callback: types.CallbackQuery):
     await callback.answer()
 
 async def create_general_stats_pdf() -> io.BytesIO:
-    """Umumiy statistika PDF"""
     pdf_buffer = io.BytesIO()
     doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
     elements = []
     styles = getSampleStyleSheet()
     
-    # Sarlavha
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
@@ -1494,7 +1489,6 @@ async def create_general_stats_pdf() -> io.BytesIO:
     return pdf_buffer
 
 async def create_branches_stats_pdf() -> io.BytesIO:
-    """Filiallar reytingi PDF"""
     pdf_buffer = io.BytesIO()
     doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
     elements = []
@@ -1536,7 +1530,6 @@ async def create_branches_stats_pdf() -> io.BytesIO:
     return pdf_buffer
 
 async def create_teachers_stats_pdf() -> io.BytesIO:
-    """O'qituvchilar reytingi PDF"""
     pdf_buffer = io.BytesIO()
     doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
     elements = []
@@ -1567,7 +1560,7 @@ async def create_teachers_stats_pdf() -> io.BytesIO:
     sorted_teachers = sorted(teacher_stats.items(), key=lambda x: x[1], reverse=True)
     
     data = [['№', 'O\'qituvchi', 'Mutaxassislik', 'Davomatlar']]
-    for i, (uid, count) in enumerate(sorted_teachers[:50], 1):  # Eng faol 50 ta
+    for i, (uid, count) in enumerate(sorted_teachers[:50], 1):
         info = teacher_info.get(uid, {'name': f"ID: {uid}", 'specialty': ''})
         data.append([str(i), info['name'], info['specialty'], str(count)])
     
@@ -1586,7 +1579,6 @@ async def create_teachers_stats_pdf() -> io.BytesIO:
     return pdf_buffer
 
 async def create_monthly_stats_pdf() -> io.BytesIO:
-    """Oylik hisobot PDF"""
     pdf_buffer = io.BytesIO()
     doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
     elements = []
@@ -1621,7 +1613,6 @@ async def create_monthly_stats_pdf() -> io.BytesIO:
         unique_teachers = len(users)
         data.append([str(i), branch, str(total), str(unique_teachers)])
     
-    # Umumiy statistika
     total_attendances = sum(sum(users.values()) for users in monthly_stats.values())
     total_teachers = len(monthly_teacher_set)
     total_branches = len(monthly_stats)
@@ -1985,7 +1976,7 @@ Til: {lang}
             builder.row(InlineKeyboardButton(text="✅ Faollashtirish", callback_data=f"admin_user_unblock_{uid}"))
         builder.row(
             InlineKeyboardButton(text="📊 Statistika", callback_data=f"admin_user_stats_{uid}"),
-            InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"admin_user_delete_{uid}")  # YANGI TUGMA
+            InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"admin_user_delete_{uid}")
         )
         builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_users_main"))
         
@@ -2044,7 +2035,6 @@ async def admin_user_delete(callback: types.CallbackQuery):
     
     uid = int(callback.data.replace("admin_user_delete_", ""))
     
-    # Tasdiqlash so'rash
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="✅ Ha, o'chirish", callback_data=f"admin_user_delete_confirm_{uid}"),
@@ -2059,7 +2049,7 @@ async def admin_user_delete(callback: types.CallbackQuery):
         "Barcha ma'lumotlari (davomatlar, dars jadvallari) ham o'chib ketadi!",
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
-)
+    )
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("admin_user_delete_confirm_"))
@@ -2071,15 +2061,11 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
     uid = int(callback.data.replace("admin_user_delete_confirm_", ""))
     
     try:
-        # Ma'lumotlar bazasidan o'chirish
         async with db.pool.acquire() as conn:
-            # Avval bog'liq ma'lumotlarni o'chirish
             await conn.execute("DELETE FROM attendance WHERE user_id = $1", uid)
             await conn.execute("DELETE FROM schedules WHERE user_id = $1", uid)
-            # Foydalanuvchini o'chirish
             await conn.execute("DELETE FROM users WHERE user_id = $1", uid)
         
-        # RAM dan o'chirish
         if uid in user_ids:
             user_ids.remove(uid)
         user_names.pop(uid, None)
@@ -2087,12 +2073,10 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
         user_status.pop(uid, None)
         user_languages.pop(uid, None)
         
-        # daily_attendance_log dan o'chirish
         to_remove = [k for k in daily_attendance_log if k[0] == uid]
         for k in to_remove:
             daily_attendance_log.remove(k)
         
-        # schedules dan o'chirish
         if uid in user_schedules:
             for schedule_id in user_schedules[uid]:
                 schedules.pop(schedule_id, None)
@@ -2101,15 +2085,13 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
         await callback.message.edit_text(
             f"✅ **Foydalanuvchi o'chirildi!**\n\n"
             f"ID: `{uid}`\n"
-            f"Ism: {user_names.get(uid, 'Noma\'lum')}\n\n"
+            f"Ism: {user_names.get(uid, 'Noma\\'lum')}\n\n"
             f"Barcha ma'lumotlari bazadan tozalandi.",
             parse_mode="Markdown"
         )
         
-        # 2 soniyadan keyin foydalanuvchilar ro'yxatiga qaytish
         await asyncio.sleep(2)
         
-        # Foydalanuvchilar ro'yxatini qayta ko'rsatish
         active = [uid for uid in user_ids if user_status.get(uid) != 'blocked']
         if active:
             builder = InlineKeyboardBuilder()
@@ -2483,13 +2465,11 @@ async def admin_schedules_pdf(callback: types.CallbackQuery):
     await callback.answer()
 
 async def create_all_schedules_pdf() -> io.BytesIO:
-    """Barcha o'qituvchilarning dars jadvallari PDF"""
     pdf_buffer = io.BytesIO()
     doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
     elements = []
     styles = getSampleStyleSheet()
     
-    # Sarlavha
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
@@ -2507,12 +2487,10 @@ async def create_all_schedules_pdf() -> io.BytesIO:
     if not schedules:
         elements.append(Paragraph("📭 Hali dars jadvallari mavjud emas.", styles['Normal']))
     else:
-        # O'qituvchilar bo'yicha guruhlash
         teacher_schedules = defaultdict(list)
         for schedule_id, schedule in schedules.items():
             teacher_schedules[schedule['user_id']].append(schedule)
         
-        # O'qituvchilarni ism bo'yicha tartiblash
         sorted_teachers = sorted(teacher_schedules.keys(), 
                                 key=lambda uid: user_names.get(uid, '').lower())
         
@@ -2521,7 +2499,6 @@ async def create_all_schedules_pdf() -> io.BytesIO:
             teacher_specialty = user_specialty.get(teacher_id, '')
             specialty_display = f" [{teacher_specialty}]" if teacher_specialty else ""
             
-            # O'qituvchi sarlavhasi
             teacher_style = ParagraphStyle(
                 'TeacherStyle',
                 parent=styles['Heading2'],
@@ -2538,7 +2515,6 @@ async def create_all_schedules_pdf() -> io.BytesIO:
                 branch = schedule['branch']
                 lesson_type = schedule.get('lesson_type', 'Dars')
                 
-                # Filial va dars turi
                 branch_style = ParagraphStyle(
                     'BranchStyle',
                     parent=styles['Normal'],
@@ -2548,7 +2524,6 @@ async def create_all_schedules_pdf() -> io.BytesIO:
                 )
                 elements.append(Paragraph(f"   🏢 {branch} - {lesson_type}", branch_style))
                 
-                # Jadval
                 days = sort_weekdays(schedule['days'])
                 data = [['Kun', 'Vaqt']]
                 for day, time in days.items():
@@ -2567,18 +2542,15 @@ async def create_all_schedules_pdf() -> io.BytesIO:
                     ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#F8F9F9'), colors.white])
                 ]))
                 
-                # Jadvalni markazga joylashtirish uchun
                 table._argW = [2.5*inch, 2.5*inch]
                 elements.append(table)
                 elements.append(Spacer(1, 15))
             
-            # O'qituvchilar orasida chiziq
             if teacher_id != sorted_teachers[-1]:
                 elements.append(Spacer(1, 10))
                 elements.append(Paragraph("─" * 50, styles['Normal']))
                 elements.append(Spacer(1, 10))
     
-    # Footer
     footer_style = ParagraphStyle(
         'FooterStyle',
         parent=styles['Normal'],
@@ -2900,7 +2872,6 @@ async def admin_save_edited_schedule(message: types.Message, state: FSMContext):
         }
         user_schedules[teacher_id].append(new_schedule_id)
         
-        # PostgreSQL ga saqlash - days_data ustuniga
         await db.save_schedule(new_schedule_id, teacher_id, new_branch, new_lesson_type, new_days)
         await db.delete_schedule(schedule_id)
         
@@ -3176,7 +3147,6 @@ async def admin_save_new_schedule(message: types.Message, state: FSMContext):
         }
         user_schedules[teacher_id].append(schedule_id)
         
-        # PostgreSQL ga saqlash - days_data ustuniga
         await db.save_schedule(schedule_id, teacher_id, branch, lesson_type, days_with_names)
         
         try:
