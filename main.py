@@ -265,7 +265,7 @@ class Database:
                 VALUES ($1, $2, $3, $4)
             """, message_text, sent_count, failed_count, specialty)
     
-    async def load_to_ram(self):
+async def load_to_ram(self):
     """RAMdagi ma'lumotlarni PostgreSQLga ko'chirish"""
     global user_names, user_specialty, user_status, user_languages, user_ids
     global daily_attendance_log, attendance_counter, schedules, user_schedules
