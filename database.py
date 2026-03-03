@@ -339,7 +339,44 @@ class Database:
             total_users = await conn.fetchval('SELECT COUNT(*) FROM users')
             active_users = await conn.fetchval("SELECT COUNT(*) FROM users WHERE status = 'active'")
             blocked_users = await conn.fetchval("SELECT COUNT(*) FROM users WHERE status = 'blocked'")
-            
+
+            async def load_to_ram(self):
+    """RAMdagi ma'lumotlarni PostgreSQLga ko'chirish"""
+    global user_names, user_specialty, user_status, user_languages, user_ids
+    global daily_attendance_log, attendance_counter, schedules, user_schedules
+    
+    users = await self.get_all_users()
+    for u in users:
+        user_ids.add(u['user_id'])
+        user_names[u['user_id']] = u['full_name']
+        user_specialty[u['user_id']] = u['specialty']
+        user_status[u['user_id']] = u['status']
+        user_languages[u['user_id']] = u['language']
+    
+    attendances = await self.get_all_attendance()
+    for r in attendances:
+        daily_attendance_log.add((
+            r['user_id'],
+            r['branch'],
+            r['date'].isoformat(),
+            r['time'].strftime("%H:%M:%S")
+        ))
+        month = r['date'].strftime("%Y-%m")
+        key = (r['user_id'], r['branch'], month)
+        attendance_counter[key] = attendance_counter.get(key, 0) + 1
+    
+    all_schedules = await self.get_all_schedules()
+    for r in all_schedules:
+        schedules[r['schedule_id']] = {
+            'user_id': r['user_id'],
+            'branch': r['branch'],
+            'lesson_type': r['lesson_type'],
+            'days': r['days']
+        }
+        user_schedules[r['user_id']].append(r['schedule_id'])
+    
+    logging.info(f"✅ RAM ga yuklandi: {len(user_ids)} foydalanuvchi, {len(daily_attendance_log)} davomat")
+    
             # IT va Koreys tili o'qituvchilari
             it_teachers = await conn.fetchval("SELECT COUNT(*) FROM users WHERE specialty = 'IT'")
             korean_teachers = await conn.fetchval("SELECT COUNT(*) FROM users WHERE specialty = 'Koreys tili'")
