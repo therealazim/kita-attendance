@@ -35,13 +35,17 @@ import pickle
 logging.basicConfig(level=logging.INFO)
 
 # --- SOZLAMALAR ---
-TOKEN = os.environ.get("BOT_TOKEN", "8268187024:AAGVlMOzOUTXMyrB8ePj9vHcayshkZ4PGW4")
+TOKEN = os.environ.get("BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("BOT_TOKEN topilmadi! Render.com da environment variable qo'shing")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 ADMIN_GROUP_ID = -1003885800610 
 UZB_TZ = pytz.timezone('Asia/Tashkent') 
 
 # --- OB-HAVO SOZLAMALARI ---
-WEATHER_API_KEY = "2b7818365e4ac19cebd34c34a135a669"
+WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
+if not WEATHER_API_KEY:
+    raise ValueError("WEATHER_API_KEY topilmadi! Render.com da environment variable qo'shing")
 WEATHER_API_URL = "http://api.openweathermap.org/data/2.5/weather"
 
 # Bot obyektini yaratish
@@ -126,13 +130,14 @@ class Database:
                 )
             """)
             
+            # MUHIM: days_data ustuni ishlatilyapti (days emas!)
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS schedules (
                     schedule_id TEXT PRIMARY KEY,
                     user_id BIGINT REFERENCES users(user_id),
                     branch TEXT,
                     lesson_type TEXT,
-                    days JSONB,
+                    days_data JSONB,
                     created_at TIMESTAMP DEFAULT NOW()
                 )
             """)
@@ -205,30 +210,48 @@ class Database:
         async with self.pool.acquire() as conn:
             return await conn.fetch("SELECT * FROM attendance")
     
+    # MUHIM: days_data ustuniga saqlaymiz
     async def save_schedule(self, schedule_id, user_id, branch, lesson_type, days_dict):
         async with self.pool.acquire() as conn:
             await conn.execute("""
-                INSERT INTO schedules (schedule_id, user_id, branch, lesson_type, days)
+                INSERT INTO schedules (schedule_id, user_id, branch, lesson_type, days_data)
                 VALUES ($1, $2, $3, $4, $5::jsonb)
             """, schedule_id, user_id, branch, lesson_type, json.dumps(days_dict))
     
+    # MUHIM: days_data ni days ga o'girib beramiz
     async def get_user_schedules(self, user_id):
         async with self.pool.acquire() as conn:
-            return await conn.fetch("SELECT * FROM schedules WHERE user_id = $1", user_id)
+            rows = await conn.fetch("SELECT * FROM schedules WHERE user_id = $1", user_id)
+            result = []
+            for row in rows:
+                data = dict(row)
+                # days_data ni days ga o'giramiz
+                data['days'] = json.loads(data['days_data'])
+                result.append(data)
+            return result
     
+    # MUHIM: days_data ni days ga o'girib beramiz
     async def get_all_schedules(self):
         async with self.pool.acquire() as conn:
-            return await conn.fetch("SELECT * FROM schedules")
+            rows = await conn.fetch("SELECT * FROM schedules")
+            result = []
+            for row in rows:
+                data = dict(row)
+                # days_data ni days ga o'giramiz
+                data['days'] = json.loads(data['days_data'])
+                result.append(data)
+            return result
     
     async def delete_schedule(self, schedule_id):
         async with self.pool.acquire() as conn:
             await conn.execute("DELETE FROM schedules WHERE schedule_id = $1", schedule_id)
     
+    # MUHIM: days_data ustuniga saqlaymiz
     async def update_schedule(self, schedule_id, branch, lesson_type, days_dict):
         async with self.pool.acquire() as conn:
             await conn.execute("""
                 UPDATE schedules 
-                SET branch = $1, lesson_type = $2, days = $3::jsonb
+                SET branch = $1, lesson_type = $2, days_data = $3::jsonb
                 WHERE schedule_id = $4
             """, branch, lesson_type, json.dumps(days_dict), schedule_id)
     
@@ -239,6 +262,7 @@ class Database:
                 VALUES ($1, $2, $3, $4)
             """, message_text, sent_count, failed_count, specialty)
     
+    # MUHIM: RAM ga yuklashda days_data ni to'g'ri o'qiymiz
     async def load_to_ram(self):
         global user_names, user_specialty, user_status, user_languages, user_ids
         global daily_attendance_log, attendance_counter, schedules, user_schedules
@@ -269,7 +293,7 @@ class Database:
                 'user_id': r['user_id'],
                 'branch': r['branch'],
                 'lesson_type': r['lesson_type'],
-                'days': r['days']
+                'days': r['days']  # Bu yerda days allaqachon dict
             }
             user_schedules[r['user_id']].append(r['schedule_id'])
         
@@ -2343,7 +2367,7 @@ async def admin_save_edited_schedule(message: types.Message, state: FSMContext):
         }
         user_schedules[teacher_id].append(new_schedule_id)
         
-        # PostgreSQL ga saqlash
+        # PostgreSQL ga saqlash - days_data ustuniga
         await db.save_schedule(new_schedule_id, teacher_id, new_branch, new_lesson_type, new_days)
         await db.delete_schedule(schedule_id)
         
@@ -2619,6 +2643,7 @@ async def admin_save_new_schedule(message: types.Message, state: FSMContext):
         }
         user_schedules[teacher_id].append(schedule_id)
         
+        # PostgreSQL ga saqlash - days_data ustuniga
         await db.save_schedule(schedule_id, teacher_id, branch, lesson_type, days_with_names)
         
         try:
