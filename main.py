@@ -130,7 +130,6 @@ class Database:
                 )
             """)
             
-            # MUHIM: days_data ustuni ishlatilyapti (days emas!)
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS schedules (
                     schedule_id TEXT PRIMARY KEY,
@@ -179,16 +178,17 @@ class Database:
         async with self.pool.acquire() as conn:
             return await conn.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
     
-   async def save_attendance(self, user_id, branch, att_date, att_time):
-    async with self.pool.acquire() as conn:  # ✅ To'g'ri: 4 bo'sh joy (indent)
-        from datetime import datetime
-        date_obj = datetime.strptime(att_date, "%Y-%m-%d").date()
-        
-        await conn.execute("""
-            INSERT INTO attendance (user_id, branch, date, time)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (user_id, branch, date) DO NOTHING
-        """, user_id, branch, date_obj, att_time)
+    # MUHIM: TUZATILGAN METOD
+    async def save_attendance(self, user_id, branch, att_date, att_time):
+        async with self.pool.acquire() as conn:
+            from datetime import datetime
+            date_obj = datetime.strptime(att_date, "%Y-%m-%d").date()
+            
+            await conn.execute("""
+                INSERT INTO attendance (user_id, branch, date, time)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (user_id, branch, date) DO NOTHING
+            """, user_id, branch, date_obj, att_time)
     
     async def get_user_attendance(self, user_id):
         async with self.pool.acquire() as conn:
@@ -213,7 +213,6 @@ class Database:
         async with self.pool.acquire() as conn:
             return await conn.fetch("SELECT * FROM attendance")
     
-    # MUHIM: days_data ustuniga saqlaymiz
     async def save_schedule(self, schedule_id, user_id, branch, lesson_type, days_dict):
         async with self.pool.acquire() as conn:
             await conn.execute("""
@@ -221,26 +220,22 @@ class Database:
                 VALUES ($1, $2, $3, $4, $5::jsonb)
             """, schedule_id, user_id, branch, lesson_type, json.dumps(days_dict))
     
-    # MUHIM: days_data ni days ga o'girib beramiz
     async def get_user_schedules(self, user_id):
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("SELECT * FROM schedules WHERE user_id = $1", user_id)
             result = []
             for row in rows:
                 data = dict(row)
-                # days_data ni days ga o'giramiz
                 data['days'] = json.loads(data['days_data'])
                 result.append(data)
             return result
     
-    # MUHIM: days_data ni days ga o'girib beramiz
     async def get_all_schedules(self):
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("SELECT * FROM schedules")
             result = []
             for row in rows:
                 data = dict(row)
-                # days_data ni days ga o'giramiz
                 data['days'] = json.loads(data['days_data'])
                 result.append(data)
             return result
@@ -249,7 +244,6 @@ class Database:
         async with self.pool.acquire() as conn:
             await conn.execute("DELETE FROM schedules WHERE schedule_id = $1", schedule_id)
     
-    # MUHIM: days_data ustuniga saqlaymiz
     async def update_schedule(self, schedule_id, branch, lesson_type, days_dict):
         async with self.pool.acquire() as conn:
             await conn.execute("""
@@ -265,7 +259,6 @@ class Database:
                 VALUES ($1, $2, $3, $4)
             """, message_text, sent_count, failed_count, specialty)
     
-    # MUHIM: RAM ga yuklashda days_data ni to'g'ri o'qiymiz
     async def load_to_ram(self):
         global user_names, user_specialty, user_status, user_languages, user_ids
         global daily_attendance_log, attendance_counter, schedules, user_schedules
@@ -296,7 +289,7 @@ class Database:
                 'user_id': r['user_id'],
                 'branch': r['branch'],
                 'lesson_type': r['lesson_type'],
-                'days': r['days']  # Bu yerda days allaqachon dict
+                'days': r['days']
             }
             user_schedules[r['user_id']].append(r['schedule_id'])
         
