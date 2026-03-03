@@ -180,12 +180,16 @@ class Database:
             return await conn.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
     
     async def save_attendance(self, user_id, branch, att_date, att_time):
-        async with self.pool.acquire() as conn:
-            await conn.execute("""
-                INSERT INTO attendance (user_id, branch, date, time)
-                VALUES ($1, $2, $3, $4)
-                ON CONFLICT (user_id, branch, date) DO NOTHING
-            """, user_id, branch, att_date, att_time)
+    async with self.pool.acquire() as conn:
+        # Stringni date obyektiga aylantirish
+        from datetime import datetime
+        date_obj = datetime.strptime(att_date, "%Y-%m-%d").date()
+        
+        await conn.execute("""
+            INSERT INTO attendance (user_id, branch, date, time)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (user_id, branch, date) DO NOTHING
+        """, user_id, branch, date_obj, att_time)
     
     async def get_user_attendance(self, user_id):
         async with self.pool.acquire() as conn:
