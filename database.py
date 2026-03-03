@@ -140,6 +140,7 @@ class Database:
                 ON CONFLICT (user_id, branch, date) DO NOTHING
             ''', user_id, branch, date, time)
     
+    # ✅ YANGI QO'SHILGAN METOD: check_attendance
     async def check_attendance(self, user_id: int, branch: str, date: str) -> bool:
         """Bugun shu filialda davomat qilinganmi?"""
         async with self.pool.acquire() as conn:
