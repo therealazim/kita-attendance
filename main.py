@@ -266,7 +266,7 @@ async def save_attendance(self, user_id, branch, att_date, att_time):
             """, message_text, sent_count, failed_count, specialty)
     
     async def load_to_ram(self):
-    """RAMdagi ma'lumotlarni PostgreSQLga ko'chirish"""
+    """RAMdagi ma'lumotlarni PostgreSQLga ko'chirish"""  # ✅ TO'G'RI: 4 ta bo'sh joy
     global user_names, user_specialty, user_status, user_languages, user_ids
     global daily_attendance_log, attendance_counter, schedules, user_schedules
     
