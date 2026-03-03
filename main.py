@@ -180,17 +180,22 @@ class Database:
     
     # MUHIM: TUZATILGAN METOD
     async def save_attendance(self, user_id, branch, att_date, att_time):
+    try:
         async with self.pool.acquire() as conn:
             from datetime import datetime, time
             date_obj = datetime.strptime(att_date, "%Y-%m-%d").date()
             time_parts = att_time.split(':')
             time_obj = time(int(time_parts[0]), int(time_parts[1]), int(time_parts[2]))
-        
-        await conn.execute("""
-            INSERT INTO attendance (user_id, branch, date, time)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (user_id, branch, date) DO NOTHING
-        """, user_id, branch, date_obj, time_obj)
+            
+            await conn.execute("""
+                INSERT INTO attendance (user_id, branch, date, time)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (user_id, branch, date) DO NOTHING
+            """, user_id, branch, date_obj, time_obj)
+            logging.info(f"✅ Davomat saqlandi: user={user_id}, branch={branch}")
+    except Exception as e:
+        logging.error(f"❌ Davomat saqlashda xato: {e}")
+        # Xatolikni qayta chiqarmaymiz, bot ishlashda davom etsin
     
     async def get_user_attendance(self, user_id):
         async with self.pool.acquire() as conn:
