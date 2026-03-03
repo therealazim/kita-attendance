@@ -2041,10 +2041,12 @@ async def admin_user_delete(callback: types.CallbackQuery):
         InlineKeyboardButton(text="❌ Bekor qilish", callback_data=f"admin_user_info_{uid}")
     )
     
+    # MUHIM: f-string ichida backslash ishlatilmadi
+    ism_text = user_names.get(uid, "Noma'lum")
     await callback.message.edit_text(
         "⚠️ **Foydalanuvchini o'chirish**\n\n"
         f"ID: `{uid}`\n"
-        f"Ism: {user_names.get(uid, 'Noma\\'lum')}\n\n"
+        f"Ism: {ism_text}\n\n"
         "Bu foydalanuvchini butunlay o'chirmoqchimisiz?\n"
         "Barcha ma'lumotlari (davomatlar, dars jadvallari) ham o'chib ketadi!",
         reply_markup=builder.as_markup(),
@@ -2082,10 +2084,12 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
                 schedules.pop(schedule_id, None)
             user_schedules.pop(uid, None)
         
+        # MUHIM: f-string ichida backslash ishlatilmadi
+        ism_text = user_names.get(uid, "Noma'lum") if uid in user_names else "Noma'lum"
         await callback.message.edit_text(
             f"✅ **Foydalanuvchi o'chirildi!**\n\n"
             f"ID: `{uid}`\n"
-            f"Ism: {user_names.get(uid, 'Noma\\'lum')}\n\n"
+            f"Ism: {ism_text}\n\n"
             f"Barcha ma'lumotlari bazadan tozalandi.",
             parse_mode="Markdown"
         )
