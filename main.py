@@ -178,8 +178,8 @@ class Database:
         async with self.pool.acquire() as conn:
             return await conn.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
     
-    # MUHIM: TUZATILGAN METOD
-    async def save_attendance(self, user_id, branch, att_date, att_time):
+   # MUHIM: TUZATILGAN METOD
+async def save_attendance(self, user_id, branch, att_date, att_time):
     try:
         async with self.pool.acquire() as conn:
             from datetime import datetime, time
@@ -195,7 +195,6 @@ class Database:
             logging.info(f"✅ Davomat saqlandi: user={user_id}, branch={branch}")
     except Exception as e:
         logging.error(f"❌ Davomat saqlashda xato: {e}")
-        # Xatolikni qayta chiqarmaymiz, bot ishlashda davom etsin
     
     async def get_user_attendance(self, user_id):
         async with self.pool.acquire() as conn:
