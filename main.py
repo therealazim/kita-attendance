@@ -2033,7 +2033,16 @@ async def admin_user_delete(callback: types.CallbackQuery):
         await callback.answer("Ruxsat yo'q!")
         return
     
-    uid = int(callback.data.replace("admin_user_delete_", ""))
+    # Faqat "admin_user_delete_" bilan boshlanganlarni qabul qilish
+    # "admin_user_delete_confirm_" bilan boshlanganlarni emas
+    if callback.data.startswith("admin_user_delete_confirm_"):
+        return
+    
+    try:
+        uid = int(callback.data.replace("admin_user_delete_", ""))
+    except ValueError:
+        await callback.answer("Noto'g'ri format!")
+        return
     
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -2041,7 +2050,6 @@ async def admin_user_delete(callback: types.CallbackQuery):
         InlineKeyboardButton(text="❌ Bekor qilish", callback_data=f"admin_user_info_{uid}")
     )
     
-    # MUHIM: f-string ichida backslash ishlatilmadi
     ism_text = user_names.get(uid, "Noma'lum")
     await callback.message.edit_text(
         "⚠️ **Foydalanuvchini o'chirish**\n\n"
@@ -2060,7 +2068,11 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
         await callback.answer("Ruxsat yo'q!")
         return
     
-    uid = int(callback.data.replace("admin_user_delete_confirm_", ""))
+    try:
+        uid = int(callback.data.replace("admin_user_delete_confirm_", ""))
+    except ValueError:
+        await callback.answer("Noto'g'ri format!")
+        return
     
     try:
         async with db.pool.acquire() as conn:
@@ -2068,8 +2080,12 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
             await conn.execute("DELETE FROM schedules WHERE user_id = $1", uid)
             await conn.execute("DELETE FROM users WHERE user_id = $1", uid)
         
+        # RAM dan o'chirish
         if uid in user_ids:
             user_ids.remove(uid)
+        
+        ism_text = user_names.get(uid, "Noma'lum")
+        
         user_names.pop(uid, None)
         user_specialty.pop(uid, None)
         user_status.pop(uid, None)
@@ -2084,8 +2100,6 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
                 schedules.pop(schedule_id, None)
             user_schedules.pop(uid, None)
         
-        # MUHIM: f-string ichida backslash ishlatilmadi
-        ism_text = user_names.get(uid, "Noma'lum") if uid in user_names else "Noma'lum"
         await callback.message.edit_text(
             f"✅ **Foydalanuvchi o'chirildi!**\n\n"
             f"ID: `{uid}`\n"
@@ -2096,6 +2110,7 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
         
         await asyncio.sleep(2)
         
+        # Foydalanuvchilar ro'yxatini qayta ko'rsatish
         active = [uid for uid in user_ids if user_status.get(uid) != 'blocked']
         if active:
             builder = InlineKeyboardBuilder()
