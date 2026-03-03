@@ -179,9 +179,8 @@ class Database:
         async with self.pool.acquire() as conn:
             return await conn.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
     
-    async def save_attendance(self, user_id, branch, att_date, att_time):
-    async with self.pool.acquire() as conn:
-        # Stringni date obyektiga aylantirish
+   async def save_attendance(self, user_id, branch, att_date, att_time):
+    async with self.pool.acquire() as conn:  # ✅ To'g'ri: 4 bo'sh joy (indent)
         from datetime import datetime
         date_obj = datetime.strptime(att_date, "%Y-%m-%d").date()
         
