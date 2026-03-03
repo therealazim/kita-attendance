@@ -2046,7 +2046,7 @@ async def admin_user_delete(callback: types.CallbackQuery):
         return
     
     # Faqat "admin_user_delete_" bilan boshlangan va "confirm" bo'lmaganlarni qabul qilish
-    if not callback.data.startswith("admin_user_delete_") or "_confirm_" in callback.data:
+    if "_confirm_" in callback.data:
         return
     
     try:
