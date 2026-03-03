@@ -331,16 +331,7 @@ class Database:
         
         print(f"✅ Migratsiya tugadi: {user_count} foydalanuvchi, {attendance_count} davomat, {schedule_count} jadval")
     
-    # --- YORDAMCHI FUNKSIYALAR ---
-    async def get_statistics(self) -> Dict:
-        """Umumiy statistika"""
-        async with self.pool.acquire() as conn:
-            # Foydalanuvchilar soni
-            total_users = await conn.fetchval('SELECT COUNT(*) FROM users')
-            active_users = await conn.fetchval("SELECT COUNT(*) FROM users WHERE status = 'active'")
-            blocked_users = await conn.fetchval("SELECT COUNT(*) FROM users WHERE status = 'blocked'")
-
-            async def load_to_ram(self):
+   async def load_to_ram(self):
     """RAMdagi ma'lumotlarni PostgreSQLga ko'chirish"""
     global user_names, user_specialty, user_status, user_languages, user_ids
     global daily_attendance_log, attendance_counter, schedules, user_schedules
