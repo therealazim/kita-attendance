@@ -17,20 +17,21 @@ class Database:
         self.pool = None
     
     async def create_pool(self):
-    try:
-        self.pool = await asyncpg.create_pool(
-            dsn=self.dsn,
-            min_size=1,
-            max_size=5,
-            command_timeout=30,
-            ssl='require',
-            max_queries=50000,
-            max_inactive_connection_lifetime=300
-        )
-        print("✅ PostgreSQL pool yaratildi")
-    except Exception as e:
-        print(f"❌ PostgreSQL pool yaratishda xatolik: {e}")
-        raise
+        """Ulanishlar havzasini yaratish"""
+        try:
+            self.pool = await asyncpg.create_pool(
+                dsn=self.dsn,
+                min_size=1,
+                max_size=5,
+                command_timeout=30,
+                ssl='require',
+                max_queries=50000,
+                max_inactive_connection_lifetime=300
+            )
+            print("✅ PostgreSQL pool yaratildi")
+        except Exception as e:
+            print(f"❌ PostgreSQL pool yaratishda xatolik: {e}")
+            raise
     
     async def init_tables(self):
         """Jadvallarni yaratish"""
@@ -60,7 +61,7 @@ class Database:
                 )
             ''')
             
-            # Dars jadvallari jadvali - MUHIM: days_data ishlatilgan
+            # Dars jadvallari jadvali
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS schedules (
                     schedule_id TEXT PRIMARY KEY,
@@ -141,7 +142,6 @@ class Database:
                 ON CONFLICT (user_id, branch, date) DO NOTHING
             ''', user_id, branch, date, time)
     
-    # ✅ YANGI QO'SHILGAN METOD: check_attendance
     async def check_attendance(self, user_id: int, branch: str, date: str) -> bool:
         """Bugun shu filialda davomat qilinganmi?"""
         async with self.pool.acquire() as conn:
@@ -195,7 +195,6 @@ class Database:
                 stats[branch]['teachers'].add(row['unique_teachers'])
                 stats[branch]['daily'][row['day'].strftime('%Y-%m-%d')] = row['total']
             
-            # Set obyektlarini JSON formatlash uchun listga aylantirish
             for b in stats:
                 stats[b]['teachers'] = list(stats[b]['teachers'])
             
@@ -214,9 +213,9 @@ class Database:
             ''', start_date)
             return {row['branch']: {'count': row['count'], 'teachers': row['teachers']} for row in rows}
     
-    # --- DARS JADVALLARI - MUHIM: days_data ishlatilgan ---
+    # --- DARS JADVALLARI ---
     async def add_schedule(self, schedule_id: str, user_id: int, branch: str, lesson_type: str, days: dict):
-        """Dars jadvali qo'shish - days_data ustuniga saqlaydi"""
+        """Dars jadvali qo'shish"""
         async with self.pool.acquire() as conn:
             await conn.execute('''
                 INSERT INTO schedules (schedule_id, user_id, branch, lesson_type, days_data)
@@ -232,7 +231,7 @@ class Database:
             result = []
             for row in rows:
                 data = dict(row)
-                data['days'] = json.loads(data['days_data'])  # days_data ni days ga o'giramiz
+                data['days'] = json.loads(data['days_data'])
                 result.append(data)
             return result
     
@@ -281,12 +280,9 @@ class Database:
                                schedules: dict,
                                user_schedules: dict):
         """RAMdagi ma'lumotlarni PostgreSQLga ko'chirish"""
-        
         print("🔄 Ma'lumotlarni migratsiya qilish boshlandi...")
         
         async with self.pool.acquire() as conn:
-            # Bitta connection ichida ishlash optimizatsiya uchun
-            # Foydalanuvchilarni ko'chirish
             user_count = 0
             for user_id, name in user_names.items():
                 specialty = user_specialty.get(user_id)
@@ -304,7 +300,6 @@ class Database:
                 ''', user_id, name, specialty, status, lang)
                 user_count += 1
             
-            # Davomatlarni ko'chirish
             attendance_count = 0
             for uid, branch, date, time in daily_attendance_log:
                 await conn.execute('''
@@ -314,7 +309,6 @@ class Database:
                 ''', uid, branch, date, time)
                 attendance_count += 1
             
-            # Dars jadvallarini ko'chirish
             schedule_count = 0
             for schedule_id, schedule in schedules.items():
                 user_id = schedule['user_id']
@@ -331,48 +325,55 @@ class Database:
         
         print(f"✅ Migratsiya tugadi: {user_count} foydalanuvchi, {attendance_count} davomat, {schedule_count} jadval")
     
-   async def load_to_ram(self):
-    """RAMdagi ma'lumotlarni PostgreSQLga ko'chirish"""
-    global user_names, user_specialty, user_status, user_languages, user_ids
-    global daily_attendance_log, attendance_counter, schedules, user_schedules
+    # --- LOAD TO RAM ---
+    async def load_to_ram(self):
+        """RAMdagi ma'lumotlarni yuklash"""
+        global user_names, user_specialty, user_status, user_languages, user_ids
+        global daily_attendance_log, attendance_counter, schedules, user_schedules
+        
+        users = await self.get_all_users()
+        for u in users:
+            user_ids.add(u['user_id'])
+            user_names[u['user_id']] = u['full_name']
+            user_specialty[u['user_id']] = u['specialty']
+            user_status[u['user_id']] = u['status']
+            user_languages[u['user_id']] = u['language']
+        
+        attendances = await self.get_all_attendance()
+        for r in attendances:
+            daily_attendance_log.add((
+                r['user_id'],
+                r['branch'],
+                r['date'].isoformat(),
+                r['time'].strftime("%H:%M:%S")
+            ))
+            month = r['date'].strftime("%Y-%m")
+            key = (r['user_id'], r['branch'], month)
+            attendance_counter[key] = attendance_counter.get(key, 0) + 1
+        
+        all_schedules = await self.get_all_schedules()
+        for r in all_schedules:
+            schedules[r['schedule_id']] = {
+                'user_id': r['user_id'],
+                'branch': r['branch'],
+                'lesson_type': r['lesson_type'],
+                'days': r['days']
+            }
+            user_schedules[r['user_id']].append(r['schedule_id'])
+        
+        logging.info(f"✅ RAM ga yuklandi: {len(user_ids)} foydalanuvchi, {len(daily_attendance_log)} davomat")
     
-    users = await self.get_all_users()
-    for u in users:
-        user_ids.add(u['user_id'])
-        user_names[u['user_id']] = u['full_name']
-        user_specialty[u['user_id']] = u['specialty']
-        user_status[u['user_id']] = u['status']
-        user_languages[u['user_id']] = u['language']
-    
-    attendances = await self.get_all_attendance()
-    for r in attendances:
-        daily_attendance_log.add((
-            r['user_id'],
-            r['branch'],
-            r['date'].isoformat(),
-            r['time'].strftime("%H:%M:%S")
-        ))
-        month = r['date'].strftime("%Y-%m")
-        key = (r['user_id'], r['branch'], month)
-        attendance_counter[key] = attendance_counter.get(key, 0) + 1
-    
-    all_schedules = await self.get_all_schedules()
-    for r in all_schedules:
-        schedules[r['schedule_id']] = {
-            'user_id': r['user_id'],
-            'branch': r['branch'],
-            'lesson_type': r['lesson_type'],
-            'days': r['days']
-        }
-        user_schedules[r['user_id']].append(r['schedule_id'])
-    
-    logging.info(f"✅ RAM ga yuklandi: {len(user_ids)} foydalanuvchi, {len(daily_attendance_log)} davomat")
-    
-            # IT va Koreys tili o'qituvchilari
+    # --- YORDAMCHI FUNKSIYALAR ---
+    async def get_statistics(self) -> Dict:
+        """Umumiy statistika"""
+        async with self.pool.acquire() as conn:
+            total_users = await conn.fetchval('SELECT COUNT(*) FROM users')
+            active_users = await conn.fetchval("SELECT COUNT(*) FROM users WHERE status = 'active'")
+            blocked_users = await conn.fetchval("SELECT COUNT(*) FROM users WHERE status = 'blocked'")
+            
             it_teachers = await conn.fetchval("SELECT COUNT(*) FROM users WHERE specialty = 'IT'")
             korean_teachers = await conn.fetchval("SELECT COUNT(*) FROM users WHERE specialty = 'Koreys tili'")
             
-            # Davomatlar soni
             total_attendances = await conn.fetchval('SELECT COUNT(*) FROM attendance')
             today = datetime.now().strftime('%Y-%m-%d')
             today_attendances = await conn.fetchval('SELECT COUNT(*) FROM attendance WHERE date = $1::date', today)
@@ -400,6 +401,6 @@ class Database:
             await self.pool.close()
             print("🔌 PostgreSQL ulanishi yopildi")
 
-# TEST: database.py yuklanganligini tekshirish
+# TEST
 print("✅ database.py yuklandi!")
 print("📋 Mavjud metodlar:", [method for method in dir(Database) if not method.startswith('_')])
