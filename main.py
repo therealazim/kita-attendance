@@ -2033,9 +2033,8 @@ async def admin_user_delete(callback: types.CallbackQuery):
         await callback.answer("Ruxsat yo'q!")
         return
     
-    # Faqat "admin_user_delete_" bilan boshlanganlarni qabul qilish
-    # "admin_user_delete_confirm_" bilan boshlanganlarni emas
-    if callback.data.startswith("admin_user_delete_confirm_"):
+    # Faqat "admin_user_delete_" bilan boshlangan va "confirm" bo'lmaganlarni qabul qilish
+    if not callback.data.startswith("admin_user_delete_") or "_confirm_" in callback.data:
         return
     
     try:
