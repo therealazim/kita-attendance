@@ -17,19 +17,20 @@ class Database:
         self.pool = None
     
     async def create_pool(self):
-        """Ulanishlar havzasini yaratish"""
-        try:
-            self.pool = await asyncpg.create_pool(
-                dsn=self.dsn,
-                min_size=5,
-                max_size=20,
-                command_timeout=60,
-                ssl='require'
-            )
-            print("✅ PostgreSQL pool yaratildi")
-        except Exception as e:
-            print(f"❌ PostgreSQL pool yaratishda xatolik: {e}")
-            raise
+    try:
+        self.pool = await asyncpg.create_pool(
+            dsn=self.dsn,
+            min_size=1,
+            max_size=5,
+            command_timeout=30,
+            ssl='require',
+            max_queries=50000,
+            max_inactive_connection_lifetime=300
+        )
+        print("✅ PostgreSQL pool yaratildi")
+    except Exception as e:
+        print(f"❌ PostgreSQL pool yaratishda xatolik: {e}")
+        raise
     
     async def init_tables(self):
         """Jadvallarni yaratish"""
