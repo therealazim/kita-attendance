@@ -335,12 +335,8 @@ class PDFReport(StatesGroup):
 class ProfileEdit(StatesGroup):
     waiting_for_new_name = State()
 
-# ===== YANGI QO'SHIMCHA KODLAR =====
-
 class AdminPDFReport(StatesGroup):
     waiting_for_report_type = State()
-
-# ===== YANGI QO'SHIMCHA KODLAR TUGASHI =====
 
 WEEKDAYS = {
     'uz':['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba'],
@@ -1383,8 +1379,6 @@ def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
 """
     return message
 
-# ===== YANGI QO'SHIMCHA KODLAR =====
-
 @dp.message(Command("admin"))
 async def admin_panel(message: types.Message):
     if not check_admin(message.chat.id):
@@ -1393,19 +1387,16 @@ async def admin_panel(message: types.Message):
     try:
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(text="📊 Statistika", callback_data="admin_stats_main"),
-            InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main")
-        )
-        builder.row(
-            InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast"),
-            InlineKeyboardButton(text="📅 Dars jadvallari", callback_data="admin_schedules_main")
+            InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
+            InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast")
         )
         builder.row(
             InlineKeyboardButton(text="🏢 Filiallar", callback_data="admin_locations_main"),
-            InlineKeyboardButton(text="📑 PDF Hisobotlar", callback_data="admin_pdf_menu")  # YANGI TUGMA
+            InlineKeyboardButton(text="📅 Dars jadvallari", callback_data="admin_schedules_main")
         )
         builder.row(
-            InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report")  # ESKISI
+            InlineKeyboardButton(text="📊 Statistika", callback_data="admin_pdf_menu"),  # Statistika tugmasi (eski PDF Hisobotlar)
+            InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report")
         )
         
         await message.answer(
@@ -1433,12 +1424,11 @@ async def admin_pdf_menu(callback: types.CallbackQuery):
         InlineKeyboardButton(text="📅 Oylik hisobot", callback_data="pdf_monthly")
     )
     builder.row(
-        InlineKeyboardButton(text="📑 Barcha statistikalar", callback_data="pdf_all"),
         InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back")
     )
     
     await callback.message.edit_text(
-        "📑 PDF hisobot turini tanlang:",
+        "📊 Statistika hisobotlari\n\nKerakli hisobot turini tanlang:",
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -1654,60 +1644,6 @@ async def create_monthly_stats_pdf() -> io.BytesIO:
     pdf_buffer.seek(0)
     return pdf_buffer
 
-async def create_all_stats_pdf() -> io.BytesIO:
-    """Barcha statistikalar PDF"""
-    pdf_buffer = io.BytesIO()
-    doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
-    elements = []
-    styles = getSampleStyleSheet()
-    
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=20,
-        alignment=1,
-        spaceAfter=30
-    )
-    elements.append(Paragraph("📊 HANCOM ACADEMY", title_style))
-    elements.append(Paragraph("TO'LIQ STATISTIK HISOBOT", title_style))
-    elements.append(Paragraph(f"Hisobot yaratilgan sana: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
-    elements.append(Spacer(1, 30))
-    
-    # 1. Umumiy statistika
-    elements.append(Paragraph("📊 1. Umumiy statistika", styles['Heading2']))
-    elements.append(Spacer(1, 10))
-    
-    general_pdf = await create_general_stats_pdf()
-    elements.append(Paragraph("(Umumiy statistika jadvali)", styles['Normal']))
-    elements.append(Spacer(1, 20))
-    
-    # 2. Filiallar reytingi
-    elements.append(Paragraph("🏆 2. Filiallar reytingi", styles['Heading2']))
-    elements.append(Spacer(1, 10))
-    
-    branch_pdf = await create_branches_stats_pdf()
-    elements.append(Paragraph("(Filiallar reytingi jadvali)", styles['Normal']))
-    elements.append(Spacer(1, 20))
-    
-    # 3. O'qituvchilar reytingi
-    elements.append(Paragraph("👥 3. Eng faol o'qituvchilar", styles['Heading2']))
-    elements.append(Spacer(1, 10))
-    
-    teachers_pdf = await create_teachers_stats_pdf()
-    elements.append(Paragraph("(O'qituvchilar reytingi jadvali)", styles['Normal']))
-    elements.append(Spacer(1, 20))
-    
-    # 4. Oylik hisobot
-    elements.append(Paragraph("📅 4. Joriy oy hisoboti", styles['Heading2']))
-    elements.append(Spacer(1, 10))
-    
-    monthly_pdf = await create_monthly_stats_pdf()
-    elements.append(Paragraph("(Oylik hisobot jadvali)", styles['Normal']))
-    
-    doc.build(elements)
-    pdf_buffer.seek(0)
-    return pdf_buffer
-
 @dp.callback_query(F.data.startswith("pdf_"))
 async def handle_pdf_reports(callback: types.CallbackQuery):
     if not check_admin(callback.message.chat.id):
@@ -1739,11 +1675,6 @@ async def handle_pdf_reports(callback: types.CallbackQuery):
             filename = f"oylik_hisobot_{datetime.now(UZB_TZ).strftime('%Y%m%d_%H%M')}.pdf"
             caption = f"📅 {datetime.now(UZB_TZ).strftime('%B %Y')} oyi hisoboti"
             
-        elif report_type == "all":
-            pdf_buffer = await create_all_stats_pdf()
-            filename = f"toliq_hisobot_{datetime.now(UZB_TZ).strftime('%Y%m%d_%H%M')}.pdf"
-            caption = "📊 To'liq statistik hisobot"
-            
         else:
             await callback.message.edit_text("❌ Noto'g'ri so'rov")
             await callback.answer()
@@ -1760,8 +1691,6 @@ async def handle_pdf_reports(callback: types.CallbackQuery):
         await callback.message.edit_text(f"❌ PDF yaratishda xatolik: {str(e)}")
     
     await callback.answer()
-
-# ===== YANGI QO'SHIMCHA KODLAR TUGASHI =====
 
 @dp.callback_query(F.data == "admin_stats_main")
 async def admin_stats_main(callback: types.CallbackQuery):
@@ -2411,6 +2340,9 @@ async def admin_schedules_main(callback: types.CallbackQuery):
             InlineKeyboardButton(text="📋 Faol dars jadvallari", callback_data="admin_active_schedules")
         )
         builder.row(
+            InlineKeyboardButton(text="📋 Dars jadvali PDF", callback_data="admin_schedules_pdf")
+        )
+        builder.row(
             InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back")
         )
         
@@ -2423,6 +2355,142 @@ async def admin_schedules_main(callback: types.CallbackQuery):
     except Exception as e:
         logging.error(f"admin_schedules_main error: {e}")
         await callback.answer("Xatolik yuz berdi")
+
+@dp.callback_query(F.data == "admin_schedules_pdf")
+async def admin_schedules_pdf(callback: types.CallbackQuery):
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    await callback.message.edit_text("⏳ Dars jadvallari PDF tayyorlanmoqda, biroz kuting...")
+    
+    try:
+        pdf_buffer = await create_all_schedules_pdf()
+        
+        filename = f"barcha_dars_jadvallari_{datetime.now(UZB_TZ).strftime('%Y%m%d_%H%M')}.pdf"
+        
+        await callback.message.delete()
+        await callback.message.answer_document(
+            types.BufferedInputFile(pdf_buffer.getvalue(), filename=filename),
+            caption="📋 Barcha o'qituvchilarning dars jadvallari"
+        )
+        
+    except Exception as e:
+        logging.error(f"admin_schedules_pdf error: {e}")
+        await callback.message.edit_text(f"❌ PDF yaratishda xatolik: {str(e)}")
+    
+    await callback.answer()
+
+async def create_all_schedules_pdf() -> io.BytesIO:
+    """Barcha o'qituvchilarning dars jadvallari PDF"""
+    pdf_buffer = io.BytesIO()
+    doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Sarlavha
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=20,
+        alignment=1,
+        spaceAfter=20,
+        textColor=colors.HexColor('#2E86AB')
+    )
+    elements.append(Paragraph("📋 HANCOM ACADEMY", title_style))
+    elements.append(Paragraph("BARCHA O'QITUVCHILARNING DARS JADVALLARI", title_style))
+    elements.append(Paragraph(f"Yaratilgan sana: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", 
+                             styles['Normal']))
+    elements.append(Spacer(1, 30))
+    
+    if not schedules:
+        elements.append(Paragraph("📭 Hali dars jadvallari mavjud emas.", styles['Normal']))
+    else:
+        # O'qituvchilar bo'yicha guruhlash
+        teacher_schedules = defaultdict(list)
+        for schedule_id, schedule in schedules.items():
+            teacher_schedules[schedule['user_id']].append(schedule)
+        
+        # O'qituvchilarni ism bo'yicha tartiblash
+        sorted_teachers = sorted(teacher_schedules.keys(), 
+                                key=lambda uid: user_names.get(uid, '').lower())
+        
+        for teacher_id in sorted_teachers:
+            teacher_name = user_names.get(teacher_id, f"ID: {teacher_id}")
+            teacher_specialty = user_specialty.get(teacher_id, '')
+            specialty_display = f" [{teacher_specialty}]" if teacher_specialty else ""
+            
+            # O'qituvchi sarlavhasi
+            teacher_style = ParagraphStyle(
+                'TeacherStyle',
+                parent=styles['Heading2'],
+                fontSize=14,
+                textColor=colors.HexColor('#A53F2B'),
+                spaceAfter=10,
+                spaceBefore=15
+            )
+            elements.append(Paragraph(f"👤 {teacher_name}{specialty_display}", teacher_style))
+            
+            teacher_scheds = teacher_schedules[teacher_id]
+            
+            for schedule in teacher_scheds:
+                branch = schedule['branch']
+                lesson_type = schedule.get('lesson_type', 'Dars')
+                
+                # Filial va dars turi
+                branch_style = ParagraphStyle(
+                    'BranchStyle',
+                    parent=styles['Normal'],
+                    fontSize=12,
+                    textColor=colors.HexColor('#2E86AB'),
+                    spaceAfter=5
+                )
+                elements.append(Paragraph(f"   🏢 {branch} - {lesson_type}", branch_style))
+                
+                # Jadval
+                days = sort_weekdays(schedule['days'])
+                data = [['Kun', 'Vaqt']]
+                for day, time in days.items():
+                    data.append([day, time])
+                
+                table = Table(data, colWidths=[2.5*inch, 2.5*inch])
+                table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2E86AB')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 11),
+                    ('FONTSIZE', (0, 1), (-1, -1), 10),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#CCCCCC')),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#F8F9F9')),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#F8F9F9'), colors.white])
+                ]))
+                
+                # Jadvalni markazga joylashtirish uchun
+                table._argW = [2.5*inch, 2.5*inch]
+                elements.append(table)
+                elements.append(Spacer(1, 15))
+            
+            # O'qituvchilar orasida chiziq
+            if teacher_id != sorted_teachers[-1]:
+                elements.append(Spacer(1, 10))
+                elements.append(Paragraph("─" * 50, styles['Normal']))
+                elements.append(Spacer(1, 10))
+    
+    # Footer
+    footer_style = ParagraphStyle(
+        'FooterStyle',
+        parent=styles['Normal'],
+        fontSize=8,
+        alignment=2,
+        textColor=colors.grey,
+        spaceBefore=30
+    )
+    elements.append(Paragraph(f"Hisobot avtomatik tarzda yaratildi • {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", footer_style))
+    
+    doc.build(elements)
+    pdf_buffer.seek(0)
+    return pdf_buffer
 
 @dp.callback_query(F.data == "admin_active_schedules")
 async def admin_active_schedules(callback: types.CallbackQuery):
@@ -3330,18 +3398,15 @@ async def admin_back(callback: types.CallbackQuery):
     try:
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(text="📊 Statistika", callback_data="admin_stats_main"),
-            InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main")
-        )
-        builder.row(
-            InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast"),
-            InlineKeyboardButton(text="📅 Dars jadvallari", callback_data="admin_schedules_main")
+            InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
+            InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast")
         )
         builder.row(
             InlineKeyboardButton(text="🏢 Filiallar", callback_data="admin_locations_main"),
-            InlineKeyboardButton(text="📑 PDF Hisobotlar", callback_data="admin_pdf_menu")
+            InlineKeyboardButton(text="📅 Dars jadvallari", callback_data="admin_schedules_main")
         )
         builder.row(
+            InlineKeyboardButton(text="📊 Statistika", callback_data="admin_pdf_menu"),
             InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report")
         )
         
