@@ -2380,7 +2380,7 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
                     
                 builder.row(
                     InlineKeyboardButton(
-                        text=f"👤 {name}{spec_display", 
+                        text=f"👤 {name}{spec_display}", 
                         callback_data=f"admin_user_info_{uid}"
                     )
                 )
