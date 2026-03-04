@@ -71,7 +71,6 @@ broadcast_history = []
 # BARCHA LOKATSIYALAR RO'YXATI
 LOCATIONS =[
     {"name": "Kimyo Xalqaro Universiteti", "lat": 41.257490, "lon": 69.220109},
-    {"name": "Menejment Universiteti", "lat": 41.270526, "lon": 69.236492},
     {"name": "78-Maktab", "lat": 41.282791, "lon": 69.173290},
     {"name": "126-Maktab", "lat": 41.260249, "lon": 69.153216},
     {"name": "290-Maktab", "lat": 41.234736, "lon": 69.350745},
@@ -2038,7 +2037,6 @@ async def admin_user_unblock(callback: types.CallbackQuery):
     await callback.answer("✅ Foydalanuvchi faollashtirildi!")
     await admin_user_info(callback)
 
-# MUHIM: Eng aniq handlerlarni tepaga qo'yish
 @dp.callback_query(F.data.startswith("admin_user_delete_confirm_"))
 async def admin_user_delete_confirm(callback: types.CallbackQuery):
     if not check_admin(callback.message.chat.id):
@@ -2051,12 +2049,10 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
         uid = int(callback.data.replace("admin_user_delete_confirm_", ""))
         logging.info(f"admin_user_delete_confirm called for uid: {uid}")
         
-        # Foydalanuvchi ma'lumotlarini saqlab qolish (xabar uchun)
         user_name = user_names.get(uid, "Noma'lum")
         user_spec = user_specialty.get(uid, "")
         spec_display = f" [{user_spec}]" if user_spec else ""
         
-        # Avval "⏳" xabarini ko'rsatish
         await callback.message.edit_text(
             f"⏳ Foydalanuvchi o'chirilmoqda...\n\nID: `{uid}`\nIsm: {user_name}{spec_display}",
             parse_mode="Markdown"
@@ -2068,55 +2064,32 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
         return
     
     try:
-        # PostgreSQL dan o'chirish
         async with db.pool.acquire() as conn:
-            # Avval bog'liq ma'lumotlarni o'chirish
             await conn.execute("DELETE FROM attendance WHERE user_id = $1", uid)
-            logging.info(f"Attendance deleted for user {uid}")
-            
             await conn.execute("DELETE FROM schedules WHERE user_id = $1", uid)
-            logging.info(f"Schedules deleted for user {uid}")
-            
-            # Keyin foydalanuvchini o'chirish
-            result = await conn.execute("DELETE FROM users WHERE user_id = $1", uid)
-            logging.info(f"User deleted from PostgreSQL: {result}")
+            await conn.execute("DELETE FROM users WHERE user_id = $1", uid)
         
-        # RAM dan o'chirish
         if uid in user_ids:
             user_ids.remove(uid)
-            logging.info(f"User {uid} removed from user_ids")
         
-        # Lug'atlardan o'chirish
-        if uid in user_names:
-            del user_names[uid]
-        if uid in user_specialty:
-            del user_specialty[uid]
-        if uid in user_status:
-            del user_status[uid]
-        if uid in user_languages:
-            del user_languages[uid]
+        user_names.pop(uid, None)
+        user_specialty.pop(uid, None)
+        user_status.pop(uid, None)
+        user_languages.pop(uid, None)
         
-        # daily_attendance_log dan o'chirish (set)
         to_remove = [k for k in daily_attendance_log if k[0] == uid]
         for k in to_remove:
             daily_attendance_log.discard(k)
-        logging.info(f"Removed {len(to_remove)} attendance records from RAM")
         
-        # attendance_counter dan o'chirish
         keys_to_remove = [k for k in attendance_counter.keys() if k[0] == uid]
         for k in keys_to_remove:
             del attendance_counter[k]
         
-        # schedules va user_schedules dan o'chirish
         if uid in user_schedules:
             for schedule_id in user_schedules[uid]:
-                if schedule_id in schedules:
-                    del schedules[schedule_id]
-            del user_schedules[uid]
+                schedules.pop(schedule_id, None)
+            user_schedules.pop(uid, None)
         
-        logging.info(f"User {uid} completely removed from RAM")
-        
-        # Muvaffaqiyatli xabar
         await callback.message.edit_text(
             f"✅ **Foydalanuvchi muvaffaqiyatli o'chirildi!**\n\n"
             f"ID: `{uid}`\n"
@@ -2127,20 +2100,16 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
         
         await callback.answer("✅ Foydalanuvchi o'chirildi!")
         
-        # Qisqa kutish
         await asyncio.sleep(2)
         
-        # Foydalanuvchilar ro'yxatini qayta ko'rsatish
         active_users = [uid for uid in user_ids if user_status.get(uid) != 'blocked']
         if active_users:
             builder = InlineKeyboardBuilder()
-            # Eng ko'pi bilan 15 ta foydalanuvchini ko'rsatish
             for uid in sorted(active_users)[:15]:
                 name = user_names.get(uid, f"ID: {uid}")
                 specialty = user_specialty.get(uid, '')
                 spec_display = f" [{specialty}]" if specialty else ""
                 
-                # Ismni qisqartirish agar juda uzun bo'lsa
                 if len(name) > 30:
                     name = name[:27] + "..."
                     
@@ -2170,7 +2139,6 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
         )
         await callback.answer("Xatolik yuz berdi!")
 
-# admin_user_delete handleri - regex yordamida faqat raqam bilan tugaydiganlarni qabul qilish
 @dp.callback_query(F.data.regexp(r"^admin_user_delete_\d+$"))
 async def admin_user_delete(callback: types.CallbackQuery):
     if not check_admin(callback.message.chat.id):
@@ -2183,12 +2151,10 @@ async def admin_user_delete(callback: types.CallbackQuery):
         uid = int(callback.data.replace("admin_user_delete_", ""))
         logging.info(f"admin_user_delete called for uid: {uid}")
         
-        # Foydalanuvchi ma'lumotlarini olish
         user_name = user_names.get(uid, "Noma'lum")
         user_spec = user_specialty.get(uid, "")
         spec_display = f" [{user_spec}]" if user_spec else ""
         
-        # Tasdiqlash tugmalari
         builder = InlineKeyboardBuilder()
         builder.row(
             InlineKeyboardButton(text="✅ Ha, o'chirish", callback_data=f"admin_user_delete_confirm_{uid}"),
@@ -3513,7 +3479,8 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
                 
                 if lesson_time:
                     ontime, late_mins = calculate_lateness(att_time, lesson_time)
-                    status = get_text(uid, 'ontime') if ontime else get_text(uid, 'late')
+                    # MUHIM: PDF hisobotda tilni majburan o'zbekcha qilamiz (shrift muammosi uchun)
+                    status = "Vaqtida" if ontime else "Kechikkan"
                     late_text = "0" if ontime else f"{late_mins} min"
                 else:
                     status = "Noma'lum"
