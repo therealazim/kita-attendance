@@ -93,6 +93,10 @@ LOCATIONS =[
 
 ALLOWED_DISTANCE = 500
 
+# --- OYLIK HISOBOT UCHUN STATE ---
+class MonthlyReport(StatesGroup):
+    waiting_for_date_range = State()
+
 # --- POSTGRESQL DATABASE CLASS ---
 class Database:
     def __init__(self, url):
@@ -1394,7 +1398,7 @@ async def admin_panel(message: types.Message):
             InlineKeyboardButton(text="📅 Dars jadvallari", callback_data="admin_schedules_main")
         )
         builder.row(
-            InlineKeyboardButton(text="📊 Statistika", callback_data="admin_pdf_menu"),
+            InlineKeyboardButton(text="📅 Oylik hisobot", callback_data="admin_monthly_report"),
             InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report")
         )
         
@@ -1406,6 +1410,267 @@ async def admin_panel(message: types.Message):
     except Exception as e:
         logging.error(f"admin_panel error: {e}")
         await message.answer("❌ Admin panelni ochishda xatolik yuz berdi")
+
+@dp.callback_query(F.data == "admin_monthly_report")
+async def admin_monthly_report_start(callback: types.CallbackQuery, state: FSMContext):
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    await state.set_state(MonthlyReport.waiting_for_date_range)
+    await callback.message.edit_text(
+        "📅 Oylik hisobot olish uchun sana oralig'ini kiriting:\n\n"
+        "Format: YYYY-MM-DD dan YYYY-MM-DD gacha\n"
+        "Masalan: 2026-03-01 dan 2026-04-01 gacha\n\n"
+        "Yoki oy nomi bilan: Mart 2026"
+    )
+    await callback.answer()
+
+async def create_detailed_monthly_report(start_date: datetime, end_date: datetime) -> io.BytesIO:
+    """Batafsil oylik hisobot yaratish"""
+    pdf_buffer = io.BytesIO()
+    doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Sarlavha
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        alignment=1,
+        spaceAfter=20,
+        textColor=colors.HexColor('#2E86AB')
+    )
+    
+    period_text = f"{start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}"
+    elements.append(Paragraph(f"📊 OYLIK HISOBOT", title_style))
+    elements.append(Paragraph(f"Davr: {period_text}", styles['Heading2']))
+    elements.append(Paragraph(f"Hisobot yaratilgan sana: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
+    elements.append(Spacer(1, 20))
+    
+    # Filiallar bo'yicha statistika
+    branch_stats = defaultdict(lambda: {
+        'total': 0,
+        'teachers': set(),
+        'by_teacher': defaultdict(lambda: {'total': 0, 'ontime': 0, 'late': 0, 'late_minutes': 0})
+    })
+    
+    # Davomatlarni yig'ish
+    for att in daily_attendance_log:
+        att_date = datetime.strptime(att[2], "%Y-%m-%d")
+        if start_date <= att_date <= end_date:
+            user_id = att[0]
+            branch = att[1]
+            att_time = att[3]
+            
+            branch_stats[branch]['total'] += 1
+            branch_stats[branch]['teachers'].add(user_id)
+            
+            # O'qituvchi ma'lumotlari
+            teacher_name = user_names.get(user_id, f"ID: {user_id}")
+            specialty = user_specialty.get(user_id, '')
+            
+            # Dars vaqtini topish
+            lesson_time = None
+            if user_id in user_schedules:
+                for schedule_id in user_schedules[user_id]:
+                    schedule = schedules.get(schedule_id)
+                    if schedule and schedule['branch'] == branch:
+                        weekday_name = WEEKDAYS_UZ[att_date.weekday()]
+                        if weekday_name in schedule['days']:
+                            lesson_time = schedule['days'][weekday_name]
+                            break
+            
+            if lesson_time:
+                ontime, late_mins = calculate_lateness(att_time, lesson_time)
+                branch_stats[branch]['by_teacher'][user_id]['total'] += 1
+                if ontime:
+                    branch_stats[branch]['by_teacher'][user_id]['ontime'] += 1
+                else:
+                    branch_stats[branch]['by_teacher'][user_id]['late'] += 1
+                    branch_stats[branch]['by_teacher'][user_id]['late_minutes'] += late_mins
+    
+    if not branch_stats:
+        elements.append(Paragraph("Bu davrda hech qanday davomat topilmadi.", styles['Normal']))
+    else:
+        # Umumiy statistika
+        total_attendances = sum(stats['total'] for stats in branch_stats.values())
+        total_teachers = len(set().union(*[stats['teachers'] for stats in branch_stats.values()]))
+        total_branches = len(branch_stats)
+        
+        summary_data = [
+            ['Ko\'rsatkich', 'Qiymat'],
+            ['Jami davomatlar', str(total_attendances)],
+            ['Jami o\'qituvchilar', str(total_teachers)],
+            ['Jami filiallar', str(total_branches)],
+            ['O\'rtacha davomat/filial', f"{total_attendances/total_branches:.1f}" if total_branches > 0 else "0"],
+        ]
+        
+        summary_table = Table(summary_data, colWidths=[2.5*inch, 2*inch])
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2E86AB')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#F8F9F9')),
+        ]))
+        elements.append(summary_table)
+        elements.append(Spacer(1, 20))
+        
+        # Filiallar bo'yicha batafsil
+        for branch, stats in sorted(branch_stats.items(), key=lambda x: x[1]['total'], reverse=True):
+            # Filial sarlavhasi
+            branch_style = ParagraphStyle(
+                'BranchStyle',
+                parent=styles['Heading2'],
+                fontSize=14,
+                textColor=colors.HexColor('#A53F2B'),
+                spaceAfter=10,
+                spaceBefore=15
+            )
+            elements.append(Paragraph(f"🏢 {branch}", branch_style))
+            
+            # Filial umumiy ma'lumotlari
+            branch_info = [
+                ['Jami davomatlar', str(stats['total'])],
+                ['O\'qituvchilar soni', str(len(stats['teachers']))],
+                ['O\'rtacha davomat/o\'qituvchi', f"{stats['total']/len(stats['teachers']):.1f}" if stats['teachers'] else "0"],
+            ]
+            
+            branch_table = Table(branch_info, colWidths=[2*inch, 1.5*inch])
+            branch_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E8E8E8')),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ]))
+            elements.append(branch_table)
+            elements.append(Spacer(1, 10))
+            
+            # O'qituvchilar ro'yxati
+            if stats['by_teacher']:
+                teacher_data = [['№', 'O\'qituvchi', 'Mutaxassislik', 'Jami', 'Vaqtida', 'Kechikkan', 'Kechikish (min)']]
+                
+                for i, (teacher_id, teacher_stats) in enumerate(sorted(stats['by_teacher'].items(), key=lambda x: x[1]['total'], reverse=True), 1):
+                    teacher_name = user_names.get(teacher_id, f"ID: {teacher_id}")
+                    specialty = user_specialty.get(teacher_id, '')
+                    
+                    teacher_data.append([
+                        str(i),
+                        teacher_name,
+                        specialty,
+                        str(teacher_stats['total']),
+                        str(teacher_stats['ontime']),
+                        str(teacher_stats['late']),
+                        str(teacher_stats['late_minutes'])
+                    ])
+                
+                teacher_table = Table(teacher_data, colWidths=[0.4*inch, 2*inch, 1.2*inch, 0.8*inch, 0.8*inch, 0.8*inch, 1*inch])
+                teacher_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2E86AB')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                    ('FONTSIZE', (0, 0), (-1, -1), 9),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ]))
+                elements.append(teacher_table)
+            else:
+                elements.append(Paragraph("Bu filialda davomat yo'q", styles['Normal']))
+            
+            elements.append(Spacer(1, 15))
+    
+    # Footer
+    footer_style = ParagraphStyle(
+        'FooterStyle',
+        parent=styles['Normal'],
+        fontSize=8,
+        alignment=2,
+        textColor=colors.grey,
+        spaceBefore=30
+    )
+    elements.append(Paragraph(f"Hisobot avtomatik tarzda yaratildi • {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", footer_style))
+    
+    doc.build(elements)
+    pdf_buffer.seek(0)
+    return pdf_buffer
+
+@dp.message(MonthlyReport.waiting_for_date_range)
+async def admin_monthly_report_process(message: types.Message, state: FSMContext):
+    if not check_admin(message.chat.id):
+        await state.clear()
+        return
+    
+    try:
+        text = message.text.strip()
+        start_date = None
+        end_date = None
+        
+        # Format 1: "2026-03-01 dan 2026-04-01 gacha"
+        if " dan " in text and " gacha" in text:
+            parts = text.replace(" gacha", "").split(" dan ")
+            if len(parts) == 2:
+                start_date = datetime.strptime(parts[0].strip(), "%Y-%m-%d")
+                end_date = datetime.strptime(parts[1].strip(), "%Y-%m-%d")
+        
+        # Format 2: "Mart 2026"
+        else:
+            month_names = {
+                'Yanvar': 1, 'Fevral': 2, 'Mart': 3, 'Aprel': 4,
+                'May': 5, 'Iyun': 6, 'Iyul': 7, 'Avgust': 8,
+                'Sentabr': 9, 'Oktabr': 10, 'Noyabr': 11, 'Dekabr': 12
+            }
+            
+            parts = text.split()
+            if len(parts) == 2 and parts[0] in month_names:
+                month = month_names[parts[0]]
+                year = int(parts[1])
+                start_date = datetime(year, month, 1)
+                if month == 12:
+                    end_date = datetime(year + 1, 1, 1) - timedelta(days=1)
+                else:
+                    end_date = datetime(year, month + 1, 1) - timedelta(days=1)
+        
+        if not start_date or not end_date:
+            raise ValueError("Noto'g'ri format")
+        
+        if start_date > end_date:
+            await message.answer("❌ Boshlanish sanasi tugash sanasidan katta! Qaytadan kiriting.")
+            return
+        
+        await message.answer(f"⏳ {start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')} oralig'i uchun hisobot tayyorlanmoqda...")
+        
+        pdf_buffer = await create_detailed_monthly_report(start_date, end_date)
+        
+        filename = f"oylik_hisobot_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.pdf"
+        
+        await message.answer_document(
+            types.BufferedInputFile(pdf_buffer.getvalue(), filename=filename),
+            caption=f"📊 Oylik hisobot ({start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')})"
+        )
+        
+        await state.clear()
+        
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Admin panel", callback_data="admin_back"))
+        await message.answer("Admin panelga qaytish:", reply_markup=builder.as_markup())
+        
+    except ValueError as e:
+        await message.answer(
+            "❌ Noto'g'ri format. Iltimos, quyidagi formatlardan birida kiriting:\n\n"
+            "1. YYYY-MM-DD dan YYYY-MM-DD gacha\n"
+            "   Masalan: 2026-03-01 dan 2026-04-01 gacha\n\n"
+            "2. Oy nomi va yil\n"
+            "   Masalan: Mart 2026"
+        )
+    except Exception as e:
+        logging.error(f"admin_monthly_report_process error: {e}")
+        traceback.print_exc()
+        await message.answer(f"❌ Xatolik yuz berdi: {e}")
+        await state.clear()
 
 @dp.callback_query(F.data == "admin_pdf_menu")
 async def admin_pdf_menu(callback: types.CallbackQuery):
@@ -2115,7 +2380,7 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
                     
                 builder.row(
                     InlineKeyboardButton(
-                        text=f"👤 {name}{spec_display}", 
+                        text=f"👤 {name}{spec_display", 
                         callback_data=f"admin_user_info_{uid}"
                     )
                 )
@@ -3380,6 +3645,7 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
         date_str = message.text.strip()
         report_date = datetime.strptime(date_str, "%Y-%m-%d").date()
         report_date_str = report_date.strftime("%Y-%m-%d")
+        report_weekday = WEEKDAYS_UZ[report_date.weekday()]
         
         await message.answer("⏳ PDF hisobot yaratilmoqda...")
         
@@ -3400,7 +3666,7 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
             alignment=1,
             spaceAfter=30
         )
-        elements.append(Paragraph(f"Davomat Hisoboti - {report_date.strftime('%d.%m.%Y')}", title_style))
+        elements.append(Paragraph(f"Davomat Hisoboti - {report_date.strftime('%d.%m.%Y')} ({report_weekday})", title_style))
         
         elements.append(Paragraph(f"Hisobot yaratilgan vaqt: {datetime.now(UZB_TZ).strftime('%H:%M:%S')}", styles['Normal']))
         elements.append(Spacer(1, 20))
@@ -3421,9 +3687,8 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
                 for schedule_id in user_schedules[user_id]:
                     schedule = schedules.get(schedule_id)
                     if schedule and schedule['branch'] == branch:
-                        current_day_name = WEEKDAYS_UZ[report_date.weekday()]
-                        if current_day_name in schedule['days']:
-                            lesson_time = schedule['days'][current_day_name]
+                        if report_weekday in schedule['days']:
+                            lesson_time = schedule['days'][report_weekday]
                             break
             
             if lesson_time:
@@ -3462,7 +3727,8 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
         if day_attendances:
             elements.append(Paragraph(f"{report_date.strftime('%d.%m.%Y')} dagi davomatlar", styles['Heading2']))
             
-            data = [['№', 'Vaqt', 'O\'qituvchi', 'Mutaxassislik', 'Filial', 'Holat', 'Kechikish']]
+            data = [['№', 'Davomat vaqti', 'Dars boshlanishi', 'O\'qituvchi', 'Mutaxassislik', 'Filial', 'Holat', 'Kechikish']]
+            
             for i, (uid, branch, date, att_time) in enumerate(sorted(day_attendances, key=lambda x: x[3]), 1):
                 teacher_name = user_names.get(uid, f"ID: {uid}")
                 specialty = user_specialty.get(uid, '')
@@ -3472,30 +3738,40 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
                     for schedule_id in user_schedules[uid]:
                         schedule = schedules.get(schedule_id)
                         if schedule and schedule['branch'] == branch:
-                            current_day_name = WEEKDAYS_UZ[report_date.weekday()]
-                            if current_day_name in schedule['days']:
-                                lesson_time = schedule['days'][current_day_name]
+                            if report_weekday in schedule['days']:
+                                lesson_time = schedule['days'][report_weekday]
                                 break
+                
+                lesson_time_display = lesson_time if lesson_time else "—"
                 
                 if lesson_time:
                     ontime, late_mins = calculate_lateness(att_time, lesson_time)
-                    # MUHIM: PDF hisobotda tilni majburan o'zbekcha qilamiz (shrift muammosi uchun)
                     status = "Vaqtida" if ontime else "Kechikkan"
                     late_text = "0" if ontime else f"{late_mins} min"
                 else:
                     status = "Noma'lum"
                     late_text = "-"
                 
-                data.append([str(i), att_time, teacher_name, specialty, branch, status, late_text])
+                data.append([
+                    str(i), 
+                    att_time,
+                    lesson_time_display,
+                    teacher_name, 
+                    specialty, 
+                    branch, 
+                    status, 
+                    late_text
+                ])
             
-            table = Table(data, colWidths=[0.5*inch, 1*inch, 2*inch, 1.2*inch, 1.8*inch, 1*inch, 1*inch])
+            table = Table(data, colWidths=[0.4*inch, 0.9*inch, 0.9*inch, 1.8*inch, 1.0*inch, 1.5*inch, 0.8*inch, 0.8*inch])
             table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('GRID', (0, 0), (-1, -1), 1, colors.black),
-                ('FONTSIZE', (0, 0), (-1, -1), 10)
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ]))
             
             elements.append(table)
@@ -3521,6 +3797,7 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
         await message.answer("❌ Noto'g'ri sana formati. Qaytadan urinib ko'ring:\nFormat: YYYY-MM-DD")
     except Exception as e:
         logging.error(f"admin_pdf_report_date error: {e}")
+        traceback.print_exc()
         await message.answer(f"❌ PDF yaratishda xatolik: {e}")
         await state.clear()
 
@@ -3541,7 +3818,7 @@ async def admin_back(callback: types.CallbackQuery):
             InlineKeyboardButton(text="📅 Dars jadvallari", callback_data="admin_schedules_main")
         )
         builder.row(
-            InlineKeyboardButton(text="📊 Statistika", callback_data="admin_pdf_menu"),
+            InlineKeyboardButton(text="📅 Oylik hisobot", callback_data="admin_monthly_report"),
             InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report")
         )
         
