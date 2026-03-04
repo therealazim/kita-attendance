@@ -51,7 +51,7 @@ WEATHER_API_URL = "http://api.openweathermap.org/data/2.5/weather"
 # Bot obyektini yaratish
 bot = Bot(token=TOKEN)
 
-# Dispatcher obyektini yaratish (BU MUHIM - dp shu yerda aniqlanadi)
+# Dispatcher obyektini yaratish
 dp = Dispatcher()
 
 # Foydalanuvchi ma'lumotlari (RAM da vaqtinchalik)
@@ -1938,13 +1938,20 @@ async def admin_user_info(callback: types.CallbackQuery):
         await callback.answer("Ruxsat yo'q!")
         return
     
-    # Faqat "admin_user_info_" bilan boshlanganlarni qabul qilish
-    if not callback.data.startswith("admin_user_info_") or "_block_" in callback.data or "_unblock_" in callback.data or "_delete_" in callback.data or "_stats_" in callback.data:
+    # Faqat "admin_user_info_" bilan boshlangan va boshqa prefikslar bo'lmaganlarni qabul qilish
+    if (not callback.data.startswith("admin_user_info_") or 
+        "_block_" in callback.data or 
+        "_unblock_" in callback.data or 
+        "_delete_" in callback.data or 
+        "_stats_" in callback.data):
         return
     
     try:
-        uid = int(callback.data.replace("admin_user_info_", ""))
-    except ValueError:
+        uid_str = callback.data.replace("admin_user_info_", "")
+        uid = int(uid_str)
+        logging.info(f"admin_user_info called for uid: {uid}")
+    except ValueError as e:
+        logging.error(f"admin_user_info parse error: {callback.data}, error: {e}")
         await callback.answer("Noto'g'ri format!")
         return
     
@@ -2006,8 +2013,11 @@ async def admin_user_block(callback: types.CallbackQuery):
         return
     
     try:
-        uid = int(callback.data.replace("admin_user_block_", ""))
-    except ValueError:
+        uid_str = callback.data.replace("admin_user_block_", "")
+        uid = int(uid_str)
+        logging.info(f"admin_user_block called for uid: {uid}")
+    except ValueError as e:
+        logging.error(f"admin_user_block parse error: {callback.data}, error: {e}")
         await callback.answer("Noto'g'ri format!")
         return
     
@@ -2028,8 +2038,11 @@ async def admin_user_unblock(callback: types.CallbackQuery):
         return
     
     try:
-        uid = int(callback.data.replace("admin_user_unblock_", ""))
-    except ValueError:
+        uid_str = callback.data.replace("admin_user_unblock_", "")
+        uid = int(uid_str)
+        logging.info(f"admin_user_unblock called for uid: {uid}")
+    except ValueError as e:
+        logging.error(f"admin_user_unblock parse error: {callback.data}, error: {e}")
         await callback.answer("Noto'g'ri format!")
         return
     
@@ -2058,19 +2071,24 @@ async def admin_user_delete(callback: types.CallbackQuery):
         await callback.answer("Noto'g'ri format!")
         return
     
+    # Foydalanuvchi ma'lumotlarini olish
+    user_name = user_names.get(uid, "Noma'lum")
+    user_spec = user_specialty.get(uid, "")
+    spec_display = f" [{user_spec}]" if user_spec else ""
+    
+    # Tasdiqlash tugmalari
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="✅ Ha, o'chirish", callback_data=f"admin_user_delete_confirm_{uid}"),
         InlineKeyboardButton(text="❌ Bekor qilish", callback_data=f"admin_user_info_{uid}")
     )
     
-    ism_text = user_names.get(uid, "Noma'lum")
     await callback.message.edit_text(
-        "⚠️ **Foydalanuvchini o'chirish**\n\n"
+        f"⚠️ **Foydalanuvchini o'chirish**\n\n"
         f"ID: `{uid}`\n"
-        f"Ism: {ism_text}\n\n"
-        "Bu foydalanuvchini butunlay o'chirmoqchimisiz?\n"
-        "Barcha ma'lumotlari (davomatlar, dars jadvallari) ham o'chib ketadi!",
+        f"Ism: {user_name}{spec_display}\n\n"
+        f"Bu foydalanuvchini butunlay o'chirmoqchimisiz?\n"
+        f"Barcha ma'lumotlari (davomatlar, dars jadvallari) ham o'chib ketadi!",
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
     )
@@ -2086,6 +2104,12 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
         uid_str = callback.data.replace("admin_user_delete_confirm_", "")
         uid = int(uid_str)
         logging.info(f"admin_user_delete_confirm called for uid: {uid}")
+        
+        # Foydalanuvchi ma'lumotlarini saqlab qolish (xabar uchun)
+        user_name = user_names.get(uid, "Noma'lum")
+        user_spec = user_specialty.get(uid, "")
+        spec_display = f" [{user_spec}]" if user_spec else ""
+        
     except ValueError as e:
         logging.error(f"admin_user_delete_confirm parse error: {callback.data}, error: {e}")
         await callback.answer("Noto'g'ri format!")
@@ -2094,55 +2118,82 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
     try:
         # PostgreSQL dan o'chirish
         async with db.pool.acquire() as conn:
+            # Avval bog'liq ma'lumotlarni o'chirish
             await conn.execute("DELETE FROM attendance WHERE user_id = $1", uid)
             await conn.execute("DELETE FROM schedules WHERE user_id = $1", uid)
+            # Keyin foydalanuvchini o'chirish
             await conn.execute("DELETE FROM users WHERE user_id = $1", uid)
+        
+        logging.info(f"User {uid} deleted from PostgreSQL")
         
         # RAM dan o'chirish
         if uid in user_ids:
             user_ids.remove(uid)
         
-        ism_text = user_names.get(uid, "Noma'lum")
+        # Lug'atlardan o'chirish
+        if uid in user_names:
+            del user_names[uid]
+        if uid in user_specialty:
+            del user_specialty[uid]
+        if uid in user_status:
+            del user_status[uid]
+        if uid in user_languages:
+            del user_languages[uid]
         
-        user_names.pop(uid, None)
-        user_specialty.pop(uid, None)
-        user_status.pop(uid, None)
-        user_languages.pop(uid, None)
-        
-        # daily_attendance_log dan o'chirish
+        # daily_attendance_log dan o'chirish (set)
         to_remove = [k for k in daily_attendance_log if k[0] == uid]
         for k in to_remove:
-            daily_attendance_log.remove(k)
+            daily_attendance_log.discard(k)
         
-        # schedules dan o'chirish
+        # attendance_counter dan o'chirish
+        keys_to_remove = [k for k in attendance_counter.keys() if k[0] == uid]
+        for k in keys_to_remove:
+            del attendance_counter[k]
+        
+        # schedules va user_schedules dan o'chirish
         if uid in user_schedules:
             for schedule_id in user_schedules[uid]:
-                schedules.pop(schedule_id, None)
-            user_schedules.pop(uid, None)
+                if schedule_id in schedules:
+                    del schedules[schedule_id]
+            del user_schedules[uid]
         
+        logging.info(f"User {uid} removed from RAM")
+        
+        # Muvaffaqiyatli xabar
         await callback.message.edit_text(
-            f"✅ **Foydalanuvchi o'chirildi!**\n\n"
+            f"✅ **Foydalanuvchi muvaffaqiyatli o'chirildi!**\n\n"
             f"ID: `{uid}`\n"
-            f"Ism: {ism_text}\n\n"
+            f"Ism: {user_name}{spec_display}\n\n"
             f"Barcha ma'lumotlari bazadan tozalandi.",
             parse_mode="Markdown"
         )
         
-        await callback.answer("✅ Foydalanuvchi muvaffaqiyatli o'chirildi!")
+        await callback.answer("✅ Foydalanuvchi o'chirildi!")
         
+        # Qisqa kutish
         await asyncio.sleep(2)
         
         # Foydalanuvchilar ro'yxatini qayta ko'rsatish
-        active = [uid for uid in user_ids if user_status.get(uid) != 'blocked']
-        if active:
+        active_users = [uid for uid in user_ids if user_status.get(uid) != 'blocked']
+        if active_users:
             builder = InlineKeyboardBuilder()
-            for uid in sorted(active)[:20]:
+            # Eng ko'pi bilan 15 ta foydalanuvchini ko'rsatish
+            for uid in sorted(active_users)[:15]:
                 name = user_names.get(uid, f"ID: {uid}")
                 specialty = user_specialty.get(uid, '')
-                specialty_display = f" [{specialty}]" if specialty else ""
+                spec_display = f" [{specialty}]" if specialty else ""
+                
+                # Ismni qisqartirish agar juda uzun bo'lsa
+                if len(name) > 30:
+                    name = name[:27] + "..."
+                    
                 builder.row(
-                    InlineKeyboardButton(text=f"✅ {name}{specialty_display}", callback_data=f"admin_user_info_{uid}")
+                    InlineKeyboardButton(
+                        text=f"👤 {name}{spec_display}", 
+                        callback_data=f"admin_user_info_{uid}"
+                    )
                 )
+            
             builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_users_main"))
             
             await callback.message.answer(
@@ -2155,7 +2206,8 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
     except Exception as e:
         logging.error(f"admin_user_delete_confirm error: {e}")
         await callback.message.edit_text(
-            f"❌ Xatolik yuz berdi: {str(e)}"
+            f"❌ Xatolik yuz berdi: {str(e)}\n\n"
+            f"Batafsil ma'lumot uchun loglarni tekshiring."
         )
         await callback.answer("Xatolik yuz berdi!")
 
@@ -2170,7 +2222,8 @@ async def admin_user_stats(callback: types.CallbackQuery):
         return
     
     try:
-        uid = int(callback.data.replace("admin_user_stats_", ""))
+        uid_str = callback.data.replace("admin_user_stats_", "")
+        uid = int(uid_str)
     except ValueError:
         await callback.answer("Noto'g'ri format!")
         return
@@ -3617,7 +3670,7 @@ async def main():
     await db.load_to_ram()
     
     asyncio.create_task(start_web_server())
-    asyncio.create_task(check_schedule_reminders())  # reminder_loop olib tashlandi, faqat dars eslatmalari qoldi
+    asyncio.create_task(check_schedule_reminders())
     
     # Webhook ni o'chirish va polling ni boshlash
     await bot.delete_webhook(drop_pending_updates=True)
