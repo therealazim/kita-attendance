@@ -30,9 +30,10 @@ from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 import asyncpg
 import pickle
+import traceback
 
 # --- LOGGING ---
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 # --- SOZLAMALAR ---
 TOKEN = os.environ.get("BOT_TOKEN")
@@ -1938,16 +1939,20 @@ async def admin_user_info(callback: types.CallbackQuery):
         await callback.answer("Ruxsat yo'q!")
         return
     
-    # Faqat "admin_user_info_" bilan boshlangan va boshqa prefikslar bo'lmaganlarni qabul qilish
-    if (not callback.data.startswith("admin_user_info_") or 
-        "_block_" in callback.data or 
-        "_unblock_" in callback.data or 
-        "_delete_" in callback.data or 
-        "_stats_" in callback.data):
+    logging.info(f"admin_user_info handler: {callback.data}")
+    
+    # Faqat "admin_user_info_" bilan boshlanganlarni qabul qilish
+    if not callback.data.startswith("admin_user_info_"):
         return
     
     try:
+        # "admin_user_info_" dan keyingi qismni olish
         uid_str = callback.data.replace("admin_user_info_", "")
+        
+        # Agar uid_str da boshqa belgilar bo'lsa, tozalash
+        if "_" in uid_str:
+            uid_str = uid_str.split("_")[0]
+            
         uid = int(uid_str)
         logging.info(f"admin_user_info called for uid: {uid}")
     except ValueError as e:
@@ -2014,6 +2019,11 @@ async def admin_user_block(callback: types.CallbackQuery):
     
     try:
         uid_str = callback.data.replace("admin_user_block_", "")
+        
+        # Agar uid_str da boshqa belgilar bo'lsa, tozalash
+        if "_" in uid_str:
+            uid_str = uid_str.split("_")[0]
+            
         uid = int(uid_str)
         logging.info(f"admin_user_block called for uid: {uid}")
     except ValueError as e:
@@ -2025,6 +2035,8 @@ async def admin_user_block(callback: types.CallbackQuery):
     await db.update_user_status(uid, 'blocked')
     
     await callback.answer("✅ Foydalanuvchi bloklandi!")
+    
+    # Qayta ma'lumotni ko'rsatish
     await admin_user_info(callback)
 
 @dp.callback_query(F.data.startswith("admin_user_unblock_"))
@@ -2039,6 +2051,11 @@ async def admin_user_unblock(callback: types.CallbackQuery):
     
     try:
         uid_str = callback.data.replace("admin_user_unblock_", "")
+        
+        # Agar uid_str da boshqa belgilar bo'lsa, tozalash
+        if "_" in uid_str:
+            uid_str = uid_str.split("_")[0]
+            
         uid = int(uid_str)
         logging.info(f"admin_user_unblock called for uid: {uid}")
     except ValueError as e:
@@ -2050,6 +2067,8 @@ async def admin_user_unblock(callback: types.CallbackQuery):
     await db.update_user_status(uid, 'active')
     
     await callback.answer("✅ Foydalanuvchi faollashtirildi!")
+    
+    # Qayta ma'lumotni ko'rsatish
     await admin_user_info(callback)
 
 @dp.callback_query(F.data.startswith("admin_user_delete_"))
@@ -2058,41 +2077,54 @@ async def admin_user_delete(callback: types.CallbackQuery):
         await callback.answer("Ruxsat yo'q!")
         return
     
-    # Faqat "admin_user_delete_" bilan boshlangan va "confirm" bo'lmaganlarni qabul qilish
+    logging.info(f"admin_user_delete handler: {callback.data}")
+    
+    # "_confirm_" bo'lgan callback larni o'tkazib yuborish
     if "_confirm_" in callback.data:
         return
     
     try:
+        # "admin_user_delete_" dan keyingi qismni olish
         uid_str = callback.data.replace("admin_user_delete_", "")
+        
+        # Agar uid_str da boshqa belgilar bo'lsa, tozalash
+        if "_" in uid_str:
+            uid_str = uid_str.split("_")[0]
+            
         uid = int(uid_str)
         logging.info(f"admin_user_delete called for uid: {uid}")
+        
+        # Foydalanuvchi ma'lumotlarini olish
+        user_name = user_names.get(uid, "Noma'lum")
+        user_spec = user_specialty.get(uid, "")
+        spec_display = f" [{user_spec}]" if user_spec else ""
+        
+        # Tasdiqlash tugmalari
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="✅ Ha, o'chirish", callback_data=f"admin_user_delete_confirm_{uid}"),
+            InlineKeyboardButton(text="❌ Bekor qilish", callback_data=f"admin_user_info_{uid}")
+        )
+        
+        await callback.message.edit_text(
+            f"⚠️ **Foydalanuvchini o'chirish**\n\n"
+            f"ID: `{uid}`\n"
+            f"Ism: {user_name}{spec_display}\n\n"
+            f"Bu foydalanuvchini butunlay o'chirmoqchimisiz?\n"
+            f"Barcha ma'lumotlari (davomatlar, dars jadvallari) ham o'chib ketadi!",
+            reply_markup=builder.as_markup(),
+            parse_mode="Markdown"
+        )
+        await callback.answer()
+        
     except ValueError as e:
         logging.error(f"admin_user_delete parse error: {callback.data}, error: {e}")
         await callback.answer("Noto'g'ri format!")
         return
-    
-    # Foydalanuvchi ma'lumotlarini olish
-    user_name = user_names.get(uid, "Noma'lum")
-    user_spec = user_specialty.get(uid, "")
-    spec_display = f" [{user_spec}]" if user_spec else ""
-    
-    # Tasdiqlash tugmalari
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="✅ Ha, o'chirish", callback_data=f"admin_user_delete_confirm_{uid}"),
-        InlineKeyboardButton(text="❌ Bekor qilish", callback_data=f"admin_user_info_{uid}")
-    )
-    
-    await callback.message.edit_text(
-        f"⚠️ **Foydalanuvchini o'chirish**\n\n"
-        f"ID: `{uid}`\n"
-        f"Ism: {user_name}{spec_display}\n\n"
-        f"Bu foydalanuvchini butunlay o'chirmoqchimisiz?\n"
-        f"Barcha ma'lumotlari (davomatlar, dars jadvallari) ham o'chib ketadi!",
-        reply_markup=builder.as_markup(),
-        parse_mode="Markdown"
-    )
-    await callback.answer()
+    except Exception as e:
+        logging.error(f"admin_user_delete error: {e}")
+        traceback.print_exc()
+        await callback.answer("Xatolik yuz berdi!")
 
 @dp.callback_query(F.data.startswith("admin_user_delete_confirm_"))
 async def admin_user_delete_confirm(callback: types.CallbackQuery):
@@ -2100,8 +2132,16 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
         await callback.answer("Ruxsat yo'q!")
         return
     
+    logging.info(f"admin_user_delete_confirm handler: {callback.data}")
+    
     try:
+        # "admin_user_delete_confirm_" dan keyingi qismni olish
         uid_str = callback.data.replace("admin_user_delete_confirm_", "")
+        
+        # Agar uid_str da boshqa belgilar bo'lsa, tozalash
+        if "_" in uid_str:
+            uid_str = uid_str.split("_")[0]
+            
         uid = int(uid_str)
         logging.info(f"admin_user_delete_confirm called for uid: {uid}")
         
@@ -2109,6 +2149,12 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
         user_name = user_names.get(uid, "Noma'lum")
         user_spec = user_specialty.get(uid, "")
         spec_display = f" [{user_spec}]" if user_spec else ""
+        
+        # Avval "⏳" xabarini ko'rsatish
+        await callback.message.edit_text(
+            f"⏳ Foydalanuvchi o'chirilmoqda...\n\nID: `{uid}`\nIsm: {user_name}{spec_display}",
+            parse_mode="Markdown"
+        )
         
     except ValueError as e:
         logging.error(f"admin_user_delete_confirm parse error: {callback.data}, error: {e}")
@@ -2120,15 +2166,19 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
         async with db.pool.acquire() as conn:
             # Avval bog'liq ma'lumotlarni o'chirish
             await conn.execute("DELETE FROM attendance WHERE user_id = $1", uid)
+            logging.info(f"Attendance deleted for user {uid}")
+            
             await conn.execute("DELETE FROM schedules WHERE user_id = $1", uid)
+            logging.info(f"Schedules deleted for user {uid}")
+            
             # Keyin foydalanuvchini o'chirish
-            await conn.execute("DELETE FROM users WHERE user_id = $1", uid)
-        
-        logging.info(f"User {uid} deleted from PostgreSQL")
+            result = await conn.execute("DELETE FROM users WHERE user_id = $1", uid)
+            logging.info(f"User deleted from PostgreSQL: {result}")
         
         # RAM dan o'chirish
         if uid in user_ids:
             user_ids.remove(uid)
+            logging.info(f"User {uid} removed from user_ids")
         
         # Lug'atlardan o'chirish
         if uid in user_names:
@@ -2144,6 +2194,7 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
         to_remove = [k for k in daily_attendance_log if k[0] == uid]
         for k in to_remove:
             daily_attendance_log.discard(k)
+        logging.info(f"Removed {len(to_remove)} attendance records from RAM")
         
         # attendance_counter dan o'chirish
         keys_to_remove = [k for k in attendance_counter.keys() if k[0] == uid]
@@ -2157,7 +2208,7 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
                     del schedules[schedule_id]
             del user_schedules[uid]
         
-        logging.info(f"User {uid} removed from RAM")
+        logging.info(f"User {uid} completely removed from RAM")
         
         # Muvaffaqiyatli xabar
         await callback.message.edit_text(
@@ -2205,6 +2256,8 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
         
     except Exception as e:
         logging.error(f"admin_user_delete_confirm error: {e}")
+        traceback.print_exc()
+        
         await callback.message.edit_text(
             f"❌ Xatolik yuz berdi: {str(e)}\n\n"
             f"Batafsil ma'lumot uchun loglarni tekshiring."
@@ -2223,6 +2276,11 @@ async def admin_user_stats(callback: types.CallbackQuery):
     
     try:
         uid_str = callback.data.replace("admin_user_stats_", "")
+        
+        # Agar uid_str da boshqa belgilar bo'lsa, tozalash
+        if "_" in uid_str:
+            uid_str = uid_str.split("_")[0]
+            
         uid = int(uid_str)
     except ValueError:
         await callback.answer("Noto'g'ri format!")
