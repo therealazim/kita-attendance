@@ -3537,30 +3537,6 @@ async def admin_back(callback: types.CallbackQuery):
         await callback.message.edit_text("❌ Admin panelga qaytishda xatolik yuz berdi")
         await callback.answer()
 
-async def send_daily_reminders():
-    now_uzb = datetime.now(UZB_TZ)
-    today = now_uzb.strftime("%Y-%m-%d")
-    
-    sent_count = 0
-    for user_id in user_ids:
-        if user_status.get(user_id) == 'blocked':
-            continue
-        
-        user_attended = any(k[0] == user_id and k[2] == today for k in daily_attendance_log)
-        if not user_attended:
-            try:
-                await bot.send_message(
-                    user_id,
-                    get_text(user_id, 'daily_reminder'),
-                    parse_mode="Markdown"
-                )
-                sent_count += 1
-                await asyncio.sleep(0.05)
-            except Exception as e:
-                logging.error(f"Reminder error for {user_id}: {e}")
-    
-    logging.info(f"Daily reminders sent: {sent_count} users")
-
 async def check_schedule_reminders():
     while True:
         now_uzb = datetime.now(UZB_TZ)
@@ -3635,22 +3611,13 @@ async def check_schedule_reminders():
         
         await asyncio.sleep(60)
 
-async def reminder_loop():
-    while True:
-        now_uzb = datetime.now(UZB_TZ)
-        if now_uzb.hour == 8 and now_uzb.minute == 0:
-            await send_daily_reminders()
-            await asyncio.sleep(60)
-        await asyncio.sleep(30)
-
 async def main():
     await db.create_pool()
     await db.init_tables()
     await db.load_to_ram()
     
     asyncio.create_task(start_web_server())
-    asyncio.create_task(reminder_loop())
-    asyncio.create_task(check_schedule_reminders())
+    asyncio.create_task(check_schedule_reminders())  # reminder_loop olib tashlandi, faqat dars eslatmalari qoldi
     
     # Webhook ni o'chirish va polling ni boshlash
     await bot.delete_webhook(drop_pending_updates=True)
