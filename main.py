@@ -1436,12 +1436,11 @@ async def admin_monthly_report_start(callback: types.CallbackQuery):
         await callback.answer("Ruxsat yo'q!")
         return
     
-    # Hozirgi yil va oy
     now = datetime.now(UZB_TZ)
-    start_date = datetime(2026, 3, 1)  # Bot ishga tushgan sana
+    # Xatolikni tuzatish: start_date ga ham tzinfo=UZB_TZ beramiz
+    start_date = datetime(2026, 3, 1, tzinfo=UZB_TZ) 
     
     builder = InlineKeyboardBuilder()
-    
     months_uz = {1: "Yanvar", 2: "Fevral", 3: "Mart", 4: "Aprel", 5: "May", 6: "Iyun", 
                  7: "Iyul", 8: "Avgust", 9: "Sentabr", 10: "Oktabr", 11: "Noyabr", 12: "Dekabr"}
     
@@ -1451,11 +1450,10 @@ async def admin_monthly_report_start(callback: types.CallbackQuery):
         btn_text = f"📅 {month_name} {temp_date.year}"
         builder.row(InlineKeyboardButton(text=btn_text, callback_data=f"gen_month_{temp_date.year}_{temp_date.month}"))
         
-        # Keyingi oyga o'tish
         if temp_date.month == 12:
-            temp_date = datetime(temp_date.year + 1, 1, 1)
+            temp_date = datetime(temp_date.year + 1, 1, 1, tzinfo=UZB_TZ)
         else:
-            temp_date = datetime(temp_date.year, temp_date.month + 1, 1)
+            temp_date = datetime(temp_date.year, temp_date.month + 1, 1, tzinfo=UZB_TZ)
             
     builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back"))
     await callback.message.edit_text("Qaysi oy uchun hisobot kerak?", reply_markup=builder.as_markup())
@@ -1470,35 +1468,25 @@ async def create_monthly_grouped_pdf(year: int, month: int) -> io.BytesIO:
     
     months_uz = {1: "Yanvar", 2: "Fevral", 3: "Mart", 4: "Aprel", 5: "May", 6: "Iyun", 
                  7: "Iyul", 8: "Avgust", 9: "Sentabr", 10: "Oktabr", 11: "Noyabr", 12: "Dekabr"}
-    
     title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=20, alignment=1, spaceAfter=20)
     day_style = ParagraphStyle('DayHeader', parent=styles['Heading2'], fontSize=14, backColor=colors.lightgrey, spaceBefore=15, spaceAfter=5)
     
     elements.append(Paragraph(f"{months_uz[month]} {year} - Oylik Davomat Hisoboti", title_style))
-    
     _, last_day = calendar.monthrange(year, month)
     
-    # Har bir kun uchun sikl
     for day in range(1, last_day + 1):
         target_date = f"{year}-{month:02d}-{day:02d}"
-        
-        # Shu kungi davomatlarni filtrlash
         day_atts = [att for att in daily_attendance_log if att[2] == target_date]
+        if not day_atts: continue 
         
-        if not day_atts: continue  # Davomat yo'q kunlarni yozmaymiz
-        
-        # Kun sarlavhasi
         date_obj = d_date(year, month, day)
         weekday = WEEKDAYS_UZ[date_obj.weekday()]
         elements.append(Paragraph(f"📅 {target_date} ({weekday})", day_style))
         
         data = [['Vaqt', 'O\'qituvchi', 'Mutaxassislik', 'Filial', 'Holat', 'Kechikish']]
-        
         for uid, branch, date_str, att_time in sorted(day_atts, key=lambda x: x[3]):
             teacher_name = user_names.get(uid, f"ID: {uid}")
             specialty = user_specialty.get(uid, '')
-            
-            # Kechikishni aniqlash
             status, late_val = "Noma'lum", "-"
             if uid in user_schedules:
                 for s_id in user_schedules[uid]:
@@ -1508,7 +1496,6 @@ async def create_monthly_grouped_pdf(year: int, month: int) -> io.BytesIO:
                         ontime, mins = calculate_lateness(att_time, les_time)
                         status = "Vaqtida" if ontime else "Kechikkan"
                         late_val = "0" if ontime else f"{mins} min"
-            
             data.append([att_time, teacher_name, specialty, branch, status, late_val])
             
         table = Table(data, colWidths=[0.8*inch, 2.2*inch, 1.3*inch, 2*inch, 1*inch, 1*inch])
@@ -1534,11 +1521,10 @@ async def process_month_gen(callback: types.CallbackQuery):
         return
     
     _, _, year, month = callback.data.split("_")
-    await callback.message.answer(f"⏳ Hisobot tayyorlanmoqda...")
+    await callback.message.answer(f"⏳ {month}/{year} uchun hisobot tayyorlanmoqda...")
     pdf = await create_monthly_grouped_pdf(int(year), int(month))
     await callback.message.answer_document(
-        types.BufferedInputFile(pdf.read(), filename=f"hisobot_{year}_{month}.pdf"),
-        caption=f"📊 {month}-{year} uchun kunbay hisobot"
+        types.BufferedInputFile(pdf.read(), filename=f"hisobot_{year}_{month}.pdf")
     )
     await callback.answer()
 
@@ -3047,38 +3033,30 @@ async def admin_edit_schedule_enter_time(message: types.Message, state: FSMConte
 
 async def admin_save_edited_schedule(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    old_schedule_id = data.get('edit_schedule_id')
-    old_schedule = schedules.get(old_schedule_id)
+    old_s_id = data.get('edit_schedule_id')
+    old_schedule = schedules.get(old_s_id)
     teacher_id = old_schedule['user_id']
-    
     new_branch = data.get('edit_branch')
     new_lesson_type = data.get('edit_lesson_type')
     new_selected_days_raw = data.get('edit_selected_days', {})
     
-    # Kunlarni nomga o'girish
-    new_days = {}
-    for idx, time in new_selected_days_raw.items():
-        new_days[WEEKDAYS_UZ[idx]] = time
+    new_days = {WEEKDAYS_UZ[idx]: time for idx, time in new_selected_days_raw.items()}
 
-    # 1. Eskisini O'CHIRISH (Bazadan va RAM-dan)
-    await db.delete_schedule(old_schedule_id)
-    if old_schedule_id in schedules:
-        del schedules[old_schedule_id]
-    if teacher_id in user_schedules and old_schedule_id in user_schedules[teacher_id]:
-        user_schedules[teacher_id].remove(old_schedule_id)
+    # 1. Eskisini O'CHIRISH
+    await db.delete_schedule(old_s_id)
+    schedules.pop(old_s_id, None)
+    if old_s_id in user_schedules[teacher_id]:
+        user_schedules[teacher_id].remove(old_s_id)
 
     # 2. YANGISINI QO'SHISH
-    new_schedule_id = f"sch_{teacher_id}_{datetime.now().timestamp()}"
-    schedules[new_schedule_id] = {
-        'user_id': teacher_id, 'branch': new_branch, 
-        'lesson_type': new_lesson_type, 'days': new_days
-    }
-    user_schedules[teacher_id].append(new_schedule_id)
-    await db.save_schedule(new_schedule_id, teacher_id, new_branch, new_lesson_type, new_days)
+    new_s_id = f"sch_{teacher_id}_{datetime.now().timestamp()}"
+    schedules[new_s_id] = {'user_id': teacher_id, 'branch': new_branch, 'lesson_type': new_lesson_type, 'days': new_days}
+    user_schedules[teacher_id].append(new_s_id)
+    await db.save_schedule(new_s_id, teacher_id, new_branch, new_lesson_type, new_days)
 
-    # 3. O'QITUVCHIGA XABAR YUBORISH
-    old_times = ", ".join([f"{k} {v}" for k, v in old_schedule['days'].items()])
-    new_times = ", ".join([f"{k} {v}" for k, v in new_days.items()])
+    # 3. O'QITUVCHIGA XABAR
+    old_times = ", ".join([f"{k}:{v}" for k, v in old_schedule['days'].items()])
+    new_times = ", ".join([f"{k}:{v}" for k, v in new_days.items()])
     
     msg = (f"📢 **DIQQAT: Dars jadvalingiz o'zgardi!**\n\n"
            f"🏢 Filial: {new_branch}\n"
