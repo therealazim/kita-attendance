@@ -72,6 +72,7 @@ broadcast_history = []
 # BARCHA LOKATSIYALAR RO'YXATI
 LOCATIONS =[
     {"name": "Kimyo Xalqaro Universiteti", "lat": 41.257490, "lon": 69.220109},
+    {"name": "Menejment Universiteti", "lat": 41.270526, "lon": 69.236492},
     {"name": "78-Maktab", "lat": 41.282791, "lon": 69.173290},
     {"name": "126-Maktab", "lat": 41.260249, "lon": 69.153216},
     {"name": "290-Maktab", "lat": 41.234736, "lon": 69.350745},
