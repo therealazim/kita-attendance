@@ -18,7 +18,8 @@ from aiogram.fsm.context import FSMContext
 from geopy.distance import geodesic
 from aiohttp import web
 import openpyxl
-from openpyxl.styles import Font, Alignment
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.workbook import Workbook
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -1562,7 +1563,8 @@ async def admin_panel(message: types.Message):
         )
         builder.row(
             InlineKeyboardButton(text="📅 Oylik hisobot", callback_data="admin_monthly_report"),
-            InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report")
+            InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report"),
+            InlineKeyboardButton(text="📊 Excel Hisobot", callback_data="admin_excel_menu")
         )
         
         await message.answer(
@@ -1822,6 +1824,159 @@ async def process_month_gen(callback: types.CallbackQuery):
         types.BufferedInputFile(pdf.read(), filename=f"hisobot_{year}_{month}.pdf"),
         caption=f"📊 {month}/{year} oylik davomat hisoboti"
     )
+    await callback.answer()
+
+# --- EXCEL HISOBOT HANDLERS ---
+@dp.callback_query(F.data == "admin_excel_menu")
+async def admin_excel_report_start(callback: types.CallbackQuery):
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    now = datetime.now(UZB_TZ)
+    start_date = datetime(2026, 3, 1, tzinfo=UZB_TZ) 
+    
+    builder = InlineKeyboardBuilder()
+    months_uz = {1: "Yanvar", 2: "Fevral", 3: "Mart", 4: "Aprel", 5: "May", 6: "Iyun", 
+                 7: "Iyul", 8: "Avgust", 9: "Sentabr", 10: "Oktabr", 11: "Noyabr", 12: "Dekabr"}
+    
+    temp_date = start_date
+    while temp_date <= now:
+        month_name = months_uz[temp_date.month]
+        btn_text = f"📊 Excel: {month_name} {temp_date.year}"
+        builder.row(InlineKeyboardButton(text=btn_text, callback_data=f"get_excel_{temp_date.year}_{temp_date.month}"))
+        
+        if temp_date.month == 12:
+            temp_date = datetime(temp_date.year + 1, 1, 1, tzinfo=UZB_TZ)
+        else:
+            temp_date = datetime(temp_date.year, temp_date.month + 1, 1, tzinfo=UZB_TZ)
+            
+    builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back"))
+    await callback.message.edit_text("Qaysi oy uchun Excel hisobot kerak?", reply_markup=builder.as_markup())
+    await callback.answer()
+
+async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
+    import calendar
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"{month}-{year} Davomat"
+
+    # Sarlavhalar
+    headers = ['№', 'Sana', 'Hafta kuni', 'O\'qituvchi', 'Mutaxassislik', 'Filial', 'Dars vaqti', 'Kelgan vaqti', 'Holat', 'Kechikish (min)']
+    ws.append(headers)
+
+    # Dizayn: Sarlavhani bo'yash va qalin qilish
+    header_fill = PatternFill(start_color="2E86AB", end_color="2E86AB", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+
+    months_uz = {1: "Yanvar", 2: "Fevral", 3: "Mart", 4: "Aprel", 5: "May", 6: "Iyun", 
+                 7: "Iyul", 8: "Avgust", 9: "Sentabr", 10: "Oktabr", 11: "Noyabr", 12: "Dekabr"}
+    _, last_day = calendar.monthrange(year, month)
+    
+    row_num = 1
+    # Har bir kunni tahlil qilamiz
+    for day in range(1, last_day + 1):
+        target_date = f"{year}-{month:02d}-{day:02d}"
+        date_obj = d_date(year, month, day)
+        weekday = WEEKDAYS_UZ[date_obj.weekday()]
+
+        # Shu kungi barcha davomatlar va jadvallarni solishtiramiz
+        day_data = []
+        recorded_uids = []
+
+        # 1. Kelganlar
+        for att in daily_attendance_log:
+            if att[2] == target_date:
+                day_data.append(list(att) + ["PRESENT"])
+                recorded_uids.append(att[0])
+
+        # 2. Kelmaganlar (Jadvalda bor, lekin logda yo'q)
+        for s_id, s_data in schedules.items():
+            uid = s_data['user_id']
+            if weekday in s_data['days'] and uid not in recorded_uids:
+                day_data.append([uid, s_data['branch'], target_date, "00:00:00", "ABSENT"])
+                recorded_uids.append(uid)  # Takrorlanmasligi uchun
+
+        # Ma'lumotlarni Excelga yozish
+        for item in sorted(day_data, key=lambda x: x[3]):
+            uid, branch, date_str, att_time, *status_type = item
+            name = user_names.get(uid, "Noma'lum")
+            spec = user_specialty.get(uid, "")
+            
+            # Dars vaqtini topish
+            lesson_time = "—"
+            for s_id in user_schedules.get(uid, []):
+                s = schedules.get(s_id)
+                if s and s['branch'] == branch and weekday in s['days']:
+                    lesson_time = s['days'][weekday]
+                    break
+
+            if "ABSENT" in status_type:
+                status, late_min, att_time_disp = "KELMAGAN", "—", "—"
+            else:
+                ontime, mins = calculate_lateness(att_time, lesson_time)
+                status = "Vaqtida" if ontime else "Kechikkan"
+                late_min = 0 if ontime else mins
+                att_time_disp = att_time
+
+            row_num += 1
+            ws.append([row_num-1, date_str, weekday, name, spec, branch, lesson_time, att_time_disp, status, late_min])
+
+            # Rangli statuslar (Excel kataklarini bo'yash)
+            status_cell = ws.cell(row=row_num, column=9)
+            if status == "Kechikkan":
+                status_cell.font = Font(color="FF0000")  # Qizil
+            elif status == "Vaqtida":
+                status_cell.font = Font(color="008000")  # Yashil
+            elif status == "KELMAGAN":
+                status_cell.fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
+
+    # Ustun kengligini avtomatik moslash
+    for col in ws.columns:
+        max_length = 0
+        column = col[0].column_letter
+        for cell in col:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = min(max_length + 2, 50)  # Maksimal 50 belgi
+        ws.column_dimensions[column].width = adjusted_width
+
+    excel_file = io.BytesIO()
+    wb.save(excel_file)
+    excel_file.seek(0)
+    return excel_file
+
+@dp.callback_query(F.data.startswith("get_excel_"))
+async def process_excel_download(callback: types.CallbackQuery):
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    _, _, year, month = callback.data.split("_")
+    await callback.message.answer(f"⏳ {month}-{year} uchun Excel tayyorlanmoqda...")
+    
+    try:
+        excel_buf = await create_monthly_excel(int(year), int(month))
+        
+        filename = f"Davomat_{year}_{month}.xlsx"
+        await callback.message.answer_document(
+            types.BufferedInputFile(excel_buf.read(), filename=filename),
+            caption=f"📈 {month}-{year} oyi uchun buxgalteriya hisoboti tayyor."
+        )
+    except Exception as e:
+        logging.error(f"Excel yaratishda xatolik: {e}")
+        await callback.message.answer(f"❌ Excel yaratishda xatolik: {e}")
+    
     await callback.answer()
 
 @dp.callback_query(F.data == "admin_pdf_menu")
@@ -3854,7 +4009,8 @@ async def admin_back(callback: types.CallbackQuery):
         )
         builder.row(
             InlineKeyboardButton(text="📅 Oylik hisobot", callback_data="admin_monthly_report"),
-            InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report")
+            InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report"),
+            InlineKeyboardButton(text="📊 Excel Hisobot", callback_data="admin_excel_menu")
         )
         
         await callback.message.edit_text(
