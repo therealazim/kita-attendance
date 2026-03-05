@@ -7,7 +7,8 @@ import aiohttp
 import json
 import csv
 import calendar
-import re  # Emoji tozalash uchun
+import re
+import requests  # Shrift yuklash uchun
 from datetime import datetime, timedelta, date as d_date, time as d_time
 from collections import defaultdict
 from aiogram import Bot, Dispatcher, types, F
@@ -20,7 +21,7 @@ from geopy.distance import geodesic
 from aiohttp import web
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-from openpyxl.utils import get_column_letter  # Muhim import
+from openpyxl.utils import get_column_letter
 from openpyxl.workbook import Workbook
 import matplotlib
 matplotlib.use('Agg')
@@ -40,6 +41,38 @@ import traceback
 
 # --- LOGGING ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# --- SHRIFTNI AVTOMATIK YUKLASH (KOREYS VA RUS UCHUN) ---
+FONT_PATH = "NanumGothic.ttf"
+if not os.path.exists(FONT_PATH):
+    try:
+        # Agar shrift fayli bo'lmasa, uni internetdan yuklab olamiz (faqat 1 marta)
+        url = "https://github.com/google/fonts/raw/main/ofl/nanumgothic/NanumGothic-Regular.ttf"
+        logging.info("⬇️ NanumGothic shrifti yuklanmoqda...")
+        r = requests.get(url, timeout=30)
+        with open(FONT_PATH, "wb") as f:
+            f.write(r.content)
+        logging.info("✅ NanumGothic shrifti yuklandi")
+    except Exception as e:
+        logging.error(f"❌ Shrift yuklashda xatolik: {e}")
+
+try:
+    pdfmetrics.registerFont(TTFont('Nanum', FONT_PATH))
+    FONT_NAME = 'Nanum'
+    FONT_NAME_BOLD = 'Nanum'
+    logging.info("✅ Nanum shrifti ro'yxatdan o'tkazildi")
+except:
+    # Agar shrift topilmasa standartga qaytadi
+    try:
+        pdfmetrics.registerFont(TTFont('DejaVu', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
+        pdfmetrics.registerFont(TTFont('DejaVu-Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'))
+        FONT_NAME = 'DejaVu'
+        FONT_NAME_BOLD = 'DejaVu-Bold'
+        logging.info("✅ DejaVu shrifti yuklandi")
+    except:
+        FONT_NAME = 'Helvetica'
+        FONT_NAME_BOLD = 'Helvetica-Bold'
+        logging.warning("⚠️ Maxsus shrift topilmadi, Helvetica ishlatiladi")
 
 # --- EMOJI TOZALASH FUNKSIYASI (PDF UCHUN) ---
 def clean_pdf_text(text: str) -> str:
@@ -62,20 +95,6 @@ WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 if not WEATHER_API_KEY:
     raise ValueError("WEATHER_API_KEY topilmadi! Render.com da environment variable qo'shing")
 WEATHER_API_URL = "http://api.openweathermap.org/data/2.5/weather"
-
-# --- SHRIFT SOZLAMALARI ---
-try:
-    # Render.com yoki Ubuntu serverlarda odatda ushbu shrift bo'ladi
-    pdfmetrics.registerFont(TTFont('DejaVu', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
-    pdfmetrics.registerFont(TTFont('DejaVu-Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'))
-    FONT_NAME = 'DejaVu'
-    FONT_NAME_BOLD = 'DejaVu-Bold'
-    logging.info("✅ DejaVu shrifti yuklandi")
-except:
-    # Agar shrift topilmasa standartga qaytadi
-    FONT_NAME = 'Helvetica'
-    FONT_NAME_BOLD = 'Helvetica-Bold'
-    logging.warning("⚠️ DejaVu shrifti topilmadi, Helvetica ishlatiladi")
 
 # Bot obyektini yaratish
 bot = Bot(token=TOKEN)
@@ -697,7 +716,6 @@ def sort_weekdays(days_dict):
 
 def calculate_lateness(attendance_time: str, lesson_time: str) -> tuple:
     try:
-        # attendance_time: "09:01:12", lesson_time: "09:00"
         att_parts = list(map(int, attendance_time.split(':')))
         les_parts = list(map(int, lesson_time.split(':')))
         
@@ -706,7 +724,7 @@ def calculate_lateness(attendance_time: str, lesson_time: str) -> tuple:
         
         diff = att_seconds - les_seconds
         
-        if diff <= 60: # 1 daqiqa (60 soniya) gacha ruxsat
+        if diff <= 60:
             return True, 0
         else:
             return False, int(diff / 60)
@@ -714,31 +732,37 @@ def calculate_lateness(attendance_time: str, lesson_time: str) -> tuple:
         logging.error(f"calculate_lateness error: {e}")
         return True, 0
 
+def get_kr_exam_penalty(perc: int) -> int:
+    """Koreys tili imtixon foiziga qarab jarima qaytaradi"""
+    if perc < 10: return 900000
+    elif perc < 20: return 800000
+    elif perc < 30: return 700000
+    elif perc < 40: return 600000
+    elif perc < 50: return 500000
+    elif perc < 60: return 400000
+    elif perc < 70: return 300000
+    elif perc < 80: return 200000
+    elif perc < 90: return 100000
+    else: return 0
+
 async def get_combined_report_pdf(report_date: d_date) -> io.BytesIO:
     report_date_str = report_date.strftime("%Y-%m-%d")
     report_weekday = WEEKDAYS_UZ[report_date.weekday()]
     
-    # 1. Shu kungi davomatlarni yig'ish
     check_ins = [list(att) for att in daily_attendance_log if att[2] == report_date_str]
-    attended_uids = [att[0] for att in check_ins]  # Kimlar keldi
 
-    # 2. Jadval bo'yicha kelishi kerak bo'lganlarni tekshirish (Kelmaganlarni aniqlash)
     for s_id, s_data in schedules.items():
         uid = s_data['user_id']
         branch = s_data['branch']
         if report_weekday in s_data['days']:
-            # Agar bu o'qituvchi shu kuni shu filialda davomat qilmagan bo'lsa
             already_noted = any(c[0] == uid and c[1] == branch for c in check_ins)
             if not already_noted:
-                # Kelmagan (ABSENT) sifatida qo'shamiz
                 check_ins.append([uid, branch, report_date_str, "00:00:00", "ABSENT"])
 
-    # 3. PDF yaratish (Landscape A4)
     pdf_buffer = io.BytesIO()
     doc = SimpleDocTemplate(pdf_buffer, pagesize=landscape(A4), topMargin=20)
     elements = []
     
-    # Sarlavha
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         'Title',
@@ -752,7 +776,6 @@ async def get_combined_report_pdf(report_date: d_date) -> io.BytesIO:
     elements.append(title)
     elements.append(Spacer(1, 15))
 
-    # Jadval sarlavhasi
     data = [['№', 'Davomat', 'Dars', 'O\'qituvchi', 'Mutaxassislik', 'Filial', 'Holat', 'Kechikish']]
     
     for i, att in enumerate(sorted(check_ins, key=lambda x: x[3] if x[3] != "00:00:00" else "23:59:59"), 1):
@@ -764,7 +787,6 @@ async def get_combined_report_pdf(report_date: d_date) -> io.BytesIO:
         teacher_name = user_names.get(uid, "Noma'lum")
         specialty = user_specialty.get(uid, "")
         
-        # Dars vaqtini topish
         lesson_time = "—"
         for s_id in user_schedules.get(uid, []):
             s = schedules.get(s_id)
@@ -784,10 +806,8 @@ async def get_combined_report_pdf(report_date: d_date) -> io.BytesIO:
 
         data.append([str(i), att_time_disp, lesson_time, teacher_name, specialty, branch, status, late_text])
 
-    # Jadvalni yaratish
     table = Table(data, colWidths=[0.4*inch, 0.9*inch, 0.9*inch, 1.8*inch, 1.0*inch, 1.5*inch, 1.0*inch, 0.8*inch])
 
-    # Standart stil
     style_commands = [
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2E86AB')),
         ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
@@ -798,18 +818,14 @@ async def get_combined_report_pdf(report_date: d_date) -> io.BytesIO:
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
     ]
 
-    # Dinamik ranglar (Har bir qator uchun)
     for row_idx, row_data in enumerate(data[1:], start=1):
-        status = row_data[6]  # 'Holat' ustuni
+        status = row_data[6]
         if status == "Kechikkan":
-            # Kechikkanlar uchun qizil box (Holat katagi)
             style_commands.append(('BACKGROUND', (6, row_idx), (6, row_idx), colors.HexColor('#FFCDD2')))
             style_commands.append(('TEXTCOLOR', (6, row_idx), (6, row_idx), colors.red))
         elif status == "Vaqtida":
-            # Vaqtida kelganlar uchun yashil status
             style_commands.append(('TEXTCOLOR', (6, row_idx), (6, row_idx), colors.green))
         elif status == "KELMAGAN":
-            # Kelmaganlar uchun to'q qizil
             style_commands.append(('BACKGROUND', (6, row_idx), (6, row_idx), colors.HexColor('#EF5350')))
             style_commands.append(('TEXTCOLOR', (6, row_idx), (6, row_idx), colors.white))
 
@@ -861,32 +877,21 @@ def get_yandex_maps_link(lat: float, lon: float) -> str:
 # --- PROFESSIONAL PDF FUNKSIYASI (LANDSCAPE, TO'RTBURCHAKLARSIZ) ---
 async def create_schedule_pdf(user_id: int) -> io.BytesIO:
     pdf_buffer = io.BytesIO()
-    # Landscape format va keng hoshiyalar
-    doc = SimpleDocTemplate(pdf_buffer, pagesize=landscape(A4), 
-                            rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    doc = SimpleDocTemplate(pdf_buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     elements = []
     styles = getSampleStyleSheet()
     lang = user_languages.get(user_id, 'uz')
     
-    # Nanum shriftini hamma joyda ishlatish
-    title_font = FONT_NAME_BOLD
-    
-    title_style = ParagraphStyle('T', fontName=title_font, fontSize=22, alignment=1, spaceAfter=20, textColor=colors.HexColor('#1A237E'))
+    # Nanum shriftini majburiy qilamiz
+    title_style = ParagraphStyle('T', fontName=FONT_NAME, fontSize=22, alignment=1, spaceAfter=20, textColor=colors.HexColor('#1A237E'))
     normal_style = ParagraphStyle('N', fontName=FONT_NAME, fontSize=14, spaceAfter=10)
 
-    # Foydalanuvchi ma'lumotlarini tozalash
-    raw_name = user_names.get(user_id, "User")
-    name = clean_pdf_text(raw_name)
-    spec = get_specialty_display(user_specialty.get(user_id, ''), lang)
-    specialty = clean_pdf_text(spec)
+    # Ma'lumotlarni tozalash
+    name = clean_pdf_text(user_names.get(user_id, "Xodim"))
+    spec = clean_pdf_text(get_specialty_display(user_specialty.get(user_id, ''), lang))
     
-    # SARLAVHA: AZIMJON YULCHIEV | OFIS XODIMI
-    title_text = f"<b>{name.upper()}</b> | {specialty}"
+    title_text = f"{name.upper()} | {spec} | {clean_pdf_text(TRANSLATIONS[lang]['pdf_title'])}"
     elements.append(Paragraph(title_text, title_style))
-    
-    # DARS JADVALI
-    pdf_label = clean_pdf_text(TRANSLATIONS[lang]['pdf_title'])
-    elements.append(Paragraph(f"<b>{pdf_label}</b>", ParagraphStyle('S', parent=title_style, fontSize=16)))
     
     sched_ids = user_schedules.get(user_id, [])
     if not sched_ids:
@@ -899,50 +904,42 @@ async def create_schedule_pdf(user_id: int) -> io.BytesIO:
             branch = clean_pdf_text(s['branch'])
             l_type = clean_pdf_text(s.get('lesson_type', 'Dars'))
             
-            # Filial sarlavhasi (Banner ko'rinishida)
-            branch_p = Paragraph(f"Filial: {branch} ({l_type})", ParagraphStyle('B', fontName=title_font, fontSize=15, textColor=colors.white))
-            br_table = Table([[branch_p]], colWidths=[9.5*inch])
+            # Filial sarlavhasi
+            header_p = Paragraph(f"Filial: {branch} ({l_type})", ParagraphStyle('B', fontName=FONT_NAME, fontSize=16, textColor=colors.white))
+            br_table = Table([[header_p]], colWidths=[9*inch])
             br_table.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#283593')),
-                ('LEFTPADDING', (0,0), (-1,-1), 20),
-                ('TOPPADDING', (0,0), (-1,-1), 10),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+                ('TOPPADDING', (0,0), (-1,-1), 8),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+                ('LEFTPADDING', (0,0), (-1,-1), 20)
             ]))
             elements.append(br_table)
             elements.append(Spacer(1, 5))
             
             # Jadval ma'lumotlari
-            headers = [clean_pdf_text(h) for h in TRANSLATIONS[lang]['pdf_headers']]
-            data = [headers]
-            
+            data = [TRANSLATIONS[lang]['pdf_headers']]
             uz_days = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
             target_days = WEEKDAYS[lang]
             
             for i, d_uz in enumerate(uz_days):
                 if d_uz in s['days']:
-                    data.append([clean_pdf_text(target_days[i]), str(s['days'][d_uz])])
+                    data.append([target_days[i], str(s['days'][d_uz])])
 
             if len(data) > 1:
-                # Jadval dizayni
-                t = Table(data, colWidths=[4.75*inch, 4.75*inch])
+                t = Table(data, colWidths=[4.5*inch, 4.5*inch])
                 t.setStyle(TableStyle([
                     ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E8EAF6')),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1A237E')),
-                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                     ('FONTNAME', (0, 0), (-1, -1), FONT_NAME),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                     ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
                     ('FONTSIZE', (0, 0), (-1, -1), 12),
-                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F5F5')]),
-                    ('TOPPADDING', (0, 0), (-1, -1), 10),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F5F5')])
                 ]))
                 elements.append(t)
                 elements.append(Spacer(1, 20))
 
-    # Yaratilgan sana
-    created_label = clean_pdf_text(TRANSLATIONS[lang]['pdf_created'])
-    footer_text = f"{created_label}: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}"
-    elements.append(Paragraph(footer_text, ParagraphStyle('F', fontName=FONT_NAME, fontSize=10, alignment=2, textColor=colors.grey)))
+    elements.append(Paragraph(f"{clean_pdf_text(TRANSLATIONS[lang]['pdf_created'])}: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", 
+                             ParagraphStyle('F', fontName=FONT_NAME, fontSize=10, alignment=2)))
     
     doc.build(elements)
     pdf_buffer.seek(0)
@@ -1115,7 +1112,6 @@ async def set_changed_language(callback: types.CallbackQuery):
         logging.error(f"set_changed_language error: {e}")
         await callback.answer("Xatolik yuz berdi")
 
-# Profil tugmasi uchun barcha variantlar ro'yxati
 PROFILE_BTNS = ["👤 Mening profilim", "👤 Мой профиль", "👤 내 프로필"]
 
 @dp.message(F.text.in_(PROFILE_BTNS))
@@ -1168,10 +1164,8 @@ async def save_new_specialty(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     new_spec = callback.data.replace("save_spec_", "")
     
-    # RAM ni yangilash
     user_specialty[user_id] = new_spec
     
-    # PostgreSQL ni yangilash
     try:
         user = await db.get_user(user_id)
         if user:
@@ -1186,7 +1180,6 @@ async def save_new_specialty(callback: types.CallbackQuery):
         logging.error(f"Spec update error: {e}")
         await callback.answer("Xatolik yuz berdi")
 
-    # Profilni qayta ko'rsatish
     await callback.message.delete()
     await show_profile(callback.message)
 
@@ -1451,19 +1444,17 @@ async def weekly_top(message: types.Message):
         get_text(user_id, 'weekly_top', top_list=top_list)
     )
 
-# --- YANGILANGAN QAT'IY LOKATSIYA HANDLERI (SOXTA LOKATSIYANI ANIQLASH) ---
+# --- QAT'IY LOKATSIYA HANDLERI (SOXTA LOKATSIYANI ANIQLASH) ---
 @dp.message(F.location)
 async def handle_location(message: types.Message):
     user_id = message.from_user.id
     user_ids.add(user_id)
     
-    # 1. BLOKLANGAN FOYDALANUVCHINI TEKSHIRISH
     if user_status.get(user_id) == 'blocked':
         await message.answer(get_text(user_id, 'blocked_user'))
         return
 
-    # 2. QAT'IY TEKSHIRUV (STRICT VALIDATION)
-    # Agar xabar forward bo'lsa YOKI xaritadan qo'lda tanlangan bo'lsa (horizontal_accuracy bo'lmasa)
+    # QAT'IY TEKSHIRUV
     is_fake = False
     fake_reason = ""
     
@@ -1475,7 +1466,6 @@ async def handle_location(message: types.Message):
         fake_reason = "Xaritadan qo'lda tanlangan nuqta"
 
     if is_fake:
-        # Foydalanuvchiga yuboriladigan qat'iy ogohlantirish
         user_warning = (
             "⚠️ DIQQAT: SOXTA DAVOMATGA URINISH!\n\n"
             "Siz boshqa foydalanuvchidan uzatilgan (forward) lokatsiyani yuborish orqali "
@@ -1485,7 +1475,6 @@ async def handle_location(message: types.Message):
         )
         await message.answer(user_warning)
 
-        # Adminga yuboriladigan xabar
         t_name = user_names.get(user_id, message.from_user.full_name)
         t_spec = user_specialty.get(user_id, 'Noma\'lum')
         admin_alert = (
@@ -1499,7 +1488,7 @@ async def handle_location(message: types.Message):
         await bot.send_message(ADMIN_GROUP_ID, admin_alert)
         return
 
-    # 3. AGAR LOKATSIYA TO'G'RI (TUGMA ORQALI) YUBORILGAN BO'LSA
+    # TO'G'RI LOKATSIYA
     now_uzb = datetime.now(UZB_TZ)
     today_date = now_uzb.strftime("%Y-%m-%d")
     current_month = now_uzb.strftime("%Y-%m")
@@ -1674,25 +1663,21 @@ def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
 """
     return message
 
-# Kalendar yaratish funksiyasi
 async def get_calendar_keyboard(year: int, month: int, lang: str):
     builder = InlineKeyboardBuilder()
     
-    # Oylar nomlari
     month_names = {
         'uz': ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"],
         'ru': ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"],
         'kr': ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"]
     }
     
-    # Hafta kunlari qisqartmasi
     wd_names = {
         'uz': ["Du", "Se", "Ch", "Pa", "Ju", "Sha", "Ya"],
         'ru': ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
         'kr': ["월", "화", "수", "목", "금", "토", "일"]
     }
 
-    # 1. Sarlavha: Oy va Yil (Navigatsiya tugmalari bilan)
     m_name = month_names[lang][month-1]
     header_text = f"{m_name} {year}" if lang != 'kr' else f"{year}년 {m_name}"
     
@@ -1702,11 +1687,9 @@ async def get_calendar_keyboard(year: int, month: int, lang: str):
         InlineKeyboardButton(text="➡️", callback_data=f"cal_nav_next_{year}_{month}")
     )
 
-    # 2. Hafta kunlari sarlavhasi (Du, Se, Ch...)
     header_days = [InlineKeyboardButton(text=day, callback_data="ignore") for day in wd_names[lang]]
     builder.row(*header_days)
 
-    # 3. Kunlar kataklarini terish
     month_calendar = calendar.monthcalendar(year, month)
     for week in month_calendar:
         row_btns = []
@@ -1714,14 +1697,12 @@ async def get_calendar_keyboard(year: int, month: int, lang: str):
             if day == 0:
                 row_btns.append(InlineKeyboardButton(text=" ", callback_data="ignore"))
             else:
-                # Callback format: cal_set_2026-03-05
                 row_btns.append(InlineKeyboardButton(
                     text=str(day), 
                     callback_data=f"cal_set_{year}-{month:02d}-{day:02d}")
                 )
         builder.row(*row_btns)
 
-    # 4. Pastki qism: Ortga qaytish
     builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back"))
     return builder.as_markup()
 
@@ -1741,11 +1722,10 @@ async def admin_pdf_report_start(callback: types.CallbackQuery):
     )
     await callback.answer()
 
-# Oylarni o'tkazish (⬅️ va ➡️ bosilganda)
 @dp.callback_query(F.data.startswith("cal_nav_"))
 async def process_calendar_navigation(callback: types.CallbackQuery):
     parts = callback.data.split("_")
-    action = parts[2] # prev yoki next
+    action = parts[2]
     year = int(parts[3])
     month = int(parts[4])
     
@@ -1763,11 +1743,9 @@ async def process_calendar_navigation(callback: types.CallbackQuery):
     lang = user_languages.get(callback.from_user.id, 'uz')
     keyboard = await get_calendar_keyboard(year, month, lang)
     
-    # Xabarni o'zgartirish (Faqat tugmalarni)
     await callback.message.edit_reply_markup(reply_markup=keyboard)
     await callback.answer()
 
-# Sana tanlanganda (Raqam bosilganda)
 @dp.callback_query(F.data.startswith("cal_set_"))
 async def process_calendar_selection(callback: types.CallbackQuery):
     date_str = callback.data.replace("cal_set_", "")
@@ -1788,7 +1766,6 @@ async def process_calendar_selection(callback: types.CallbackQuery):
         
     await callback.answer()
 
-# Bo'sh kataklar yoki sarlavhalar bosilganda hech narsa qilmaslik uchun
 @dp.callback_query(F.data == "ignore")
 async def process_ignore_callback(callback: types.CallbackQuery):
     await callback.answer()
@@ -1800,25 +1777,20 @@ async def admin_panel(message: types.Message):
     
     try:
         builder = InlineKeyboardBuilder()
-        # 1-qator: Oylik kalkulyatori
         builder.row(
             InlineKeyboardButton(text="💰 Oylik hisoblash", callback_data="admin_salary_calc")
         )
-        # 2-qator: Vizual jadval
         builder.row(
             InlineKeyboardButton(text="🖼 Vizual Jadval (Haftalik)", callback_data="admin_visual_schedule")
         )
-        # 3-qator: Boshqaruv
         builder.row(
             InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
             InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast")
         )
-        # 4-qator: Tuzilma
         builder.row(
             InlineKeyboardButton(text="🏢 Filiallar", callback_data="admin_locations_main"),
             InlineKeyboardButton(text="📅 Dars jadvallari", callback_data="admin_schedules_main")
         )
-        # 5-qator: Hisobotlar
         builder.row(
             InlineKeyboardButton(text="📊 Oylik hisobot (Excel)", callback_data="admin_excel_menu"),
             InlineKeyboardButton(text="📊 Kunlik PDF", callback_data="admin_pdf_report")
@@ -1832,21 +1804,17 @@ async def admin_panel(message: types.Message):
         logging.error(f"admin_panel error: {e}")
         await message.answer("❌ Admin panelni ochishda xatolik yuz berdi")
 
-# --- VIZUAL JADVAL FUNKSIYASI ---
 async def create_visual_timetable_img(branch_name: str):
-    # Sozlamalar
     days = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba']
-    # Dars vaqtlari (Y o'qi uchun)
     time_slots = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00']
     
     plt.figure(figsize=(14, 8))
     ax = plt.gca()
     
-    # Ranglar palitrasi
     colors_map = {
-        'IT': '#E3F2FD',      # Och ko'k
-        'Koreys tili': '#E8F5E9', # Och yashil
-        'Ofis xodimi': '#FFF3E0'  # Och sariq
+        'IT': '#E3F2FD',
+        'Koreys tili': '#E8F5E9',
+        'Ofis xodimi': '#FFF3E0'
     }
     border_map = {
         'IT': '#1565C0', 
@@ -1854,7 +1822,6 @@ async def create_visual_timetable_img(branch_name: str):
         'Ofis xodimi': '#EF6C00'
     }
 
-    # Jadval chizish
     for i in range(len(days) + 1):
         plt.axvline(i, color='gray', linestyle='--', alpha=0.3)
     for i in range(len(time_slots) + 1):
@@ -1871,22 +1838,17 @@ async def create_visual_timetable_img(branch_name: str):
             for day, t_val in data['days'].items():
                 if day in days:
                     day_idx = days.index(day)
-                    # Vaqtni aniqlash (Masalan "14:20" -> 14.33)
                     try:
                         h, m = map(int, t_val.split(':'))
-                        # Vaqtni Y o'qiga moslash
                         start_y = h + (m/60)
-                        # Soatni indeksga aylantirish (08:00 - bu 0 indeks)
                         y_pos = len(time_slots) - (start_y - 8)
                         
-                        # Blok chizish
                         rect = plt.Rectangle((day_idx + 0.05, y_pos - 0.9), 0.9, 0.8, 
                                             facecolor=colors_map.get(spec, '#F5F5F5'),
                                             edgecolor=border_map.get(spec, 'gray'),
                                             linewidth=1.5, alpha=0.9, zorder=3)
                         ax.add_patch(rect)
                         
-                        # Matn yozish
                         plt.text(day_idx + 0.5, y_pos - 0.5, f"{t_name}\n({t_val})\n{spec}", 
                                  ha='center', va='center', fontsize=8, fontweight='bold', zorder=4)
                     except: continue
@@ -1898,7 +1860,6 @@ async def create_visual_timetable_img(branch_name: str):
     plt.xlim(0, len(days))
     plt.ylim(0, len(time_slots))
     
-    # Legend (Izoh)
     from matplotlib.lines import Line2D
     legend_elements = [
         Line2D([0], [0], marker='s', color='w', label='IT Bo\'limi', markerfacecolor='#E3F2FD', markersize=15, markeredgecolor='#1565C0'),
@@ -1913,7 +1874,6 @@ async def create_visual_timetable_img(branch_name: str):
     plt.close()
     return img_buf, found_any
 
-# --- VIZUAL JADVAL HANDLERLARI ---
 @dp.callback_query(F.data == "admin_visual_schedule")
 async def visual_schedule_start(callback: types.CallbackQuery, state: FSMContext):
     if not check_admin(callback.message.chat.id):
@@ -1954,7 +1914,7 @@ async def visual_schedule_process(callback: types.CallbackQuery, state: FSMConte
     await state.clear()
     await callback.answer()
 
-# --- OYLIK KALKULYATOR HANDLERS (YANGI - PROFESSIONAL) ---
+# --- OYLIK KALKULYATOR HANDLERS ---
 @dp.callback_query(F.data == "admin_salary_calc")
 async def salary_calc_start(callback: types.CallbackQuery, state: FSMContext):
     if not check_admin(callback.message.chat.id):
@@ -1966,7 +1926,6 @@ async def salary_calc_start(callback: types.CallbackQuery, state: FSMContext):
         InlineKeyboardButton(text="💻 IT", callback_data="sal_spec_IT"),
         InlineKeyboardButton(text="🇰🇷 Koreys tili", callback_data="sal_spec_Koreys tili")
     )
-    # Ofis xodimlari uchun tugma qo'shilmagan (ular hisob-kitobga kiritilmaydi)
     builder.row(
         InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back")
     )
@@ -1983,7 +1942,6 @@ async def salary_calc_spec(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(specialty=spec)
     
     builder = InlineKeyboardBuilder()
-    # Faqat tanlangan soha o'qituvchilarini chiqaramiz
     for uid, name in user_names.items():
         if user_specialty.get(uid) == spec:
             builder.row(InlineKeyboardButton(text=str(name), callback_data=f"sal_teacher_{uid}"))
@@ -2000,7 +1958,7 @@ async def salary_calc_spec(callback: types.CallbackQuery, state: FSMContext):
 async def salary_calc_teacher_selected(callback: types.CallbackQuery, state: FSMContext):
     uid = int(callback.data.replace("sal_teacher_", ""))
     
-    # O'qituvchining barcha filiallarini schedules dan topamiz
+    # O'qituvchining barcha filiallarini topamiz
     branches = []
     for sid, sdata in schedules.items():
         if sdata['user_id'] == uid:
@@ -2012,20 +1970,18 @@ async def salary_calc_teacher_selected(callback: types.CallbackQuery, state: FSM
         await state.clear()
         return
 
-    # Ma'lumotlarni saqlash uchun boshlang'ich konteyner
     await state.update_data(
         teacher_id=uid,
         teacher_name=user_names.get(uid, f"ID: {uid}"),
         specialty=user_specialty.get(uid, ''),
         all_branches=branches,
         current_branch_idx=0,
-        calculated_results=[] # Har bir filial natijalari shu yerga yig'iladi
+        calculated_results=[]
     )
     
     await salary_ask_next_branch(callback.message, state)
     await callback.answer()
 
-# --- FILIAL MA'LUMOTLARINI SO'RASH BOSHLANISHI ---
 async def salary_ask_next_branch(message: types.Message, state: FSMContext):
     data = await state.get_data()
     idx = data['current_branch_idx']
@@ -2071,16 +2027,13 @@ async def salary_perc_step(callback: types.CallbackQuery, state: FSMContext):
     
     data = await state.get_data()
     if data['specialty'] == "IT":
-        # IT uchun jarima foizda so'raladi
         await callback.message.edit_text("Ushbu filial uchun jarima FOIZINI kiriting (masalan: 10. Jarima bo'lmasa 0):")
         await state.set_state(SalaryCalc.entering_penalty_it_percent)
     else:
-        # Koreys tili uchun jarima so'mda so'raladi
         await callback.message.edit_text("Ushbu filial uchun jarima SUMMASINI kiriting (so'mda, masalan: 50000. Jarima bo'lmasa 0):")
         await state.set_state(SalaryCalc.entering_penalty_kr_sum)
     await callback.answer()
 
-# --- IT FOIZLI JARIMA HANDLERI ---
 @dp.message(SalaryCalc.entering_penalty_it_percent)
 async def salary_it_penalty_percent(message: types.Message, state: FSMContext):
     if not message.text.isdigit():
@@ -2090,7 +2043,6 @@ async def salary_it_penalty_percent(message: types.Message, state: FSMContext):
     await message.answer("Ushbu filialdan jami o'quvchilar to'lovini kiriting:")
     await state.set_state(SalaryCalc.entering_payment)
 
-# --- KOREYS TILI SO'MDAGI JARIMA HANDLERI ---
 @dp.message(SalaryCalc.entering_penalty_kr_sum)
 async def salary_kr_penalty_sum(message: types.Message, state: FSMContext):
     val = message.text.replace(' ', '').replace(',', '')
@@ -2109,7 +2061,6 @@ async def salary_payment_it_step(message: types.Message, state: FSMContext):
     await state.update_data(temp_payment=int(val))
     await process_branch_calculation(message, state)
 
-# --- FILIAL HISOBI VA YAKUNIY HISOB-KITOB ---
 async def process_branch_calculation(message: types.Message, state: FSMContext):
     data = await state.get_data()
     spec = data['specialty']
@@ -2121,33 +2072,19 @@ async def process_branch_calculation(message: types.Message, state: FSMContext):
     penalty_disp = ""
 
     if spec == "IT":
-        # IT: (Tushum * Ulush%) - Jarima%
         share_amount = (data['temp_payment'] * data['temp_perc'] / 100)
         penalty_amount = (share_amount * data['temp_penalty_val'] / 100)
         gross = share_amount - penalty_amount
         penalty_disp = f"{data['temp_penalty_val']}%"
     else:
-        # KOREYS TILI LOGIKASI
         students = data['temp_students']
         lessons = data['temp_lessons']
         perc = data['temp_perc']
-        # 11 tadan boshlab har bir o'quvchi uchun 100 ming + 1.8 mln bazaviy
         base = 1800000 + (students * 100000 if students > 10 else 0)
         
-        # Imtixon jarimasi shkalasi
-        if perc < 10: exam_pen = 900000
-        elif perc < 20: exam_pen = 800000
-        elif perc < 30: exam_pen = 700000
-        elif perc < 40: exam_pen = 600000
-        elif perc < 50: exam_pen = 500000
-        elif perc < 60: exam_pen = 400000
-        elif perc < 70: exam_pen = 300000
-        elif perc < 80: exam_pen = 200000
-        elif perc < 90: exam_pen = 100000
-        else: exam_pen = 0
-        
+        exam_pen = get_kr_exam_penalty(perc)
         mid_total = base - exam_pen
-        # 12 dars qoidasi
+        
         if lessons < 12:
             gross = (mid_total / 12) * lessons
         else:
@@ -2156,7 +2093,6 @@ async def process_branch_calculation(message: types.Message, state: FSMContext):
         gross -= data['temp_penalty_val']
         penalty_disp = f"{data['temp_penalty_val']:,} so'm"
 
-    # Natijani saqlash
     res = {
         'branch': branch_name,
         'students': data['temp_students'],
@@ -2184,7 +2120,6 @@ async def finalize_multi_branch_salary(message: types.Message, state: FSMContext
     tax = total_gross * 0.075
     net = total_gross - tax
     
-    # Excel yaratish
     excel_file = await create_multi_branch_excel(data['teacher_name'], data['specialty'], results, total_gross, tax, net)
     
     s_net = "{:,.0f}".format(net).replace(',', ' ')
@@ -2206,7 +2141,6 @@ async def finalize_multi_branch_salary(message: types.Message, state: FSMContext
     )
     await state.clear()
     
-    # Admin panelga qaytish tugmasi
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🔄 Yangi hisoblash", callback_data="admin_salary_calc"))
     builder.row(InlineKeyboardButton(text="🔙 Admin Panel", callback_data="admin_back"))
@@ -2216,7 +2150,6 @@ async def finalize_multi_branch_salary(message: types.Message, state: FSMContext
     )
 
 async def create_multi_branch_excel(teacher_name, specialty, results, total_gross, tax, net):
-    """Ko'p filialli hisob-kitob uchun Excel fayl yaratish"""
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
     
@@ -2224,15 +2157,12 @@ async def create_multi_branch_excel(teacher_name, specialty, results, total_gros
     ws = wb.active
     ws.title = "Oylik Hisoboti"
     
-    # Border stili
     thin = Side(border_style="thin", color="000000")
     border = Border(top=thin, left=thin, right=thin, bottom=thin)
     
-    # Header foni
     header_fill = PatternFill(start_color="2E86AB", end_color="2E86AB", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True)
     
-    # Sarlavhalar
     headers = ['Filial', 'O\'quvchilar', 'Darslar', 'Imtixon %', 'Jarima', 'Tushum', 'Hisoblangan oylik']
     ws.append(headers)
     
@@ -2242,7 +2172,6 @@ async def create_multi_branch_excel(teacher_name, specialty, results, total_gros
         cell.alignment = Alignment(horizontal="center")
         cell.border = border
 
-    # Ma'lumotlarni yozish
     for r in results:
         row = [
             r['branch'],
@@ -2259,10 +2188,8 @@ async def create_multi_branch_excel(teacher_name, specialty, results, total_gros
             cell.border = border
             cell.alignment = Alignment(horizontal="center")
 
-    # Bo'sh qator
     ws.append([])
     
-    # Jami qatorlari
     summary_rows = [
         ['', '', '', '', '', 'JAMI (soliqsiz):', f"{total_gross:,.0f}"],
         ['', '', '', '', '', 'Soliq (7.5%):', f"{tax:,.0f}"],
@@ -2279,7 +2206,6 @@ async def create_multi_branch_excel(teacher_name, specialty, results, total_gros
                     ws.cell(row=ws.max_row, column=7).font = Font(bold=True, color="006100")
                     ws.cell(row=ws.max_row, column=7).fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
 
-    # Ustun kengligi
     column_widths = [20, 12, 10, 10, 15, 15, 15]
     for i, width in enumerate(column_widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = width
@@ -2404,23 +2330,21 @@ async def process_month_gen(callback: types.CallbackQuery):
     )
     await callback.answer()
 
-# --- PROFESSIONAL EXCEL HISOBOT (XATOSIZ) ---
 async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
     import calendar
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-    from openpyxl.utils import get_column_letter  # Muhim import
+    from openpyxl.utils import get_column_letter
 
     wb = Workbook()
-    wb.remove(wb.active) # Standart sheetni o'chiramiz
+    wb.remove(wb.active)
 
-    # Border stili (Hamma borderlar uchun)
     thin_side = Side(border_style="thin", color="000000")
     all_border = Border(top=thin_side, left=thin_side, right=thin_side, bottom=thin_side)
     
-    main_header_fill = PatternFill(start_color="92D050", fill_type="solid") # Yashil
-    user_header_fill = PatternFill(start_color="D9D9D9", fill_type="solid") # Kulrang
-    table_header_fill = PatternFill(start_color="2E86AB", fill_type="solid") # Ko'k
+    main_header_fill = PatternFill(start_color="92D050", fill_type="solid")
+    user_header_fill = PatternFill(start_color="D9D9D9", fill_type="solid")
+    table_header_fill = PatternFill(start_color="2E86AB", fill_type="solid")
     
     white_font = Font(color="FFFFFF", bold=True)
     bold_font = Font(bold=True)
@@ -2434,14 +2358,12 @@ async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
     for spec in specs:
         ws = wb.create_sheet(title=spec)
         
-        # 1. Asosiy sarlavha
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=9)
         main_title = ws.cell(row=1, column=1)
         main_title.value = f"{spec.upper()} OQITUVCHILARI {months_uz[month]} OYI XISOBOTI"
         main_title.fill = main_header_fill
         main_title.font = Font(size=14, bold=True)
         main_title.alignment = Alignment(horizontal="center")
-        # Birlashtirilgan kataklarning har biriga border qo'shish
         for col in range(1, 10):
             ws.cell(row=1, column=col).border = all_border
         
@@ -2452,20 +2374,17 @@ async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
             continue
 
         for uid in sorted(teachers_in_spec, key=lambda x: user_names.get(x, "")):
-            # 2. O'qituvchi nomi (Birlashtirilgan katak)
             ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=9)
             user_title = ws.cell(row=current_row, column=1)
             user_title.value = f"{user_names.get(uid, '').upper()} {months_uz[month]} OYLIK XISOBOT"
             user_title.fill = user_header_fill
             user_title.font = bold_font
             user_title.alignment = Alignment(horizontal="center")
-            # Birlashtirilgan kataklarning har biriga border qo'shish
             for col in range(1, 10):
                 ws.cell(row=current_row, column=col).border = all_border
             
             current_row += 1
             
-            # 3. Jadval Headeri
             headers = ['№', 'Sana', 'Hafta kuni', 'O\'qituvchi', 'Filial', 'Dars vaqti', 'Kelgan vaqti', 'Holat', 'Kechikish (min)']
             for col, text in enumerate(headers, 1):
                 cell = ws.cell(row=current_row, column=col)
@@ -2477,7 +2396,6 @@ async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
             
             current_row += 1
             
-            # 4. Ma'lumotlarni yig'ish
             user_records = []
             for d in range(1, last_day + 1):
                 target_date = f"{year}-{month:02d}-{d:02d}"
@@ -2497,7 +2415,6 @@ async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
                             user_records.append({'date': target_date, 'weekday': weekday, 'branch': branch, 
                                                'sch_time': sch_time, 'att_time': "—", 'st': 'ABSENT'})
 
-            # Excelga qatorlarni yozish
             num = 1
             for r in sorted(user_records, key=lambda x: (x['date'], x['sch_time'])):
                 if r['st'] == 'ABSENT':
@@ -2515,21 +2432,19 @@ async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
                     cell.border = all_border
                     cell.alignment = Alignment(horizontal="center")
                     
-                    # FAQAT "Holat" ustuniga rang berish (8-ustun)
                     if col_idx == 8:
                         if status_text == "Kechikkan":
-                            cell.font = Font(color="FF0000", bold=True) # Qizil matn
+                            cell.font = Font(color="FF0000", bold=True)
                         elif status_text == "Vaqtida":
-                            cell.font = Font(color="008000", bold=True) # Yashil matn
+                            cell.font = Font(color="008000", bold=True)
                         elif status_text == "KELMAGAN":
-                            cell.fill = PatternFill(start_color="FFCCCC", fill_type="solid") # Qizil fon
+                            cell.fill = PatternFill(start_color="FFCCCC", fill_type="solid")
                 
                 num += 1
                 current_row += 1
             
-            current_row += 2 # Oraliq masofa
+            current_row += 2
 
-        # Ustun kengligini o'rnatishning xavfsiz usuli
         for i in range(1, 10):
             column_letter = get_column_letter(i)
             ws.column_dimensions[column_letter].width = 18
@@ -3499,7 +3414,6 @@ async def admin_broadcast_start(callback: types.CallbackQuery, state: FSMContext
         InlineKeyboardButton(text="🏢 Ofis xodimi", callback_data="broadcast_spec_Ofis xodimi"),
         InlineKeyboardButton(text=TRANSLATIONS[lang]['all_teachers'], callback_data="broadcast_spec_all")
     )
-    # ORTGA TUGMASI
     builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back"))
     
     await state.set_state(Broadcast.selecting_specialty)
@@ -3708,7 +3622,6 @@ async def admin_schedules_pdf(callback: types.CallbackQuery):
 
 async def create_all_schedules_pdf() -> io.BytesIO:
     pdf_buffer = io.BytesIO()
-    # Landscape format (yotqizilgan A4)
     doc = SimpleDocTemplate(
         pdf_buffer, 
         pagesize=landscape(A4),
@@ -3717,7 +3630,6 @@ async def create_all_schedules_pdf() -> io.BytesIO:
     elements = []
     styles = getSampleStyleSheet()
 
-    # Maxsus uslublar (Dizayn uchun)
     main_title_style = ParagraphStyle(
         'MainTitle', parent=styles['Heading1'], fontSize=26, alignment=1, 
         spaceAfter=10, textColor=colors.HexColor('#1A237E'), fontName=FONT_NAME_BOLD
@@ -3745,14 +3657,12 @@ async def create_all_schedules_pdf() -> io.BytesIO:
         'Normal', parent=styles['Normal'], fontName=FONT_NAME
     )
 
-    # 1. Sarlavha
     elements.append(Paragraph("HANCOM ACADEMY", main_title_style))
     elements.append(Paragraph(
         "O'QITUVCHILAR VA XODIMLARNING UMUMIY DARS JADVALI",
         ParagraphStyle('Sub', parent=normal_style, alignment=1, fontSize=12, spaceAfter=20, fontName=FONT_NAME)
     ))
 
-    # 2. Ma'lumotlarni mutaxassislik bo'yicha guruhlash
     grouped_data = defaultdict(lambda: defaultdict(list))
     
     for s_id, s_data in schedules.items():
@@ -3761,25 +3671,21 @@ async def create_all_schedules_pdf() -> io.BytesIO:
         t_name = user_names.get(uid, f"ID: {uid}")
         grouped_data[spec][t_name].append(s_data)
 
-    # Mutaxassisliklar tartibi
     spec_order = ["IT", "Koreys tili", "Ofis xodimi"]
     
     for spec in spec_order:
         if spec not in grouped_data:
             continue
         
-        # Bo'lim sarlavhasi (Banner)
         elements.append(Paragraph(f"{spec.upper()} BO'LIMI JADVALLARI", section_style))
         
-        # O'qituvchilarni alifbo bo'yicha chiqarish
         sorted_teachers = sorted(grouped_data[spec].keys())
         
         for t_name in sorted_teachers:
-            teacher_block = []  # Ism va jadvallarni birga saqlash uchun
+            teacher_block = []
             
             teacher_block.append(Paragraph(f"👤 O'qituvchi: {t_name}", teacher_name_style))
             
-            # Har bir o'qituvchining filiallari
             teacher_scheds = grouped_data[spec][t_name]
             
             for s_data in teacher_scheds:
@@ -3788,14 +3694,12 @@ async def create_all_schedules_pdf() -> io.BytesIO:
                 
                 teacher_block.append(Paragraph(f"📍 Filial: {branch} ({l_type})", branch_info_style))
                 
-                # Kunlar va vaqtlar jadvali
                 days = sort_weekdays(s_data['days'])
-                table_data = [['Hafta kuni', 'Dars boshlanish vaqti']]  # Header
+                table_data = [['Hafta kuni', 'Dars boshlanish vaqti']]
                 
                 for d_name, d_time in days.items():
                     table_data.append([d_name, d_time])
                 
-                # Jadval dizayni
                 t = Table(table_data, colWidths=[2.5*inch, 2.5*inch])
                 t.setStyle(TableStyle([
                     ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E3F2FD')),
@@ -3813,14 +3717,12 @@ async def create_all_schedules_pdf() -> io.BytesIO:
                 teacher_block.append(t)
                 teacher_block.append(Spacer(1, 10))
             
-            # KeepTogether - Ism va jadval bitta betda qolishini ta'minlaydi
             elements.append(KeepTogether(teacher_block))
             elements.append(Spacer(1, 5))
-            elements.append(Paragraph("<hr/>", normal_style))  # Chiziq ajratish uchun
+            elements.append(Paragraph("<hr/>", normal_style))
         
-        elements.append(PageBreak())  # Har bir bo'limdan keyin yangi betga o'tish
+        elements.append(PageBreak())
 
-    # Footer
     footer_text = f"Hisobot yaratildi: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')} | Hancom Academy Management System"
     elements.append(Paragraph(
         footer_text,
@@ -4116,19 +4018,16 @@ async def admin_save_edited_schedule(message: types.Message, state: FSMContext):
     
     new_days = {WEEKDAYS_UZ[idx]: time for idx, time in new_selected_days_raw.items()}
 
-    # 1. Eskisini O'CHIRISH
     await db.delete_schedule(old_s_id)
     schedules.pop(old_s_id, None)
     if old_s_id in user_schedules[teacher_id]:
         user_schedules[teacher_id].remove(old_s_id)
 
-    # 2. YANGISINI QO'SHISH
     new_s_id = f"sch_{teacher_id}_{datetime.now().timestamp()}"
     schedules[new_s_id] = {'user_id': teacher_id, 'branch': new_branch, 'lesson_type': new_lesson_type, 'days': new_days}
     user_schedules[teacher_id].append(new_s_id)
     await db.save_schedule(new_s_id, teacher_id, new_branch, new_lesson_type, new_days)
 
-    # 3. O'QITUVCHIGA XABAR (YANGI LANDSCAPE PDF BILAN)
     old_times = ", ".join([f"{k}:{v}" for k, v in old_schedule['days'].items()])
     new_times = ", ".join([f"{k}:{v}" for k, v in new_days.items()])
     
@@ -4397,7 +4296,6 @@ async def admin_save_new_schedule(message: types.Message, state: FSMContext):
         
         await db.save_schedule(schedule_id, teacher_id, branch, lesson_type, days_with_names)
         
-        # O'qituvchiga xabar (YANGI LANDSCAPE PDF BILAN)
         try:
             await bot.send_message(
                 teacher_id,
@@ -4546,25 +4444,20 @@ async def admin_back(callback: types.CallbackQuery):
     
     try:
         builder = InlineKeyboardBuilder()
-        # 1-qator: Oylik kalkulyatori
         builder.row(
             InlineKeyboardButton(text="💰 Oylik hisoblash", callback_data="admin_salary_calc")
         )
-        # 2-qator: Vizual jadval
         builder.row(
             InlineKeyboardButton(text="🖼 Vizual Jadval (Haftalik)", callback_data="admin_visual_schedule")
         )
-        # 3-qator: Boshqaruv
         builder.row(
             InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
             InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast")
         )
-        # 4-qator: Tuzilma
         builder.row(
             InlineKeyboardButton(text="🏢 Filiallar", callback_data="admin_locations_main"),
             InlineKeyboardButton(text="📅 Dars jadvallari", callback_data="admin_schedules_main")
         )
-        # 5-qator: Hisobotlar
         builder.row(
             InlineKeyboardButton(text="📊 Oylik hisobot (Excel)", callback_data="admin_excel_menu"),
             InlineKeyboardButton(text="📊 Kunlik PDF", callback_data="admin_pdf_report")
@@ -4581,10 +4474,8 @@ async def admin_back(callback: types.CallbackQuery):
         await callback.answer()
 
 async def auto_daily_report_task():
-    """Har kuni soat 10:10 da kechagi kun hisobotini yuboradi"""
     while True:
         now = datetime.now(UZB_TZ)
-        # 10:10 bo'lishini kutamiz
         if now.hour == 10 and now.minute == 10:
             yesterday = now.date() - timedelta(days=1)
             logging.info(f"Avtomatik hisobot yuborilmoqda: {yesterday}")
@@ -4599,10 +4490,9 @@ async def auto_daily_report_task():
             except Exception as e:
                 logging.error(f"Auto report xatosi: {e}")
             
-            # Bir daqiqa kutib turamizki, qayta-qayta yubormasin
             await asyncio.sleep(61)
         
-        await asyncio.sleep(30)  # Har 30 soniyada vaqtni tekshirib turadi
+        await asyncio.sleep(30)
 
 async def check_schedule_reminders():
     while True:
@@ -4620,18 +4510,15 @@ async def check_schedule_reminders():
             days = schedule['days']
             
             if current_day_name in days:
-                lesson_time = days[current_day_name]  # Masalan "14:00"
+                lesson_time = days[current_day_name]
                 lesson_dt = datetime.strptime(lesson_time, "%H:%M")
                 
-                # 1. Darsga 1 daqiqa qolganda ogohlantirish
                 remind_dt = lesson_dt - timedelta(minutes=1)
                 remind_time = remind_dt.strftime("%H:%M")
                 
-                # 2. Dars boshlangandagi eslatma (masalan 14:01 da tekshiradi)
                 check_dt = lesson_dt + timedelta(minutes=1)
                 check_time = check_dt.strftime("%H:%M")
                 
-                # 1 daqiqa qolganda yuborish
                 if current_time == remind_time:
                     msg = (f"🔔 ESLATMA\n\n"
                            f"Bugun soat {lesson_time} da {branch} filialida darsingiz boshlanmoqda.\n"
@@ -4642,7 +4529,6 @@ async def check_schedule_reminders():
                     except Exception as e:
                         logging.error(f"Failed to send reminder to {user_id}: {e}")
                 
-                # Dars boshlanganda davomat qilmagan bo'lsa yuborish
                 elif current_time == check_time:
                     attended = any(k[0] == user_id and k[1] == branch and k[2] == today_date for k in daily_attendance_log)
                     if not attended:
@@ -4656,7 +4542,7 @@ async def check_schedule_reminders():
                         except Exception as e:
                             logging.error(f"Failed to send late reminder to {user_id}: {e}")
         
-        await asyncio.sleep(60)  # Har minutda tekshirish
+        await asyncio.sleep(60)
 
 async def main():
     await db.create_pool()
@@ -4665,12 +4551,10 @@ async def main():
     
     asyncio.create_task(start_web_server())
     asyncio.create_task(check_schedule_reminders())
-    asyncio.create_task(auto_daily_report_task())  # Avtomatik hisobot vazifasi
+    asyncio.create_task(auto_daily_report_task())
     
-    # Webhook ni o'chirish va polling ni boshlash
     await bot.delete_webhook(drop_pending_updates=True)
     
-    # Polling xatolarini kamaytirish uchun
     await dp.start_polling(bot, skip_updates=True)
 
 if __name__ == "__main__":
