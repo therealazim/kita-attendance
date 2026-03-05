@@ -41,14 +41,13 @@ import traceback
 # --- LOGGING ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-# --- EMOJI TOZALASH FUNKSIYASI ---
-def clean_text_for_pdf(text: str) -> str:
-    """PDF uchun matnni emojilardan tozalaydi (to'rtburchaklar chiqmasligi uchun)"""
+# --- EMOJI TOZALASH FUNKSIYASI (PDF UCHUN) ---
+def clean_pdf_text(text: str) -> str:
+    """PDF shrifti tanimaydigan emojilarni olib tashlaydi, harflarni qoldiradi"""
     if not text: 
         return ""
-    # Faqat harflar, raqamlar va tinish belgilarini qoldiradi
-    # Kirill, Koreys va Lotin harflarini saqlaydi
-    return re.sub(r'[^\x00-\x7F\u0400-\u04FF\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F\s]+', '', text)
+    # Faqat Lotin, Kirill (Rus) va Koreys (Hangul) harflarini qoldiruvchi regex
+    return re.sub(r'[^\w\s\d\.\:\-\/\[\]\(\)\|\!\?\,\u0400-\u04FF\uAC00-\uD7AF\u1100-\u11FF]+', '', text)
 
 # --- SOZLAMALAR ---
 TOKEN = os.environ.get("BOT_TOKEN")
@@ -638,7 +637,7 @@ TRANSLATIONS = {
         'spec_updated': "✅ 전공이 업데이트되었습니다!",
         'back_btn': "🔙 뒤로 가기",
         'pdf_title': "수업 시간표",
-        'pdf_headers': ['요일', '시간'],
+        'pdf_headers': ["요일", "시간"],
         'pdf_created': "작성일",
         'buttons': {
             'attendance': "📍 출석 확인",
@@ -859,113 +858,91 @@ async def specialty_keyboard(user_id: int):
 def get_yandex_maps_link(lat: float, lon: float) -> str:
     return f"https://yandex.com/maps/?pt={lon},{lat}&z=17&l=map"
 
-# --- YANGI PROFESSIONAL PDF FUNKSIYASI (LANDSCAPE) ---
+# --- PROFESSIONAL PDF FUNKSIYASI (LANDSCAPE, TO'RTBURCHAKLARSIZ) ---
 async def create_schedule_pdf(user_id: int) -> io.BytesIO:
     pdf_buffer = io.BytesIO()
-    # Landscape format (A4 yotqizilgan)
-    doc = SimpleDocTemplate(
-        pdf_buffer, 
-        pagesize=landscape(A4),
-        rightMargin=40, leftMargin=40, topMargin=30, bottomMargin=30
-    )
+    # Landscape format va keng hoshiyalar
+    doc = SimpleDocTemplate(pdf_buffer, pagesize=landscape(A4), 
+                            rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     elements = []
     styles = getSampleStyleSheet()
     lang = user_languages.get(user_id, 'uz')
     
-    # --- MAXSUS USLUBLAR ---
-    title_style = ParagraphStyle(
-        'CustomTitle', 
-        fontName=FONT_NAME_BOLD,
-        fontSize=26, 
-        alignment=1, 
-        spaceAfter=10, 
-        textColor=colors.HexColor('#1A237E')
-    )
-    sub_title_style = ParagraphStyle(
-        'SubTitle', 
-        fontName=FONT_NAME, 
-        fontSize=16, 
-        alignment=1, 
-        spaceAfter=30, 
-        textColor=colors.HexColor('#3F51B5')
-    )
-    normal_style = ParagraphStyle(
-        'NormalStyle', 
-        fontName=FONT_NAME, 
-        fontSize=13, 
-        spaceAfter=12, 
-        leading=18
-    )
+    # Nanum shriftini hamma joyda ishlatish
+    title_font = FONT_NAME_BOLD
+    
+    title_style = ParagraphStyle('T', fontName=title_font, fontSize=22, alignment=1, spaceAfter=20, textColor=colors.HexColor('#1A237E'))
+    normal_style = ParagraphStyle('N', fontName=FONT_NAME, fontSize=14, spaceAfter=10)
 
-    # Ma'lumotlarni tozalash
-    raw_name = user_names.get(user_id, "Foydalanuvchi")
-    name = clean_text_for_pdf(raw_name)
-    specialty = user_specialty.get(user_id, '')
-    spec_display = clean_text_for_pdf(get_specialty_display(specialty, lang))
+    # Foydalanuvchi ma'lumotlarini tozalash
+    raw_name = user_names.get(user_id, "User")
+    name = clean_pdf_text(raw_name)
+    spec = get_specialty_display(user_specialty.get(user_id, ''), lang)
+    specialty = clean_pdf_text(spec)
     
-    # 1. SARLAVHA QISMI
-    pdf_main_title = clean_text_for_pdf(TRANSLATIONS[lang].get('pdf_title', "Dars Jadvali"))
-    elements.append(Paragraph(f"<b>{name.upper()}</b>", title_style))
-    elements.append(Paragraph(f"{spec_display} | {pdf_main_title}", sub_title_style))
+    # SARLAVHA: AZIMJON YULCHIEV | OFIS XODIMI
+    title_text = f"<b>{name.upper()}</b> | {specialty}"
+    elements.append(Paragraph(title_text, title_style))
     
-    user_sched_ids = user_schedules.get(user_id, [])
+    # DARS JADVALI
+    pdf_label = clean_pdf_text(TRANSLATIONS[lang]['pdf_title'])
+    elements.append(Paragraph(f"<b>{pdf_label}</b>", ParagraphStyle('S', parent=title_style, fontSize=16)))
     
-    if not user_sched_ids:
-        elements.append(Paragraph(clean_text_for_pdf(get_text(user_id, 'no_schedules')), normal_style))
+    sched_ids = user_schedules.get(user_id, [])
+    if not sched_ids:
+        elements.append(Paragraph(clean_pdf_text(TRANSLATIONS[lang]['no_schedules']), normal_style))
     else:
-        for schedule_id in user_sched_ids:
-            schedule = schedules.get(schedule_id)
-            if schedule:
-                branch = clean_text_for_pdf(schedule['branch'])
-                lesson_type = clean_text_for_pdf(schedule.get('lesson_type', 'Dars'))
-                
-                # Filial Headeri (Ko'k banner)
-                branch_info = [[Paragraph(f"🏢 <b>{branch} - {lesson_type}</b>", 
-                               ParagraphStyle('Br', fontName=FONT_NAME, fontSize=14, textColor=colors.white))]]
-                br_table = Table(branch_info, colWidths=[9*inch])
-                br_table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#283593')),
-                    ('LEFTPADDING', (0, 0), (-1, -1), 15),
-                    ('TOPPADDING', (0, 0), (-1, -1), 8),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        for s_id in sched_ids:
+            s = schedules.get(s_id)
+            if not s: continue
+            
+            branch = clean_pdf_text(s['branch'])
+            l_type = clean_pdf_text(s.get('lesson_type', 'Dars'))
+            
+            # Filial sarlavhasi (Banner ko'rinishida)
+            branch_p = Paragraph(f"Filial: {branch} ({l_type})", ParagraphStyle('B', fontName=title_font, fontSize=15, textColor=colors.white))
+            br_table = Table([[branch_p]], colWidths=[9.5*inch])
+            br_table.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#283593')),
+                ('LEFTPADDING', (0,0), (-1,-1), 20),
+                ('TOPPADDING', (0,0), (-1,-1), 10),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+            ]))
+            elements.append(br_table)
+            elements.append(Spacer(1, 5))
+            
+            # Jadval ma'lumotlari
+            headers = [clean_pdf_text(h) for h in TRANSLATIONS[lang]['pdf_headers']]
+            data = [headers]
+            
+            uz_days = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
+            target_days = WEEKDAYS[lang]
+            
+            for i, d_uz in enumerate(uz_days):
+                if d_uz in s['days']:
+                    data.append([clean_pdf_text(target_days[i]), str(s['days'][d_uz])])
+
+            if len(data) > 1:
+                # Jadval dizayni
+                t = Table(data, colWidths=[4.75*inch, 4.75*inch])
+                t.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E8EAF6')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1A237E')),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, -1), FONT_NAME),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                    ('FONTSIZE', (0, 0), (-1, -1), 12),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F5F5')]),
+                    ('TOPPADDING', (0, 0), (-1, -1), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
                 ]))
-                elements.append(br_table)
-                elements.append(Spacer(1, 5))
-                
-                # Jadval sarlavhalari
-                col_headers = TRANSLATIONS[lang].get('pdf_headers', ['Kun', 'Vaqt'])
-                data = [[clean_text_for_pdf(h) for h in col_headers]]
-                
-                days_dict = schedule['days']
-                target_weekdays = WEEKDAYS[lang]
-                uz_weekdays = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
-                
-                # Kunlarni tartib bilan yig'ish
-                for i, day_uz in enumerate(uz_weekdays):
-                    if day_uz in days_dict:
-                        data.append([clean_text_for_pdf(target_weekdays[i]), str(days_dict[day_uz])])
+                elements.append(t)
+                elements.append(Spacer(1, 20))
 
-                if len(data) > 1:
-                    # Jadval dizayni (Zebra style)
-                    table = Table(data, colWidths=[4.5*inch, 4.5*inch])
-                    table.setStyle(TableStyle([
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E8EAF6')),
-                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1A237E')),
-                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                        ('FONTNAME', (0, 0), (-1, -1), FONT_NAME),
-                        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                        ('FONTSIZE', (0, 0), (-1, -1), 12),
-                        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F5F5')]),
-                        ('TOPPADDING', (0, 0), (-1, -1), 12),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-                    ]))
-                    elements.append(table)
-                    elements.append(Spacer(1, 25))
-
-    # FOOTER: Yaratilgan sana
-    created_label = clean_text_for_pdf(TRANSLATIONS[lang].get('pdf_created', "Yaratilgan sana"))
+    # Yaratilgan sana
+    created_label = clean_pdf_text(TRANSLATIONS[lang]['pdf_created'])
     footer_text = f"{created_label}: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}"
-    elements.append(Paragraph(footer_text, ParagraphStyle('Footer', fontName=FONT_NAME, fontSize=10, alignment=2, textColor=colors.grey)))
+    elements.append(Paragraph(footer_text, ParagraphStyle('F', fontName=FONT_NAME, fontSize=10, alignment=2, textColor=colors.grey)))
     
     doc.build(elements)
     pdf_buffer.seek(0)
@@ -1288,7 +1265,7 @@ async def view_my_schedule_pdf(message: types.Message):
     try:
         pdf_buffer = await create_schedule_pdf(user_id)
         
-        clean_name = clean_text_for_pdf(user_names.get(user_id, 'user'))
+        clean_name = clean_pdf_text(user_names.get(user_id, 'user'))
         await message.answer_document(
             types.BufferedInputFile(pdf_buffer.getvalue(), 
                                     filename=f"Dars_Jadvali_{clean_name}.pdf"),
@@ -4164,7 +4141,7 @@ async def admin_save_edited_schedule(message: types.Message, state: FSMContext):
     try:
         await bot.send_message(teacher_id, msg)
         pdf = await create_schedule_pdf(teacher_id)
-        clean_name = clean_text_for_pdf(user_names.get(teacher_id, 'user'))
+        clean_name = clean_pdf_text(user_names.get(teacher_id, 'user'))
         await bot.send_document(
             teacher_id, 
             types.BufferedInputFile(pdf.read(), filename=f"Dars_Jadvali_{clean_name}.pdf"),
@@ -4428,7 +4405,7 @@ async def admin_save_new_schedule(message: types.Message, state: FSMContext):
             )
             
             pdf_buffer = await create_schedule_pdf(teacher_id)
-            clean_name = clean_text_for_pdf(user_names.get(teacher_id, 'user'))
+            clean_name = clean_pdf_text(user_names.get(teacher_id, 'user'))
             await bot.send_document(
                 teacher_id,
                 types.BufferedInputFile(pdf_buffer.getvalue(), 
