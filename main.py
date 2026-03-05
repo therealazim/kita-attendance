@@ -116,19 +116,20 @@ ALLOWED_DISTANCE = 500
 class MonthlyReport(StatesGroup):
     waiting_for_date_range = State()
 
-# --- OYLIK KALKULYATOR UCHUN STATE (YANGILANGAN) ---
+# --- OYLIK KALKULYATOR UCHUN STATE (YANGI FORMULALAR) ---
 class SalaryCalc(StatesGroup):
     selecting_specialty = State()
     selecting_teacher = State()
     selecting_branch = State()
     entering_students = State()
     entering_lessons = State()
-    selecting_percentage_it = State()  # 35% yoki 45%
-    selecting_percentage_kr = State()  # 10% dan 100% gacha
-    entering_penalty_manual = State()  # Admin kiritadigan qo'shimcha jarima
-    entering_payment_it = State()      # IT uchun jami to'lov
+    selecting_percentage_it = State() # 35% yoki 45%
+    selecting_percentage_kr = State() # 10%-100%
+    entering_penalty_it_percent = State() # IT uchun jarima % da
+    entering_penalty_kr_manual = State()  # Koreys tili uchun jarima summasi
+    entering_payment_it = State()     # IT uchun jami tushum
 
-# --- VIZUAL JADVAL UCHUN STATE (YANGI) ---
+# --- VIZUAL JADVAL UCHUN STATE ---
 class VisualSchedule(StatesGroup):
     selecting_branch = State()
 
@@ -1949,7 +1950,7 @@ async def visual_schedule_process(callback: types.CallbackQuery, state: FSMConte
     await state.clear()
     await callback.answer()
 
-# --- OYLIK KALKULYATOR HANDLERS (YANGILANGAN) ---
+# --- OYLIK KALKULYATOR HANDLERS (YANGI FORMULALAR) ---
 @dp.callback_query(F.data == "admin_salary_calc")
 async def salary_calc_start(callback: types.CallbackQuery, state: FSMContext):
     if not check_admin(callback.message.chat.id):
@@ -2075,48 +2076,49 @@ async def salary_lessons(message: types.Message, state: FSMContext):
         )
         await state.set_state(SalaryCalc.selecting_percentage_kr)
 
-# --- IT FOIZ TANLOVI ---
+# --- IT JARIMA FOIZINI SO'RASH ---
 @dp.callback_query(SalaryCalc.selecting_percentage_it, F.data.startswith("it_p_"))
-async def salary_it_perc(callback: types.CallbackQuery, state: FSMContext):
+async def salary_it_perc_selection(callback: types.CallbackQuery, state: FSMContext):
     perc = int(callback.data.replace("it_p_", ""))
     await state.update_data(percentage=perc)
     await callback.message.edit_text(
-        "💰 Ushbu o'qituvchi uchun qo'shimcha jarima (shtraf) bormi?\n"
-        "(Yo'q bo'lsa 0 yozing):"
+        "📊 O'qituvchiga necha FOIZ jarima qo'llaniladi?\n"
+        "(Faqat raqam kiriting, masalan: 10. Agar jarima bo'lmasa 0 yozing):"
     )
-    await state.set_state(SalaryCalc.entering_penalty_manual)
+    await state.set_state(SalaryCalc.entering_penalty_it_percent)
     await callback.answer()
 
-# --- KOREYS TILI FOIZ TANLOVI ---
+@dp.message(SalaryCalc.entering_penalty_it_percent)
+async def salary_it_penalty_process(message: types.Message, state: FSMContext):
+    if not message.text.isdigit():
+        await message.answer("❌ Iltimos, foizni raqamlarda kiriting!")
+        return
+    await state.update_data(penalty_percent=int(message.text))
+    await message.answer(
+        "💵 Ushbu filialdan jami o'quvchilar qilgan to'lov summasini kiriting (so'm):"
+    )
+    await state.set_state(SalaryCalc.entering_payment_it)
+
+# --- KOREYS TILI JARIMA SUMMASINI SO'RASH ---
 @dp.callback_query(SalaryCalc.selecting_percentage_kr, F.data.startswith("kr_p_"))
-async def salary_kr_perc(callback: types.CallbackQuery, state: FSMContext):
+async def salary_kr_perc_selection(callback: types.CallbackQuery, state: FSMContext):
     perc = int(callback.data.replace("kr_p_", ""))
     await state.update_data(percentage=perc)
     await callback.message.edit_text(
-        "💰 Ushbu o'qituvchi uchun qo'shimcha jarima (shtraf) bormi?\n"
+        "💰 O'qituvchiga bu oy uchun qancha jarima (summa) bor?\n"
         "(Yo'q bo'lsa 0 yozing):"
     )
-    await state.set_state(SalaryCalc.entering_penalty_manual)
+    await state.set_state(SalaryCalc.entering_penalty_kr_manual)
     await callback.answer()
 
-@dp.message(SalaryCalc.entering_penalty_manual)
-async def salary_penalty(message: types.Message, state: FSMContext):
-    # Bo'sh joylarni olib tashlash
+@dp.message(SalaryCalc.entering_penalty_kr_manual)
+async def salary_kr_penalty_process(message: types.Message, state: FSMContext):
     val = message.text.replace(' ', '').replace(',', '')
     if not val.isdigit():
-        await message.answer("❌ Faqat raqam kiriting!")
+        await message.answer("❌ Iltimos, summani raqamlarda kiriting!")
         return
     await state.update_data(penalty_manual=int(val))
-    
-    data = await state.get_data()
-    if data['specialty'] == "IT":
-        await message.answer(
-            "💵 Ushbu filialdan jami o'quvchilar qilgan to'lov summasini kiriting (so'm):"
-        )
-        await state.set_state(SalaryCalc.entering_payment_it)
-    else:
-        # Koreys tili uchun jami to'lov shart emas, hisob-kitobga o'tamiz
-        await salary_final_processing(message, state)
+    await salary_final_processing(message, state)
 
 @dp.message(SalaryCalc.entering_payment_it)
 async def salary_payment_it_process(message: types.Message, state: FSMContext):
@@ -2127,32 +2129,37 @@ async def salary_payment_it_process(message: types.Message, state: FSMContext):
     await state.update_data(total_payment=int(val))
     await salary_final_processing(message, state)
 
+# --- YANGI OYLIK HISOB-KITOB MANTIQI (YAKUNIY) ---
 async def salary_final_processing(message: types.Message, state: FSMContext):
-    """Yakuniy hisob-kitob va Excel yaratish"""
+    """Yakuniy hisob-kitob yangi formulalar asosida"""
     data = await state.get_data()
     spec = data['specialty']
     students = data['students']
     lessons = data['lessons']
     perc = data['percentage']
-    manual_penalty = data['penalty_manual']
     
-    exam_penalty = 0
-    gross_salary = 0
+    final_gross = 0
     total_payment = data.get('total_payment', 0)
+    exam_penalty = 0
 
-    # --- HISOB-KITOB MANTIQI ---
     if spec == "IT":
-        # IT: (Jami to'lov * foiz) - jarima
-        gross_salary = (total_payment * perc / 100) - manual_penalty
-        exam_penalty = 0  # IT da imtixon jarimasi alohida hisoblanmaydi
-    else:  # KOREYS TILI
-        # 1. Bazaviy oylik o'quvchi soniga qarab
+        # 1. IT LOGIKASI
+        # O'qituvchining ulushi (35% yoki 45%)
+        base_share = (total_payment * perc / 100)
+        # Jarima foizini o'sha ulushdan ayiramiz
+        penalty_amount = (base_share * data.get('penalty_percent', 0) / 100)
+        final_gross = base_share - penalty_amount
+        
+    else:
+        # 2. KOREYS TILI LOGIKASI
+        # Bazaviy oylik hisoblash
         if students <= 10:
             base_salary = 1800000
         else:
-            base_salary = 1800000 + ((students - 10) * 100000)
+            # 11 tadan ko'p bo'lsa: 1.8 mln + (jami o'quvchi * 100,000)
+            base_salary = 1800000 + (students * 100000)
         
-        # 2. Imtixon foiziga qarab jarima
+        # Imtixon natijasiga ko'ra jarima shkalasi
         if perc < 10: exam_penalty = 900000
         elif perc < 20: exam_penalty = 800000
         elif perc < 30: exam_penalty = 700000
@@ -2164,45 +2171,109 @@ async def salary_final_processing(message: types.Message, state: FSMContext):
         elif perc < 90: exam_penalty = 100000
         else: exam_penalty = 0
         
-        gross_salary = base_salary - exam_penalty - manual_penalty
+        # Imtixon jarimasi ayirilgan summa
+        net_after_exam = base_salary - exam_penalty
+        
+        # Dars soniga ko'ra pro-rata (12 ta dars qoidasi)
+        if lessons < 12:
+            one_lesson_price = net_after_exam / 12
+            final_gross = one_lesson_price * lessons
+        else:
+            final_gross = net_after_exam
+        
+        # Admin kiritgan qo'shimcha jarimani (manual penalty) ayirish
+        final_gross = final_gross - data.get('penalty_manual', 0)
 
-    # 3. Soliq 7.5%
-    tax_amount = gross_salary * 0.075
-    net_salary = gross_salary - tax_amount
+    # 3. SOLIQ USHLANMASI (7.5%)
+    # Barcha o'qituvchilar uchun final summadan 7.5% ayiriladi
+    tax_amount = final_gross * 0.075
+    net_salary = final_gross - tax_amount
 
+    # Natijalarni chiroyli formatlash
+    s_tax = "{:,.0f}".format(tax_amount).replace(',', ' ')
+    s_net = "{:,.0f}".format(net_salary).replace(',', ' ')
+    s_gross = "{:,.0f}".format(final_gross).replace(',', ' ')
+    s_students = "{:,.0f}".format(students).replace(',', ' ')
+    s_lessons = "{:,.0f}".format(lessons).replace(',', ' ')
+    s_penalty = "{:,.0f}".format(data.get('penalty_manual', 0)).replace(',', ' ')
+    
     # --- EXCEL YARATISH ---
-    try:
-        excel_file = await create_salary_excel(data, gross_salary, tax_amount, net_salary, total_payment, exam_penalty)
-        
-        # Formatlash
-        s_net = "{:,.0f}".format(net_salary).replace(',', ' ')
-        s_gross = "{:,.0f}".format(gross_salary).replace(',', ' ')
-        s_tax = "{:,.0f}".format(tax_amount).replace(',', ' ')
-        
-        # Xabar matni
-        result_text = (
-            f"✅ **Hisob-kitob tayyor!**\n\n"
-            f"👤 O'qituvchi: {data['teacher_name']}\n"
-            f"🏢 Filial: {data['branch']}\n"
-            f"📚 Mutaxassislik: {spec}\n"
-            f"👥 O'quvchilar: {students} ta\n"
-            f"📅 Darslar: {lessons} marta\n"
-            f"📊 Imtixon: {perc}%\n"
-            f"💰 Jarima: {manual_penalty:,.0f} so'm\n"
-            f"──────────────────\n"
-            f"💵 Soliqdan oldin: {s_gross} so'm\n"
-            f"💰 Soliq (7.5%): {s_tax} so'm\n"
-            f"💸 **Qo'lga tegadigan: {s_net} so'm**"
-        )
-        
-        await message.answer_document(
-            types.BufferedInputFile(excel_file.read(), filename=f"Oylik_{data['teacher_name']}_{datetime.now(UZB_TZ).strftime('%Y%m')}.xlsx"),
-            caption=result_text,
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        logging.error(f"Excel yaratishda xatolik: {e}")
-        await message.answer(f"❌ Hisob-kitobda xatolik: {str(e)}")
+    wb = Workbook()
+    ws = wb.active
+    ws.title = spec
+    
+    # Border va Stil sozlamalari
+    thin = Side(border_style="thin", color="000000")
+    border = Border(top=thin, left=thin, right=thin, bottom=thin)
+    header_fill = PatternFill(start_color="2E86AB", end_color="2E86AB", fill_type="solid")
+    
+    # Excel Header
+    headers = ['Parametr', 'Qiymat']
+    ws.append(headers)
+    
+    # Ma'lumotlar ro'yxati
+    excel_data = [
+        ['O\'qituvchi', data['teacher_name']],
+        ['Filial', data['branch']],
+        ['Mutaxassislik', spec],
+        ['O\'quvchilar soni', s_students],
+        ['O\'tilgan darslar', s_lessons],
+        ['Imtixon natijasi', f"{perc}%"],
+        ['Imtixon jarimasi', f"{exam_penalty:,.0f}"],
+        ['Qo\'shimcha jarima', s_penalty if spec != 'IT' else f"{data.get('penalty_percent', 0)}%"],
+        ['Jami to\'lov', f"{total_payment:,.0f}" if spec == 'IT' else "—"],
+        ['Soliqdan avvalgi summa', f"{final_gross:,.0f}"],
+        ['Soliq (7.5%)', f"{tax_amount:,.0f}"],
+        ['Qo\'lga tegadigan summa', f"{net_salary:,.0f}"]
+    ]
+    
+    for row in excel_data:
+        ws.append(row)
+
+    # Dizayn berish
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+    
+    for row in ws.iter_rows(min_row=1, max_row=len(excel_data)+1, min_col=1, max_col=2):
+        for cell in row:
+            cell.border = border
+            if cell.column == 1 and cell.row > 1:
+                cell.font = Font(bold=True)
+    
+    # Oxirgi qatorni (Qo'lga tegadigan summa) ajratib ko'rsatish
+    last_row = len(excel_data) + 1
+    ws[f'A{last_row}'].font = Font(bold=True, size=12)
+    ws[f'B{last_row}'].font = Font(bold=True, size=12, color="006100")
+    ws[f'B{last_row}'].fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+
+    ws.column_dimensions['A'].width = 25
+    ws.column_dimensions['B'].width = 30
+
+    excel_file = io.BytesIO()
+    wb.save(excel_file)
+    excel_file.seek(0)
+
+    # Natijani adminga yuborish
+    caption = (
+        f"✅ **Oylik hisob-kitob yakunlandi**\n\n"
+        f"👤 Xodim: {data['teacher_name']}\n"
+        f"🏢 Filial: {data['branch']}\n"
+        f"📚 Mutaxassislik: {spec}\n"
+        f"👥 O'quvchilar: {s_students} ta\n"
+        f"📅 Darslar: {s_lessons} ta\n"
+        f"──────────────────\n"
+        f"💰 Umumiy: {s_gross} so'm\n"
+        f"💸 Soliq (7.5%): {s_tax} so'm\n"
+        f"💵 **Qo'lga tegadi: {s_net} so'm**"
+    )
+
+    await message.answer_document(
+        types.BufferedInputFile(excel_file.read(), filename=f"Oylik_{data['teacher_name']}_{datetime.now(UZB_TZ).strftime('%Y%m')}.xlsx"),
+        caption=caption,
+        parse_mode="Markdown"
+    )
     
     await state.clear()
     
@@ -2214,71 +2285,6 @@ async def salary_final_processing(message: types.Message, state: FSMContext):
         "Boshqa amalni tanlang:",
         reply_markup=builder.as_markup()
     )
-
-async def create_salary_excel(data, gross, tax, net, total_pay, ex_pen):
-    """Oylik hisob-kitob uchun Excel fayl yaratish"""
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
-    
-    wb = Workbook()
-    ws = wb.active
-    ws.title = data['specialty']
-    
-    # Border stili
-    thin = Side(border_style="thin", color="000000")
-    b = Border(top=thin, left=thin, right=thin, bottom=thin)
-    
-    # Header foni
-    header_fill = PatternFill(start_color="2E86AB", end_color="2E86AB", fill_type="solid")
-    
-    # Sarlavhalar
-    headers = ['Parametr', 'Qiymat']
-    ws.append(headers)
-    
-    # Ma'lumotlar
-    content = [
-        ['Ism Familiya', data['teacher_name']],
-        ['Filial', data['branch']],
-        ['Mutaxassislik', data['specialty']],
-        ['O\'quvchilar soni', data['students']],
-        ['Darslar soni', data['lessons']],
-        ['Imtixon natijasi', f"{data['percentage']}%"],
-        ['Imtixon uchun jarima', f"{ex_pen:,.0f}"],
-        ['Qo\'shimcha jarima', f"{data['penalty_manual']:,.0f}"],
-        ['Jami o\'quvchilar to\'lovi', f"{total_pay:,.0f}" if data['specialty'] == 'IT' else "—"],
-        ['Soliqdan avvalgi summa', f"{gross:,.0f}"],
-        ['Soliq (7.5%)', f"{tax:,.0f}"],
-        ['Qo\'lga tegadigan summa', f"{net:,.0f}"]
-    ]
-    
-    for row in content:
-        ws.append(row)
-        
-    # Dizayn
-    for row in ws.iter_rows(min_row=1, max_row=len(content)+1, min_col=1, max_col=2):
-        for cell in row:
-            cell.border = b
-            if cell.row == 1:  # Header qatori
-                cell.font = Font(bold=True, color="FFFFFF")
-                cell.fill = header_fill
-                cell.alignment = Alignment(horizontal="center")
-            elif cell.column == 1:  # Birinchi ustun (parametrlar)
-                cell.font = Font(bold=True)
-    
-    # Oxirgi qatorni (Qo'lga tegadigan summa) ajratib ko'rsatish
-    last_row = len(content) + 1
-    ws[f'A{last_row}'].font = Font(bold=True, size=12)
-    ws[f'B{last_row}'].font = Font(bold=True, size=12, color="006100")
-    ws[f'B{last_row}'].fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-    
-    # Ustun kengligi
-    ws.column_dimensions['A'].width = 25
-    ws.column_dimensions['B'].width = 30
-    
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return buf
 
 @dp.callback_query(F.data == "admin_monthly_report")
 async def admin_monthly_report_start(callback: types.CallbackQuery):
@@ -3005,7 +3011,7 @@ async def admin_stats_teachers(callback: types.CallbackQuery):
             text += f"{medal} {name}{specialty_display}: {count} ta davomat\n"
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton text="🔙 Ortga", callback_data="admin_stats_main"))
+        builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_stats_main"))
         
         await callback.message.edit_text(
             text,
