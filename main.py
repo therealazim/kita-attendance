@@ -480,9 +480,16 @@ TRANSLATIONS = {
         'my_profile': "👤 Mening profilim",
         'profile_info': "👤 Sizning profilingiz:\n\nIsm: {name}\nMutaxassislik: {specialty}\nTil: {lang}",
         'edit_name': "✏️ Ismni o'zgartirish",
+        'edit_my_specialty': "📚 Faoliyat turini o'zgartirish",
         'enter_new_name': "Yangi ism va familiyangizni kiriting:",
         'name_updated': "✅ Ismingiz muvaffaqiyatli yangilandi!",
         'back_to_menu': "🔙 Menyuga qaytish",
+        'select_new_spec': "Yangi faoliyat turini tanlang:",
+        'spec_updated': "✅ Mutaxassislik yangilandi!",
+        'back_btn': "🔙 Ortga",
+        'pdf_title': "Dars Jadvali",
+        'pdf_headers': ['Kun', 'Vaqt'],
+        'pdf_created': "Yaratilgan sana",
         'buttons': {
             'attendance': "📍 Kelganimni tasdiqlash",
             'my_stats': "📊 Mening statistikam",
@@ -539,9 +546,16 @@ TRANSLATIONS = {
         'my_profile': "👤 Мой профиль",
         'profile_info': "👤 Ваш профиль:\n\nИмя: {name}\nСпециальность: {specialty}\nЯзык: {lang}",
         'edit_name': "✏️ Изменить имя",
+        'edit_my_specialty': "📚 Изменить направление",
         'enter_new_name': "Введите новое имя и фамилию:",
         'name_updated': "✅ Ваше имя успешно обновлено!",
         'back_to_menu': "🔙 Вернуться в меню",
+        'select_new_spec': "Выберите новое направление:",
+        'spec_updated': "✅ Специальность обновлена!",
+        'back_btn': "🔙 Назад",
+        'pdf_title': "Расписание занятий",
+        'pdf_headers': ['День', 'Время'],
+        'pdf_created': "Дата создания",
         'buttons': {
             'attendance': "📍 Подтвердить прибытие",
             'my_stats': "📊 Моя статистика",
@@ -598,9 +612,16 @@ TRANSLATIONS = {
         'my_profile': "👤 내 프로필",
         'profile_info': "👤 내 프로필:\n\n이름: {name}\n전공: {specialty}\n언어: {lang}",
         'edit_name': "✏️ 이름 변경",
+        'edit_my_specialty': "📚 전공 변경",
         'enter_new_name': "새 이름과 성을 입력하세요:",
         'name_updated': "✅ 이름이 업데이트되었습니다!",
         'back_to_menu': "🔙 메뉴로 돌아가기",
+        'select_new_spec': "새 전공을 선택하세요:",
+        'spec_updated': "✅ 전공이 업데이트되었습니다!",
+        'back_btn': "🔙 뒤로 가기",
+        'pdf_title': "수업 시간표",
+        'pdf_headers': ['요일', '시간'],
+        'pdf_created': "작성일",
         'buttons': {
             'attendance': "📍 출석 확인",
             'my_stats': "📊 내 통계",
@@ -632,11 +653,26 @@ def check_admin(chat_id):
 
 def get_specialty_display(specialty: str, lang: str = 'uz') -> str:
     if specialty == 'IT':
-        return "💻 IT"
+        if lang == 'uz':
+            return "💻 IT"
+        elif lang == 'ru':
+            return "💻 IT"
+        else:
+            return "💻 IT"
     elif specialty == 'Koreys tili':
-        return "🇰🇷 Koreys tili"
+        if lang == 'uz':
+            return "🇰🇷 Koreys tili"
+        elif lang == 'ru':
+            return "🇰🇷 Корейский язык"
+        else:
+            return "🇰🇷 한국어"
     else:
-        return "🏢 Ofis xodimi"
+        if lang == 'uz':
+            return "🏢 Ofis xodimi"
+        elif lang == 'ru':
+            return "🏢 Офисный сотрудник"
+        else:
+            return "🏢 사무원"
 
 def sort_weekdays(days_dict):
     order = {'Dushanba': 0, 'Seshanba': 1, 'Chorshanba': 2, 'Payshanba': 3, 'Juma': 4, 'Shanba': 5, 'Yakshanba': 6}
@@ -808,27 +844,35 @@ def get_yandex_maps_link(lat: float, lon: float) -> str:
 async def create_schedule_pdf(user_id: int) -> io.BytesIO:
     pdf_buffer = io.BytesIO()
     doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
-    elements =[]
+    elements = []
     styles = getSampleStyleSheet()
     
+    lang = user_languages.get(user_id, 'uz')
+    
+    # Maxsus uslub (Unicode shrifti bilan)
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
-        fontSize=16,
+        fontSize=18,
         alignment=1,
         spaceAfter=20,
-        fontName=FONT_NAME_BOLD
+        fontName=f"{FONT_NAME}-Bold" if FONT_NAME != 'Helvetica' else 'Helvetica-Bold'
     )
     
+    normal_style = styles['Normal']
+    normal_style.fontName = FONT_NAME
+
     name = user_names.get(user_id, "Foydalanuvchi")
     specialty = user_specialty.get(user_id, '')
-    specialty_display = f" [{specialty}]" if specialty else ""
+    spec_display = get_specialty_display(specialty, lang)
     
-    elements.append(Paragraph(f"{name}{specialty_display} - Dars Jadvali", title_style))
+    # 1. Sarlavha: Masalan "Azimjon [Ofis xodimi] - 수업 시간표"
+    title_text = f"{name} [{spec_display}] - {TRANSLATIONS[lang]['pdf_title']}"
+    elements.append(Paragraph(title_text, title_style))
     elements.append(Spacer(1, 10))
     
     if user_id not in user_schedules or not user_schedules[user_id]:
-        elements.append(Paragraph("Sizga hali dars jadvali biriktirilmagan.", styles['Normal']))
+        elements.append(Paragraph(get_text(user_id, 'no_schedules'), normal_style))
     else:
         for schedule_id in user_schedules[user_id]:
             schedule = schedules.get(schedule_id)
@@ -842,37 +886,39 @@ async def create_schedule_pdf(user_id: int) -> io.BytesIO:
                     fontSize=14,
                     textColor=colors.blue,
                     spaceAfter=10,
-                    fontName=FONT_NAME_BOLD
+                    fontName=f"{FONT_NAME}-Bold" if FONT_NAME != 'Helvetica' else 'Helvetica-Bold'
                 )
                 elements.append(Paragraph(f"🏢 {branch} - {lesson_type}", branch_style))
                 
-                days = sort_weekdays(schedule['days'])
-                data = [['Kun', 'Vaqt']]
-                for day, time in days.items():
-                    data.append([day, time])
+                # Jadvallar: Sarlavhalarni tarjima qilish
+                col_headers = TRANSLATIONS[lang]['pdf_headers']
+                data = [col_headers]
+                
+                # Haftaning kunlarini o'qituvchi tiliga o'girish
+                days_dict = schedule['days']
+                # WEEKDAYS[lang] dan foydalanamiz
+                target_weekdays = WEEKDAYS[lang]
+                
+                # Saralash
+                for i, day_uz in enumerate(WEEKDAYS['uz']):
+                    if day_uz in days_dict:
+                        data.append([target_weekdays[i], days_dict[day_uz]])
                 
                 table = Table(data, colWidths=[2.5*inch, 2.5*inch])
                 table.setStyle(TableStyle([
                     ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                     ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                     ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                    ('FONTNAME', (0, 0), (-1, 0), FONT_NAME_BOLD),
-                    ('FONTNAME', (0, 1), (-1, -1), FONT_NAME),
+                    ('FONTNAME', (0, 0), (-1, -1), FONT_NAME),
                     ('GRID', (0, 0), (-1, -1), 1, colors.black),
                     ('FONTSIZE', (0, 0), (-1, -1), 12)
                 ]))
                 elements.append(table)
                 elements.append(Spacer(1, 15))
     
-    date_style = ParagraphStyle(
-        'DateStyle',
-        parent=styles['Normal'],
-        fontSize=10,
-        alignment=2,
-        spaceBefore=20,
-        fontName=FONT_NAME
-    )
-    elements.append(Paragraph(f"Yaratilgan sana: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", date_style))
+    # 2. Footer: Yaratilgan sana
+    created_text = f"{TRANSLATIONS[lang]['pdf_created']}: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}"
+    elements.append(Paragraph(created_text, ParagraphStyle('Footer', parent=normal_style, alignment=2)))
     
     doc.build(elements)
     pdf_buffer.seek(0)
@@ -1054,6 +1100,7 @@ PROFILE_BTNS = ["👤 Mening profilim", "👤 Мой профиль", "👤 내 
 @dp.message(F.text.in_(PROFILE_BTNS))
 async def show_profile(message: types.Message):
     user_id = message.from_user.id
+    lang = user_languages.get(user_id, 'uz')
     
     if user_status.get(user_id) == 'blocked':
         await message.answer(get_text(user_id, 'blocked_user'))
@@ -1061,13 +1108,9 @@ async def show_profile(message: types.Message):
     
     name = user_names.get(user_id, "Noma'lum")
     specialty = user_specialty.get(user_id, "Ko'rsatilmagan")
-    lang = user_languages.get(user_id, 'uz')
     
-    # Mutaxassislikni chiroyli ko'rsatish
     spec_display = get_specialty_display(specialty, lang)
-    
-    lang_names = {'uz': "O'zbekcha", 'ru': "Русский", 'kr': "한국어"}
-    lang_display = lang_names.get(lang, lang)
+    lang_display = {'uz': "O'zbekcha", 'ru': "Русский", 'kr': "한국어"}.get(lang, lang)
     
     profile_text = get_text(user_id, 'profile_info', 
                            name=name, 
@@ -1075,11 +1118,8 @@ async def show_profile(message: types.Message):
                            lang=lang_display)
     
     builder = InlineKeyboardBuilder()
-    # Ismni o'zgartirish
-    builder.row(InlineKeyboardButton(text="✏️ Ismni o'zgartirish", callback_data="edit_name"))
-    # Mutaxassislikni o'zgartirish (YANGI TUGMA)
-    builder.row(InlineKeyboardButton(text="📚 Faoliyat turini o'zgartirish", callback_data="edit_my_specialty"))
-    # Menyuga qaytish
+    builder.row(InlineKeyboardButton(text=get_text(user_id, 'edit_name'), callback_data="edit_name"))
+    builder.row(InlineKeyboardButton(text=get_text(user_id, 'edit_my_specialty'), callback_data="edit_my_specialty"))
     builder.row(InlineKeyboardButton(text=get_text(user_id, 'back_to_menu'), callback_data="back_to_main"))
     
     await message.answer(
@@ -1088,22 +1128,21 @@ async def show_profile(message: types.Message):
         parse_mode="Markdown"
     )
 
-# 1. Mutaxassislik tanlash menyusini ko'rsatish
 @dp.callback_query(F.data == "edit_my_specialty")
 async def edit_my_specialty_start(callback: types.CallbackQuery):
+    uid = callback.from_user.id
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="💻 IT", callback_data="save_spec_IT"))
     builder.row(InlineKeyboardButton(text="🇰🇷 Koreys tili", callback_data="save_spec_Koreys tili"))
     builder.row(InlineKeyboardButton(text="🏢 Ofis xodimi", callback_data="save_spec_Ofis xodimi"))
-    builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="back_to_profile_view"))
+    builder.row(InlineKeyboardButton(text=get_text(uid, 'back_btn'), callback_data="back_to_profile_view"))
     
     await callback.message.edit_text(
-        "Yangi faoliyat turini tanlang:",
+        get_text(uid, 'select_new_spec'),
         reply_markup=builder.as_markup()
     )
     await callback.answer()
 
-# 2. Tanlangan mutaxassislikni DB va RAM ga saqlash
 @dp.callback_query(F.data.startswith("save_spec_"))
 async def save_new_specialty(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -1122,17 +1161,15 @@ async def save_new_specialty(callback: types.CallbackQuery):
                 specialty=new_spec,
                 language=user['language']
             )
-        await callback.answer(f"✅ Yangilandi: {new_spec}", show_alert=True)
+        await callback.answer(get_text(user_id, 'spec_updated'), show_alert=True)
     except Exception as e:
         logging.error(f"Spec update error: {e}")
         await callback.answer("Xatolik yuz berdi")
 
     # Profilni qayta ko'rsatish
     await callback.message.delete()
-    # show_profile funksiyasini message obyekti bilan qayta chaqiramiz
     await show_profile(callback.message)
 
-# 3. Ortga qaytish (Profilga)
 @dp.callback_query(F.data == "back_to_profile_view")
 async def back_to_profile_view(callback: types.CallbackQuery):
     await callback.message.delete()
@@ -1603,7 +1640,7 @@ async def admin_panel(message: types.Message):
             InlineKeyboardButton(text="🏢 Filiallar", callback_data="admin_locations_main"),
             InlineKeyboardButton(text="📅 Dars jadvallari", callback_data="admin_schedules_main")
         )
-        # 4-qator: Hisobotlar (Faqat bitta "Oylik hisobot" - Excel uchun)
+        # 4-qator: Hisobotlar
         builder.row(
             InlineKeyboardButton(text="📊 Oylik hisobot (Excel)", callback_data="admin_excel_menu"),
             InlineKeyboardButton(text="📊 Kunlik PDF", callback_data="admin_pdf_report")
@@ -1900,127 +1937,101 @@ async def admin_excel_report_start(callback: types.CallbackQuery):
 async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
     import calendar
     from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment, PatternFill
-
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    
     wb = Workbook()
-    ws = wb.active
-    ws.title = f"{month}-{year} Davomat"
-
-    # Sarlavhalar
-    headers = ['№', 'Sana', 'Hafta kuni', 'O\'qituvchi', 'Mutaxassislik', 'Filial', 'Dars vaqti', 'Kelgan vaqti', 'Holat', 'Kechikish (min)']
-    ws.append(headers)
-
-    # Dizayn: Sarlavha (To'q ko'k rang)
+    # Standart sheetni o'chirib tashlaymiz, o'rniga sohalarni ochamiz
+    wb.remove(wb.active)
+    
+    # Border stili
+    thin = Side(border_style="thin", color="000000")
+    all_border = Border(top=thin, left=thin, right=thin, bottom=thin)
+    
     header_fill = PatternFill(start_color="2E86AB", end_color="2E86AB", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True)
-    for cell in ws[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal="center")
-
+    
+    specs = ["IT", "Koreys tili", "Ofis xodimi"]
+    
+    # Ma'lumotlarni yig'ish
     _, last_day = calendar.monthrange(year, month)
-    row_idx = 2
+    
+    for spec in specs:
+        ws = wb.create_sheet(title=spec)
+        headers = ['№', 'Sana', 'Hafta kuni', 'O\'qituvchi', 'Filial', 'Dars vaqti', 'Kelgan vaqti', 'Holat', 'Kechikish (min)']
+        ws.append(headers)
+        
+        # Header dizayni
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center")
+            cell.border = all_border
 
-    # Har bir kun bo'yicha sikl
-    for d in range(1, last_day + 1):
-        target_date = f"{year}-{month:02d}-{d:02d}"
-        date_obj = d_date(year, month, d)
-        weekday = WEEKDAYS_UZ[date_obj.weekday()]
-
-        day_records = []
-
-        # 1. Avval barcha dars jadvallarini ko'rib chiqamiz (Kimlar kelishi kerak edi)
-        for s_id, s_data in schedules.items():
-            uid = s_data['user_id']
-            branch = s_data['branch']
+        row_idx = 2
+        for d in range(1, last_day + 1):
+            target_date = f"{year}-{month:02d}-{d:02d}"
+            d_obj = d_date(year, month, d)
+            weekday = WEEKDAYS_UZ[d_obj.weekday()]
             
-            if weekday in s_data['days']:
-                scheduled_time = s_data['days'][weekday] # Masalan "14:00"
+            day_records = []
+            # 1. Shu soha bo'yicha jadvallarni tekshirish
+            for s_id, s_data in schedules.items():
+                uid = s_data['user_id']
+                if user_specialty.get(uid) != spec: continue
+                if weekday not in s_data['days']: continue
                 
-                # Ushbu dars uchun davomat bormi tekshiramiz
-                actual_att = None
-                for att in daily_attendance_log:
-                    if att[0] == uid and att[1] == branch and att[2] == target_date:
-                        actual_att = att
-                        break
+                branch = s_data['branch']
+                sch_time = s_data['days'][weekday]
+                
+                # Davomat bormi?
+                actual_att = next((a for a in daily_attendance_log if a[0] == uid and a[1] == branch and a[2] == target_date), None)
                 
                 if actual_att:
-                    # Kelganlar
-                    day_records.append({
-                        'lesson_time': scheduled_time,
-                        'att_time': actual_att[3],
-                        'name': user_names.get(uid, "Noma'lum"),
-                        'spec': user_specialty.get(uid, ""),
-                        'branch': branch,
-                        'status': 'PRESENT',
-                        'uid': uid
-                    })
+                    day_records.append({'time': sch_time, 'att': actual_att[3], 'name': user_names.get(uid), 'br': branch, 'st': 'PRESENT'})
                 else:
-                    # Kelmaganlar
-                    day_records.append({
-                        'lesson_time': scheduled_time,
-                        'att_time': "—",
-                        'name': user_names.get(uid, "Noma'lum"),
-                        'spec': user_specialty.get(uid, ""),
-                        'branch': branch,
-                        'status': 'ABSENT',
-                        'uid': uid
-                    })
+                    day_records.append({'time': sch_time, 'att': "—", 'name': user_names.get(uid), 'br': branch, 'st': 'ABSENT'})
 
-        # 2. Jadvalda yo'q lekin kelganlar (masalan Ofis xodimi yoki unscheduled visit)
-        for att in daily_attendance_log:
-            if att[2] == target_date:
-                # Agar allaqachon jadval orqali qo'shilgan bo'lsa skip qilamiz
-                if any(r['uid'] == att[0] and r['branch'] == att[1] for r in day_records):
-                    continue
-                day_records.append({
-                    'lesson_time': "—", # Jadvalda yo'q
-                    'att_time': att[3],
-                    'name': user_names.get(att[0], "Noma'lum"),
-                    'spec': user_specialty.get(att[0], ""),
-                    'branch': att[1],
-                    'status': 'PRESENT',
-                    'uid': att[0]
-                })
+            # 2. Jadvalda yo'q lekin kelganlar
+            for att in daily_attendance_log:
+                if att[2] == target_date and user_specialty.get(att[0]) == spec:
+                    if not any(r['name'] == user_names.get(att[0]) and r['br'] == att[1] for r in day_records):
+                        day_records.append({'time': "—", 'att': att[3], 'name': user_names.get(att[0]), 'br': att[1], 'st': 'PRESENT'})
 
-        # --- SARALASH --- 
-        # Dars vaqti bo'yicha ketma-ketlikda saralaymiz
-        # Jadvalda yo'qlar eng pastga tushadi
-        day_records.sort(key=lambda x: x['lesson_time'] if x['lesson_time'] != "—" else "99:99")
+            # Saralash (Dars vaqti bo'yicha)
+            day_records.sort(key=lambda x: x['time'] if x['time'] != "—" else "99:99")
 
-        # Excelga yozish
-        for rec in day_records:
-            if rec['status'] == 'ABSENT':
-                st, late_m = "KELMAGAN", "—"
-            else:
-                ontime, mins = calculate_lateness(rec['att_time'], rec['lesson_time'] if rec['lesson_time'] != "—" else rec['att_time'][:5])
-                st = "Vaqtida" if ontime else "Kechikkan"
-                late_m = 0 if ontime else mins
+            # Excelga yozish
+            for r in day_records:
+                if r['st'] == 'ABSENT':
+                    status_text, late_m = "KELMAGAN", "—"
+                else:
+                    ontime, mins = calculate_lateness(r['att'], r['time'] if r['time'] != "—" else r['att'][:5])
+                    status_text = "Vaqtida" if ontime else "Kechikkan"
+                    late_m = 0 if ontime else mins
 
-            ws.append([
-                row_idx - 1, target_date, weekday, rec['name'], rec['spec'], 
-                rec['branch'], rec['lesson_time'], rec['att_time'], st, late_m
-            ])
-            
-            # Rang berish
-            stat_cell = ws.cell(row=row_idx, column=9)
-            if st == "Kechikkan": 
-                stat_cell.font = Font(color="FF0000")
-            elif st == "Vaqtida": 
-                stat_cell.font = Font(color="008000")
-            elif st == "KELMAGAN": 
-                for c in range(1, 11):
-                    ws.cell(row=row_idx, column=c).fill = PatternFill(start_color="FFCCCC", fill_type="solid")
-            
-            row_idx += 1
+                row_data = [row_idx-1, target_date, weekday, r['name'], r['br'], r['time'], r['att'], status_text, late_m]
+                ws.append(row_data)
+                
+                # Kataklarni bezash (Border va Status rangi)
+                for col in range(1, 10):
+                    cell = ws.cell(row=row_idx, column=col)
+                    cell.border = all_border
+                    cell.alignment = Alignment(horizontal="center")
+                    
+                    # Faqat "Holat" ustunini (8-ustun) bo'yash
+                    if col == 8:
+                        if status_text == "Kechikkan": 
+                            cell.font = Font(color="FF0000", bold=True)
+                        elif status_text == "Vaqtida": 
+                            cell.font = Font(color="008000", bold=True)
+                        elif status_text == "KELMAGAN": 
+                            cell.fill = PatternFill(start_color="FFCCCC", fill_type="solid")
+                
+                row_idx += 1
 
-    # Auto-width: Ustunlarni kengaytirish
-    for col in ws.columns:
-        max_len = 0
-        for cell in col:
-            if cell.value: 
-                max_len = max(max_len, len(str(cell.value)))
-        ws.column_dimensions[col[0].column_letter].width = max_len + 3
+        # Ustun kengligi
+        for col in ws.columns:
+            ws.column_dimensions[col[0].column_letter].width = 18
 
     buf = io.BytesIO()
     wb.save(buf)
