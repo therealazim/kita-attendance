@@ -1048,7 +1048,10 @@ async def set_changed_language(callback: types.CallbackQuery):
         logging.error(f"set_changed_language error: {e}")
         await callback.answer("Xatolik yuz berdi")
 
-@dp.message(F.text == "👤 Mening profilim")
+# Profil tugmasi uchun barcha variantlar ro'yxati
+PROFILE_BTNS = ["👤 Mening profilim", "👤 Мой профиль", "👤 내 프로필"]
+
+@dp.message(F.text.in_(PROFILE_BTNS))
 async def show_profile(message: types.Message):
     user_id = message.from_user.id
     
@@ -1060,44 +1063,80 @@ async def show_profile(message: types.Message):
     specialty = user_specialty.get(user_id, "Ko'rsatilmagan")
     lang = user_languages.get(user_id, 'uz')
     
-    if lang == 'uz':
-        specialty_display = get_specialty_display(specialty, 'uz')
-    elif lang == 'ru':
-        if specialty == 'IT':
-            specialty_display = "💻 IT"
-        elif specialty == 'Koreys tili':
-            specialty_display = "🇰🇷 Корейский язык"
-        else:
-            specialty_display = "🏢 Офисный сотрудник"
-    else:
-        if specialty == 'IT':
-            specialty_display = "💻 IT"
-        elif specialty == 'Koreys tili':
-            specialty_display = "🇰🇷 한국어"
-        else:
-            specialty_display = "🏢 사무원"
+    # Mutaxassislikni chiroyli ko'rsatish
+    spec_display = get_specialty_display(specialty, lang)
     
     lang_names = {'uz': "O'zbekcha", 'ru': "Русский", 'kr': "한국어"}
     lang_display = lang_names.get(lang, lang)
     
     profile_text = get_text(user_id, 'profile_info', 
                            name=name, 
-                           specialty=specialty_display, 
+                           specialty=spec_display, 
                            lang=lang_display)
     
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text=get_text(user_id, 'edit_name'), callback_data="edit_name")
-    )
-    builder.row(
-        InlineKeyboardButton(text=get_text(user_id, 'back_to_menu'), callback_data="back_to_main")
-    )
+    # Ismni o'zgartirish
+    builder.row(InlineKeyboardButton(text="✏️ Ismni o'zgartirish", callback_data="edit_name"))
+    # Mutaxassislikni o'zgartirish (YANGI TUGMA)
+    builder.row(InlineKeyboardButton(text="📚 Faoliyat turini o'zgartirish", callback_data="edit_my_specialty"))
+    # Menyuga qaytish
+    builder.row(InlineKeyboardButton(text=get_text(user_id, 'back_to_menu'), callback_data="back_to_main"))
     
     await message.answer(
         profile_text,
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
     )
+
+# 1. Mutaxassislik tanlash menyusini ko'rsatish
+@dp.callback_query(F.data == "edit_my_specialty")
+async def edit_my_specialty_start(callback: types.CallbackQuery):
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="💻 IT", callback_data="save_spec_IT"))
+    builder.row(InlineKeyboardButton(text="🇰🇷 Koreys tili", callback_data="save_spec_Koreys tili"))
+    builder.row(InlineKeyboardButton(text="🏢 Ofis xodimi", callback_data="save_spec_Ofis xodimi"))
+    builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="back_to_profile_view"))
+    
+    await callback.message.edit_text(
+        "Yangi faoliyat turini tanlang:",
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+# 2. Tanlangan mutaxassislikni DB va RAM ga saqlash
+@dp.callback_query(F.data.startswith("save_spec_"))
+async def save_new_specialty(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    new_spec = callback.data.replace("save_spec_", "")
+    
+    # RAM ni yangilash
+    user_specialty[user_id] = new_spec
+    
+    # PostgreSQL ni yangilash
+    try:
+        user = await db.get_user(user_id)
+        if user:
+            await db.save_user(
+                user_id=user_id,
+                full_name=user['full_name'],
+                specialty=new_spec,
+                language=user['language']
+            )
+        await callback.answer(f"✅ Yangilandi: {new_spec}", show_alert=True)
+    except Exception as e:
+        logging.error(f"Spec update error: {e}")
+        await callback.answer("Xatolik yuz berdi")
+
+    # Profilni qayta ko'rsatish
+    await callback.message.delete()
+    # show_profile funksiyasini message obyekti bilan qayta chaqiramiz
+    await show_profile(callback.message)
+
+# 3. Ortga qaytish (Profilga)
+@dp.callback_query(F.data == "back_to_profile_view")
+async def back_to_profile_view(callback: types.CallbackQuery):
+    await callback.message.delete()
+    await show_profile(callback.message)
 
 @dp.callback_query(F.data == "edit_name")
 async def edit_name_start(callback: types.CallbackQuery, state: FSMContext):
@@ -1550,21 +1589,24 @@ async def admin_panel(message: types.Message):
     
     try:
         builder = InlineKeyboardBuilder()
+        # 1-qator: Oylik kalkulyatori
         builder.row(
             InlineKeyboardButton(text="💰 Oylik hisoblash", callback_data="admin_salary_calc")
         )
+        # 2-qator: Boshqaruv
         builder.row(
             InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
             InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast")
         )
+        # 3-qator: Tuzilma
         builder.row(
             InlineKeyboardButton(text="🏢 Filiallar", callback_data="admin_locations_main"),
             InlineKeyboardButton(text="📅 Dars jadvallari", callback_data="admin_schedules_main")
         )
+        # 4-qator: Hisobotlar (Faqat bitta "Oylik hisobot" - Excel uchun)
         builder.row(
-            InlineKeyboardButton(text="📅 Oylik hisobot", callback_data="admin_monthly_report"),
-            InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report"),
-            InlineKeyboardButton(text="📊 Excel Hisobot", callback_data="admin_excel_menu")
+            InlineKeyboardButton(text="📊 Oylik hisobot (Excel)", callback_data="admin_excel_menu"),
+            InlineKeyboardButton(text="📊 Kunlik PDF", callback_data="admin_pdf_report")
         )
         
         await message.answer(
@@ -1858,7 +1900,7 @@ async def admin_excel_report_start(callback: types.CallbackQuery):
 async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
     import calendar
     from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.styles import Font, Alignment, PatternFill
 
     wb = Workbook()
     ws = wb.active
@@ -1868,7 +1910,7 @@ async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
     headers = ['№', 'Sana', 'Hafta kuni', 'O\'qituvchi', 'Mutaxassislik', 'Filial', 'Dars vaqti', 'Kelgan vaqti', 'Holat', 'Kechikish (min)']
     ws.append(headers)
 
-    # Dizayn: Sarlavhani bo'yash va qalin qilish
+    # Dizayn: Sarlavha (To'q ko'k rang)
     header_fill = PatternFill(start_color="2E86AB", end_color="2E86AB", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True)
     for cell in ws[1]:
@@ -1876,85 +1918,114 @@ async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center")
 
-    months_uz = {1: "Yanvar", 2: "Fevral", 3: "Mart", 4: "Aprel", 5: "May", 6: "Iyun", 
-                 7: "Iyul", 8: "Avgust", 9: "Sentabr", 10: "Oktabr", 11: "Noyabr", 12: "Dekabr"}
     _, last_day = calendar.monthrange(year, month)
-    
-    row_num = 1
-    # Har bir kunni tahlil qilamiz
-    for day in range(1, last_day + 1):
-        target_date = f"{year}-{month:02d}-{day:02d}"
-        date_obj = d_date(year, month, day)
+    row_idx = 2
+
+    # Har bir kun bo'yicha sikl
+    for d in range(1, last_day + 1):
+        target_date = f"{year}-{month:02d}-{d:02d}"
+        date_obj = d_date(year, month, d)
         weekday = WEEKDAYS_UZ[date_obj.weekday()]
 
-        # Shu kungi barcha davomatlar va jadvallarni solishtiramiz
-        day_data = []
-        recorded_uids = []
+        day_records = []
 
-        # 1. Kelganlar
-        for att in daily_attendance_log:
-            if att[2] == target_date:
-                day_data.append(list(att) + ["PRESENT"])
-                recorded_uids.append(att[0])
-
-        # 2. Kelmaganlar (Jadvalda bor, lekin logda yo'q)
+        # 1. Avval barcha dars jadvallarini ko'rib chiqamiz (Kimlar kelishi kerak edi)
         for s_id, s_data in schedules.items():
             uid = s_data['user_id']
-            if weekday in s_data['days'] and uid not in recorded_uids:
-                day_data.append([uid, s_data['branch'], target_date, "00:00:00", "ABSENT"])
-                recorded_uids.append(uid)  # Takrorlanmasligi uchun
-
-        # Ma'lumotlarni Excelga yozish
-        for item in sorted(day_data, key=lambda x: x[3]):
-            uid, branch, date_str, att_time, *status_type = item
-            name = user_names.get(uid, "Noma'lum")
-            spec = user_specialty.get(uid, "")
+            branch = s_data['branch']
             
-            # Dars vaqtini topish
-            lesson_time = "—"
-            for s_id in user_schedules.get(uid, []):
-                s = schedules.get(s_id)
-                if s and s['branch'] == branch and weekday in s['days']:
-                    lesson_time = s['days'][weekday]
-                    break
+            if weekday in s_data['days']:
+                scheduled_time = s_data['days'][weekday] # Masalan "14:00"
+                
+                # Ushbu dars uchun davomat bormi tekshiramiz
+                actual_att = None
+                for att in daily_attendance_log:
+                    if att[0] == uid and att[1] == branch and att[2] == target_date:
+                        actual_att = att
+                        break
+                
+                if actual_att:
+                    # Kelganlar
+                    day_records.append({
+                        'lesson_time': scheduled_time,
+                        'att_time': actual_att[3],
+                        'name': user_names.get(uid, "Noma'lum"),
+                        'spec': user_specialty.get(uid, ""),
+                        'branch': branch,
+                        'status': 'PRESENT',
+                        'uid': uid
+                    })
+                else:
+                    # Kelmaganlar
+                    day_records.append({
+                        'lesson_time': scheduled_time,
+                        'att_time': "—",
+                        'name': user_names.get(uid, "Noma'lum"),
+                        'spec': user_specialty.get(uid, ""),
+                        'branch': branch,
+                        'status': 'ABSENT',
+                        'uid': uid
+                    })
 
-            if "ABSENT" in status_type:
-                status, late_min, att_time_disp = "KELMAGAN", "—", "—"
+        # 2. Jadvalda yo'q lekin kelganlar (masalan Ofis xodimi yoki unscheduled visit)
+        for att in daily_attendance_log:
+            if att[2] == target_date:
+                # Agar allaqachon jadval orqali qo'shilgan bo'lsa skip qilamiz
+                if any(r['uid'] == att[0] and r['branch'] == att[1] for r in day_records):
+                    continue
+                day_records.append({
+                    'lesson_time': "—", # Jadvalda yo'q
+                    'att_time': att[3],
+                    'name': user_names.get(att[0], "Noma'lum"),
+                    'spec': user_specialty.get(att[0], ""),
+                    'branch': att[1],
+                    'status': 'PRESENT',
+                    'uid': att[0]
+                })
+
+        # --- SARALASH --- 
+        # Dars vaqti bo'yicha ketma-ketlikda saralaymiz
+        # Jadvalda yo'qlar eng pastga tushadi
+        day_records.sort(key=lambda x: x['lesson_time'] if x['lesson_time'] != "—" else "99:99")
+
+        # Excelga yozish
+        for rec in day_records:
+            if rec['status'] == 'ABSENT':
+                st, late_m = "KELMAGAN", "—"
             else:
-                ontime, mins = calculate_lateness(att_time, lesson_time)
-                status = "Vaqtida" if ontime else "Kechikkan"
-                late_min = 0 if ontime else mins
-                att_time_disp = att_time
+                ontime, mins = calculate_lateness(rec['att_time'], rec['lesson_time'] if rec['lesson_time'] != "—" else rec['att_time'][:5])
+                st = "Vaqtida" if ontime else "Kechikkan"
+                late_m = 0 if ontime else mins
 
-            row_num += 1
-            ws.append([row_num-1, date_str, weekday, name, spec, branch, lesson_time, att_time_disp, status, late_min])
+            ws.append([
+                row_idx - 1, target_date, weekday, rec['name'], rec['spec'], 
+                rec['branch'], rec['lesson_time'], rec['att_time'], st, late_m
+            ])
+            
+            # Rang berish
+            stat_cell = ws.cell(row=row_idx, column=9)
+            if st == "Kechikkan": 
+                stat_cell.font = Font(color="FF0000")
+            elif st == "Vaqtida": 
+                stat_cell.font = Font(color="008000")
+            elif st == "KELMAGAN": 
+                for c in range(1, 11):
+                    ws.cell(row=row_idx, column=c).fill = PatternFill(start_color="FFCCCC", fill_type="solid")
+            
+            row_idx += 1
 
-            # Rangli statuslar (Excel kataklarini bo'yash)
-            status_cell = ws.cell(row=row_num, column=9)
-            if status == "Kechikkan":
-                status_cell.font = Font(color="FF0000")  # Qizil
-            elif status == "Vaqtida":
-                status_cell.font = Font(color="008000")  # Yashil
-            elif status == "KELMAGAN":
-                status_cell.fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
-
-    # Ustun kengligini avtomatik moslash
+    # Auto-width: Ustunlarni kengaytirish
     for col in ws.columns:
-        max_length = 0
-        column = col[0].column_letter
+        max_len = 0
         for cell in col:
-            try:
-                if len(str(cell.value)) > max_length:
-                    max_length = len(str(cell.value))
-            except:
-                pass
-        adjusted_width = min(max_length + 2, 50)  # Maksimal 50 belgi
-        ws.column_dimensions[column].width = adjusted_width
+            if cell.value: 
+                max_len = max(max_len, len(str(cell.value)))
+        ws.column_dimensions[col[0].column_letter].width = max_len + 3
 
-    excel_file = io.BytesIO()
-    wb.save(excel_file)
-    excel_file.seek(0)
-    return excel_file
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
 
 @dp.callback_query(F.data.startswith("get_excel_"))
 async def process_excel_download(callback: types.CallbackQuery):
@@ -3996,21 +4067,24 @@ async def admin_back(callback: types.CallbackQuery):
     
     try:
         builder = InlineKeyboardBuilder()
+        # 1-qator: Oylik kalkulyatori
         builder.row(
             InlineKeyboardButton(text="💰 Oylik hisoblash", callback_data="admin_salary_calc")
         )
+        # 2-qator: Boshqaruv
         builder.row(
             InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
             InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast")
         )
+        # 3-qator: Tuzilma
         builder.row(
             InlineKeyboardButton(text="🏢 Filiallar", callback_data="admin_locations_main"),
             InlineKeyboardButton(text="📅 Dars jadvallari", callback_data="admin_schedules_main")
         )
+        # 4-qator: Hisobotlar
         builder.row(
-            InlineKeyboardButton(text="📅 Oylik hisobot", callback_data="admin_monthly_report"),
-            InlineKeyboardButton(text="📊 PDF Hisobot", callback_data="admin_pdf_report"),
-            InlineKeyboardButton(text="📊 Excel Hisobot", callback_data="admin_excel_menu")
+            InlineKeyboardButton(text="📊 Oylik hisobot (Excel)", callback_data="admin_excel_menu"),
+            InlineKeyboardButton(text="📊 Kunlik PDF", callback_data="admin_pdf_report")
         )
         
         await callback.message.edit_text(
