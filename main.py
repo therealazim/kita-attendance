@@ -116,17 +116,27 @@ ALLOWED_DISTANCE = 500
 class MonthlyReport(StatesGroup):
     waiting_for_date_range = State()
 
-# --- OYLIK KALKULYATOR UCHUN STATE (YANGI - KO'P FILIALLI) ---
+# --- OYLIK KALKULYATOR UCHUN STATE (YANGI - PROFESSIONAL) ---
 class SalaryCalc(StatesGroup):
     selecting_specialty = State()
     selecting_teacher = State()
-    # Yangi mantiq uchun tartib
-    entering_branch_data = State() 
+    # Ko'p filialli hisob uchun
+    current_branch_idx = State()
+    all_branches = State()
+    calculated_results = State()
+    # Vaqtinchalik ma'lumotlar
+    temp_students = State()
+    temp_lessons = State()
+    temp_perc = State()
+    temp_penalty_val = State()
+    temp_payment = State()
+    # Holatlar
     entering_students = State()
     entering_lessons = State()
     selecting_percentage = State()
-    entering_penalty = State()
-    entering_payment = State() # Faqat IT uchun
+    entering_penalty_it_percent = State()  # IT uchun % jarima
+    entering_penalty_kr_sum = State()      # Koreys tili uchun so'mda jarima
+    entering_payment = State()
 
 # --- VIZUAL JADVAL UCHUN STATE ---
 class VisualSchedule(StatesGroup):
@@ -1470,26 +1480,26 @@ async def handle_location(message: types.Message):
     if is_fake:
         # Foydalanuvchiga yuboriladigan qat'iy ogohlantirish
         user_warning = (
-            "⚠️ **DIQQAT: SOXTA DAVOMATGA URINISH!**\n\n"
+            "⚠️ DIQQAT: SOXTA DAVOMATGA URINISH!\n\n"
             "Siz boshqa foydalanuvchidan uzatilgan (forward) lokatsiyani yuborish orqali "
-            "yoki xaritadan nuqtani qo'lda tanlab **yolg'on davomat** qilishga urundingiz.\n\n"
-            "🚫 Ushbu harakatingiz soxtakorlik sifatida qayd etildi va **adminlarga (rahbariyatga) yuborildi!**\n"
+            "yoki xaritadan nuqtani qo'lda tanlab yolg'on davomat qilishga urundingiz.\n\n"
+            "🚫 Ushbu harakatingiz soxtakorlik sifatida qayd etildi va adminlarga (rahbariyatga) yuborildi!\n"
             "Iltimos, darsga kelganingizda faqat botdagi maxsus tugmani bosing."
         )
-        await message.answer(user_warning, parse_mode="Markdown")
+        await message.answer(user_warning)
 
         # Adminga yuboriladigan xabar
         t_name = user_names.get(user_id, message.from_user.full_name)
         t_spec = user_specialty.get(user_id, 'Noma\'lum')
         admin_alert = (
-            f"🚨 **SOXTA DAVOMATGA URINISH!**\n\n"
-            f"👤 **Xodim:** {t_name}\n"
-            f"📚 **Soha:** {t_spec}\n"
-            f"🆔 **ID:** `{user_id}`\n"
-            f"📍 **Holat:** {fake_reason}\n"
-            f"🕒 **Vaqt:** {datetime.now(UZB_TZ).strftime('%H:%M:%S')}"
+            f"🚨 SOXTA DAVOMATGA URINISH!\n\n"
+            f"👤 Xodim: {t_name}\n"
+            f"📚 Soha: {t_spec}\n"
+            f"🆔 ID: `{user_id}`\n"
+            f"📍 Holat: {fake_reason}\n"
+            f"🕒 Vaqt: {datetime.now(UZB_TZ).strftime('%H:%M:%S')}"
         )
-        await bot.send_message(ADMIN_GROUP_ID, admin_alert, parse_mode="Markdown")
+        await bot.send_message(ADMIN_GROUP_ID, admin_alert)
         return
 
     # 3. AGAR LOKATSIYA TO'G'RI (TUGMA ORQALI) YUBORILGAN BO'LSA
@@ -1520,8 +1530,7 @@ async def handle_location(message: types.Message):
         
         if already_attended:
             await message.answer(
-                get_text(user_id, 'already_attended', branch=found_branch),
-                parse_mode="Markdown"
+                get_text(user_id, 'already_attended', branch=found_branch)
             )
             return
 
@@ -1554,7 +1563,6 @@ async def handle_location(message: types.Message):
             await bot.send_message(
                 chat_id=ADMIN_GROUP_ID, 
                 text=report, 
-                parse_mode="Markdown",
                 reply_markup=builder.as_markup()
             )
             
@@ -1572,14 +1580,13 @@ async def handle_location(message: types.Message):
             weather_message = format_weather_message(weather_data, user_languages.get(user_id, 'uz'))
             
             full_response = f"{success_text}\n\n{weather_message}"
-            await message.answer(full_response, parse_mode="Markdown")
+            await message.answer(full_response)
             
         except Exception as e:
             logging.error(f"Error: {e}")
     else:
         await message.answer(
-            get_text(user_id, 'not_in_area'),
-            parse_mode="Markdown"
+            get_text(user_id, 'not_in_area')
         )
 
 async def get_weather_by_coords(lat: float, lon: float):
@@ -1822,8 +1829,7 @@ async def admin_panel(message: types.Message):
         
         await message.answer(
             "👨‍💼 Admin Panel\n\nKerakli bo'limni tanlang:",
-            reply_markup=builder.as_markup(),
-            parse_mode="Markdown"
+            reply_markup=builder.as_markup()
         )
     except Exception as e:
         logging.error(f"admin_panel error: {e}")
@@ -1941,7 +1947,7 @@ async def visual_schedule_process(callback: types.CallbackQuery, state: FSMConte
         else:
             await callback.message.answer_photo(
                 types.BufferedInputFile(img_buf.read(), filename="timetable.png"),
-                caption=f"🖼 **{branch_name}** filialining haftalik bandlik xaritasi."
+                caption=f"🖼 {branch_name} filialining haftalik bandlik xaritasi."
             )
     except Exception as e:
         logging.error(f"Visual schedule error: {e}")
@@ -1951,7 +1957,7 @@ async def visual_schedule_process(callback: types.CallbackQuery, state: FSMConte
     await state.clear()
     await callback.answer()
 
-# --- OYLIK KALKULYATOR HANDLERS (YANGI - KO'P FILIALLI) ---
+# --- OYLIK KALKULYATOR HANDLERS (YANGI - PROFESSIONAL) ---
 @dp.callback_query(F.data == "admin_salary_calc")
 async def salary_calc_start(callback: types.CallbackQuery, state: FSMContext):
     if not check_admin(callback.message.chat.id):
@@ -2022,111 +2028,117 @@ async def salary_calc_teacher_selected(callback: types.CallbackQuery, state: FSM
     await salary_ask_next_branch(callback.message, state)
     await callback.answer()
 
+# --- FILIAL MA'LUMOTLARINI SO'RASH BOSHLANISHI ---
 async def salary_ask_next_branch(message: types.Message, state: FSMContext):
     data = await state.get_data()
     idx = data['current_branch_idx']
     branches = data['all_branches']
-    
     current_branch = branches[idx]
-    await message.answer(f"🏢 **Filial: {current_branch}**\n\nUshbu filialdagi o'quvchilar sonini kiriting:")
+    
+    # ** belgilari olib tashlandi
+    await message.answer(f"🏢 Filial: {current_branch}\n\nUshbu filialdagi o'quvchilar sonini kiriting:")
     await state.set_state(SalaryCalc.entering_students)
 
 @dp.message(SalaryCalc.entering_students)
 async def salary_students_step(message: types.Message, state: FSMContext):
     if not message.text.isdigit():
-        await message.answer("❌ Raqam kiriting!")
+        await message.answer("Raqam kiriting!")
         return
     await state.update_data(temp_students=int(message.text))
-    await message.answer("📚 Ushbu filialda bu oy necha marta dars o'tdi?")
+    await message.answer("Ushbu filialda bu oy necha marta dars o'tdi?")
     await state.set_state(SalaryCalc.entering_lessons)
 
 @dp.message(SalaryCalc.entering_lessons)
 async def salary_lessons_step(message: types.Message, state: FSMContext):
     if not message.text.isdigit():
-        await message.answer("❌ Raqam kiriting!")
+        await message.answer("Raqam kiriting!")
         return
     await state.update_data(temp_lessons=int(message.text))
     
     data = await state.get_data()
     builder = InlineKeyboardBuilder()
-    
     if data['specialty'] == "IT":
-        builder.row(
-            InlineKeyboardButton(text="35%", callback_data="p_it_35"),
-            InlineKeyboardButton(text="45%", callback_data="p_it_45")
-        )
-        await message.answer("📊 Imtixon natijasini tanlang:", reply_markup=builder.as_markup())
-    else:  # Koreys tili
+        builder.row(InlineKeyboardButton(text="35%", callback_data="p_it_35"),
+                    InlineKeyboardButton(text="45%", callback_data="p_it_45"))
+        await message.answer("Imtixon natijasini tanlang:", reply_markup=builder.as_markup())
+    else:
         for p in range(10, 101, 10):
             builder.add(InlineKeyboardButton(text=f"{p}%", callback_data=f"p_kr_{p}"))
         builder.adjust(3)
-        await message.answer("📊 Imtixon natijasini tanlang (%):", reply_markup=builder.as_markup())
-    
+        await message.answer("Imtixon natijasini tanlang (%):", reply_markup=builder.as_markup())
     await state.set_state(SalaryCalc.selecting_percentage)
 
 @dp.callback_query(SalaryCalc.selecting_percentage)
 async def salary_perc_step(callback: types.CallbackQuery, state: FSMContext):
-    # Callback format: p_it_35 yoki p_kr_40
-    parts = callback.data.split('_')
-    perc = int(parts[-1])
+    perc = int(callback.data.split('_')[-1])
     await state.update_data(temp_perc=perc)
-    await callback.message.edit_text("💰 Ushbu filial uchun jarima (shtraf) summasini kiriting (yo'q bo'lsa 0):")
-    await state.set_state(SalaryCalc.entering_penalty)
-    await callback.answer()
-
-@dp.message(SalaryCalc.entering_penalty)
-async def salary_penalty_step(message: types.Message, state: FSMContext):
-    val = message.text.replace(' ', '').replace(',', '')
-    if not val.isdigit():
-        await message.answer("❌ Raqam kiriting!")
-        return
-    await state.update_data(temp_penalty=int(val))
     
     data = await state.get_data()
     if data['specialty'] == "IT":
-        await message.answer("💵 Ushbu filialdan jami o'quvchilar to'lovini kiriting (so'm):")
-        await state.set_state(SalaryCalc.entering_payment)
+        # IT uchun jarima foizda so'raladi
+        await callback.message.edit_text("Ushbu filial uchun jarima FOIZINI kiriting (masalan: 10. Jarima bo'lmasa 0):")
+        await state.set_state(SalaryCalc.entering_penalty_it_percent)
     else:
-        await process_branch_calculation(message, state)
+        # Koreys tili uchun jarima so'mda so'raladi
+        await callback.message.edit_text("Ushbu filial uchun jarima SUMMASINI kiriting (so'mda, masalan: 50000. Jarima bo'lmasa 0):")
+        await state.set_state(SalaryCalc.entering_penalty_kr_sum)
+    await callback.answer()
+
+# --- IT FOIZLI JARIMA HANDLERI ---
+@dp.message(SalaryCalc.entering_penalty_it_percent)
+async def salary_it_penalty_percent(message: types.Message, state: FSMContext):
+    if not message.text.isdigit():
+        await message.answer("Raqamda kiriting!")
+        return
+    await state.update_data(temp_penalty_val=int(message.text))
+    await message.answer("Ushbu filialdan jami o'quvchilar to'lovini kiriting:")
+    await state.set_state(SalaryCalc.entering_payment)
+
+# --- KOREYS TILI SO'MDAGI JARIMA HANDLERI ---
+@dp.message(SalaryCalc.entering_penalty_kr_sum)
+async def salary_kr_penalty_sum(message: types.Message, state: FSMContext):
+    val = message.text.replace(' ', '').replace(',', '')
+    if not val.isdigit():
+        await message.answer("Raqamda kiriting!")
+        return
+    await state.update_data(temp_penalty_val=int(val))
+    await process_branch_calculation(message, state)
 
 @dp.message(SalaryCalc.entering_payment)
 async def salary_payment_it_step(message: types.Message, state: FSMContext):
     val = message.text.replace(' ', '').replace(',', '')
     if not val.isdigit():
-        await message.answer("❌ Raqam kiriting!")
+        await message.answer("Raqam kiriting!")
         return
     await state.update_data(temp_payment=int(val))
     await process_branch_calculation(message, state)
 
+# --- FILIAL HISOBI VA YAKUNIY HISOB-KITOB ---
 async def process_branch_calculation(message: types.Message, state: FSMContext):
-    """Har bir filial uchun hisob-kitob qilish va natijani saqlash"""
     data = await state.get_data()
     spec = data['specialty']
     idx = data['current_branch_idx']
     branch_name = data['all_branches'][idx]
     
-    # Filial uchun hisob-kitob
     gross = 0
     exam_pen = 0
-    students = data['temp_students']
-    lessons = data['temp_lessons']
-    perc = data['temp_perc']
-    penalty = data['temp_penalty']
-    
+    penalty_disp = ""
+
     if spec == "IT":
-        # IT logikasi
-        total_payment = data.get('temp_payment', 0)
-        base_share = total_payment * perc / 100
-        gross = base_share - penalty
-        
+        # IT: (Tushum * Ulush%) - Jarima%
+        share_amount = (data['temp_payment'] * data['temp_perc'] / 100)
+        penalty_amount = (share_amount * data['temp_penalty_val'] / 100)
+        gross = share_amount - penalty_amount
+        penalty_disp = f"{data['temp_penalty_val']}%"
     else:
-        # Koreys tili logikasi
-        # Bazaviy oylik
-        base_salary = 1800000
-        if students > 10:
-            base_salary += students * 100000  # 11+ o'quvchi uchun har biriga 100k
+        # KOREYS TILI LOGIKASI
+        students = data['temp_students']
+        lessons = data['temp_lessons']
+        perc = data['temp_perc']
+        # 11 tadan boshlab har bir o'quvchi uchun 100 ming + 1.8 mln bazaviy
+        base = 1800000 + (students * 100000 if students > 10 else 0)
         
-        # Imtixon jarimasi
+        # Imtixon jarimasi shkalasi
         if perc < 10: exam_pen = 900000
         elif perc < 20: exam_pen = 800000
         elif perc < 30: exam_pen = 700000
@@ -2138,24 +2150,23 @@ async def process_branch_calculation(message: types.Message, state: FSMContext):
         elif perc < 90: exam_pen = 100000
         else: exam_pen = 0
         
-        mid_total = base_salary - exam_pen
-        
+        mid_total = base - exam_pen
         # 12 dars qoidasi
         if lessons < 12:
-            one_lesson_price = mid_total / 12
-            gross = one_lesson_price * lessons
+            gross = (mid_total / 12) * lessons
         else:
             gross = mid_total
         
-        gross -= penalty
+        gross -= data['temp_penalty_val']
+        penalty_disp = f"{data['temp_penalty_val']:,} so'm"
 
-    # Filial natijasini ro'yxatga qo'shish
+    # Natijani saqlash
     res = {
         'branch': branch_name,
-        'students': students,
-        'lessons': lessons,
-        'percentage': perc,
-        'penalty': penalty,
+        'students': data['temp_students'],
+        'lessons': data['temp_lessons'],
+        'perc': data['temp_perc'],
+        'penalty_display': penalty_disp,
         'exam_penalty': exam_pen,
         'payment': data.get('temp_payment', 0),
         'gross': gross
@@ -2166,55 +2177,37 @@ async def process_branch_calculation(message: types.Message, state: FSMContext):
     
     new_idx = idx + 1
     if new_idx < len(data['all_branches']):
-        # Keyingi filialga o'tamiz
-        await state.update_data(
-            current_branch_idx=new_idx, 
-            calculated_results=results_list
-        )
+        await state.update_data(current_branch_idx=new_idx, calculated_results=results_list)
         await salary_ask_next_branch(message, state)
     else:
-        # Barcha filiallar tugadi - Final
         await finalize_multi_branch_salary(message, state, results_list)
 
 async def finalize_multi_branch_salary(message: types.Message, state: FSMContext, results):
-    """Barcha filiallar bo'yicha yakuniy hisob-kitob va Excel yaratish"""
     data = await state.get_data()
-    
     total_gross = sum(r['gross'] for r in results)
     tax = total_gross * 0.075
     net = total_gross - tax
     
     # Excel yaratish
-    excel_file = await create_multi_branch_excel(
-        teacher_name=data['teacher_name'],
-        specialty=data['specialty'],
-        results=results,
-        total_gross=total_gross,
-        tax=tax,
-        net=net
-    )
+    excel_file = await create_multi_branch_excel(data['teacher_name'], data['specialty'], results, total_gross, tax, net)
     
     s_net = "{:,.0f}".format(net).replace(',', ' ')
-    s_gross = "{:,.0f}".format(total_gross).replace(',', ' ')
     s_tax = "{:,.0f}".format(tax).replace(',', ' ')
+    s_gross = "{:,.0f}".format(total_gross).replace(',', ' ')
     
-    caption = (
-        f"✅ **Oylik hisob-kitob yakunlandi (Barcha filiallar)**\n\n"
-        f"👤 Xodim: {data['teacher_name']}\n"
-        f"📚 Mutaxassislik: {data['specialty']}\n"
-        f"🏢 Filiallar soni: {len(results)} ta\n"
-        f"──────────────────\n"
-        f"💰 Jami (soliqsiz): {s_gross} so'm\n"
-        f"💸 Soliq (7.5%): {s_tax} so'm\n"
-        f"💵 **Qo'lga tegadi: {s_net} so'm**"
-    )
+    caption = (f"💰 Hisob-kitob yakunlandi\n\n"
+               f"👤 Xodim: {data['teacher_name']}\n"
+               f"📚 Mutaxassislik: {data['specialty']}\n"
+               f"🏢 Filiallar: {len(results)} ta\n"
+               f"──────────────────\n"
+               f"Jami (soliqsiz): {s_gross} so'm\n"
+               f"Soliq (7.5%): {s_tax} so'm\n"
+               f"Qo'lga tegadi: {s_net} so'm")
     
     await message.answer_document(
         types.BufferedInputFile(excel_file.read(), filename=f"Oylik_{data['teacher_name']}_{datetime.now(UZB_TZ).strftime('%Y%m')}.xlsx"),
-        caption=caption,
-        parse_mode="Markdown"
+        caption=caption
     )
-    
     await state.clear()
     
     # Admin panelga qaytish tugmasi
@@ -2239,13 +2232,13 @@ async def create_multi_branch_excel(teacher_name, specialty, results, total_gros
     thin = Side(border_style="thin", color="000000")
     border = Border(top=thin, left=thin, right=thin, bottom=thin)
     
-    # Sarlavhalar
-    headers = ['Filial', 'O\'quvchilar', 'Darslar', 'Imtixon %', 'Jarima', 'Imtixon jarimasi', 'Tushum', 'Filial oyligi']
-    ws.append(headers)
-    
-    # Header dizayni
+    # Header foni
     header_fill = PatternFill(start_color="2E86AB", end_color="2E86AB", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True)
+    
+    # Sarlavhalar
+    headers = ['Filial', 'O\'quvchilar', 'Darslar', 'Imtixon %', 'Jarima', 'Tushum', 'Hisoblangan oylik']
+    ws.append(headers)
     
     for cell in ws[1]:
         cell.fill = header_fill
@@ -2259,15 +2252,13 @@ async def create_multi_branch_excel(teacher_name, specialty, results, total_gros
             r['branch'],
             r['students'],
             r['lessons'],
-            f"{r['percentage']}%",
-            f"{r['penalty']:,.0f}",
-            f"{r['exam_penalty']:,.0f}",
+            f"{r['perc']}%",
+            r['penalty_display'],
             f"{r['payment']:,.0f}" if r['payment'] > 0 else "—",
             f"{r['gross']:,.0f}"
         ]
         ws.append(row)
         
-        # Har bir qatorga border qo'shish
         for cell in ws[ws.max_row]:
             cell.border = border
             cell.alignment = Alignment(horizontal="center")
@@ -2277,7 +2268,7 @@ async def create_multi_branch_excel(teacher_name, specialty, results, total_gros
     
     # Jami qatorlari
     summary_rows = [
-        ['', '', '', '', '', 'JAMI (Soliqsiz):', f"{total_gross:,.0f}"],
+        ['', '', '', '', '', 'JAMI (soliqsiz):', f"{total_gross:,.0f}"],
         ['', '', '', '', '', 'Soliq (7.5%):', f"{tax:,.0f}"],
         ['', '', '', '', '', 'QO\'LGA TEGADI:', f"{net:,.0f}"]
     ]
@@ -2286,14 +2277,14 @@ async def create_multi_branch_excel(teacher_name, specialty, results, total_gros
         ws.append(s_row)
         for cell in ws[ws.max_row]:
             cell.border = border
-            if s_row[5] in ['JAMI (Soliqsiz):', 'Soliq (7.5%):', 'QO\'LGA TEGADI:']:
+            if s_row[5] in ['JAMI (soliqsiz):', 'Soliq (7.5%):', 'QO\'LGA TEGADI:']:
                 cell.font = Font(bold=True)
                 if s_row[5] == 'QO\'LGA TEGADI:':
                     ws.cell(row=ws.max_row, column=7).font = Font(bold=True, color="006100")
                     ws.cell(row=ws.max_row, column=7).fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
 
     # Ustun kengligi
-    column_widths = [20, 12, 10, 10, 15, 15, 15, 15]
+    column_widths = [20, 12, 10, 10, 15, 15, 15]
     for i, width in enumerate(column_widths, 1):
         ws.column_dimensions[chr(64 + i)].width = width
 
@@ -2417,7 +2408,139 @@ async def process_month_gen(callback: types.CallbackQuery):
     )
     await callback.answer()
 
-# --- EXCEL HISOBOT HANDLERS ---
+# --- PROFESSIONAL EXCEL HISOBOT (YANGI) ---
+async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
+    import calendar
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+
+    wb = Workbook()
+    wb.remove(wb.active) # Standart sheetni o'chiramiz
+
+    # Ranglar va Borderlar
+    thin = Side(border_style="thin", color="000000")
+    all_border = Border(top=thin, left=thin, right=thin, bottom=thin)
+    
+    main_header_fill = PatternFill(start_color="92D050", fill_type="solid") # Yashil
+    user_header_fill = PatternFill(start_color="D9D9D9", fill_type="solid") # Kulrang
+    table_header_fill = PatternFill(start_color="2E86AB", fill_type="solid") # Ko'k
+    
+    white_font = Font(color="FFFFFF", bold=True)
+    bold_font = Font(bold=True)
+    
+    months_uz = {1: "YANVAR", 2: "FEVRAL", 3: "MART", 4: "APREL", 5: "MAY", 6: "IYUN", 
+                 7: "IYUL", 8: "AVGUST", 9: "SENTABR", 10: "OKTABR", 11: "NOYABR", 12: "DEKABR"}
+    
+    specs = ["IT", "Koreys tili", "Ofis xodimi"]
+    _, last_day = calendar.monthrange(year, month)
+
+    for spec in specs:
+        ws = wb.create_sheet(title=spec)
+        
+        # 1. Eng yuqoridagi asosiy sarlavha (IT OQITUVCHILARI MART OYI XISOBOTI)
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=9)
+        main_title = ws.cell(row=1, column=1)
+        main_title.value = f"{spec.upper()} OQITUVCHILARI {months_uz[month]} OYI XISOBOTI"
+        main_title.fill = main_header_fill
+        main_title.font = Font(size=14, bold=True)
+        main_title.alignment = Alignment(horizontal="center")
+        
+        current_row = 3
+        
+        # Shu sohadagi barcha o'qituvchilarni topamiz
+        teachers_in_spec = [uid for uid, s in user_specialty.items() if s == spec]
+        
+        if not teachers_in_spec:
+            continue
+
+        for uid in sorted(teachers_in_spec, key=lambda x: user_names.get(x, "")):
+            # 2. O'qituvchi nomi sarlavhasi (AZAMAT MART OYLIK XISOBOT)
+            ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=9)
+            user_title = ws.cell(row=current_row, column=1)
+            user_title.value = f"{user_names.get(uid, '').upper()} {months_uz[month]} OYLIK XISOBOT"
+            user_title.fill = user_header_fill
+            user_title.font = bold_font
+            user_title.alignment = Alignment(horizontal="center")
+            user_title.border = all_border
+            
+            current_row += 1
+            
+            # 3. Jadval Headeri
+            headers = ['№', 'Sana', 'Hafta kuni', 'O\'qituvchi', 'Filial', 'Dars vaqti', 'Kelgan vaqti', 'Holat', 'Kechikish (min)']
+            for col, text in enumerate(headers, 1):
+                cell = ws.cell(row=current_row, column=col)
+                cell.value = text
+                cell.fill = table_header_fill
+                cell.font = white_font
+                cell.alignment = Alignment(horizontal="center")
+                cell.border = all_border
+            
+            current_row += 1
+            
+            # 4. Ushbu o'qituvchi uchun ma'lumotlarni yig'ish
+            user_records = []
+            for d in range(1, last_day + 1):
+                target_date = f"{year}-{month:02d}-{d:02d}"
+                d_obj = d_date(year, month, d)
+                weekday = WEEKDAYS_UZ[d_obj.weekday()]
+                
+                # Jadvaldagi darslari
+                for sid, sdata in schedules.items():
+                    if sdata['user_id'] == uid and weekday in sdata['days']:
+                        branch = sdata['branch']
+                        sch_time = sdata['days'][weekday]
+                        
+                        # Davomat bormi?
+                        att = next((a for a in daily_attendance_log if a[0] == uid and a[1] == branch and a[2] == target_date), None)
+                        
+                        if att:
+                            user_records.append({'date': target_date, 'weekday': weekday, 'branch': branch, 
+                                               'sch_time': sch_time, 'att_time': att[3], 'st': 'PRESENT'})
+                        else:
+                            user_records.append({'date': target_date, 'weekday': weekday, 'branch': branch, 
+                                               'sch_time': sch_time, 'att_time': "—", 'st': 'ABSENT'})
+
+            # Ma'lumotlarni yozish
+            num = 1
+            for r in sorted(user_records, key=lambda x: (x['date'], x['sch_time'])):
+                if r['st'] == 'ABSENT':
+                    status_text, late_m = "KELMAGAN", "—"
+                else:
+                    ontime, mins = calculate_lateness(r['att_time'], r['sch_time'])
+                    status_text = "Vaqtida" if ontime else "Kechikkan"
+                    late_m = 0 if ontime else mins
+
+                row_vals = [num, r['date'], r['weekday'], user_names.get(uid), r['branch'], r['sch_time'], r['att_time'], status_text, late_m]
+                
+                for col, val in enumerate(row_vals, 1):
+                    cell = ws.cell(row=current_row, column=col)
+                    cell.value = val
+                    cell.border = all_border
+                    cell.alignment = Alignment(horizontal="center")
+                    
+                    # Status ranglari
+                    if col == 8:
+                        if status_text == "Kechikkan": 
+                            cell.font = Font(color="FF0000", bold=True)
+                        elif status_text == "Vaqtida": 
+                            cell.font = Font(color="008000", bold=True)
+                        elif status_text == "KELMAGAN": 
+                            cell.fill = PatternFill(start_color="FFCCCC", fill_type="solid")
+                
+                num += 1
+                current_row += 1
+            
+            current_row += 2 # Har bir o'qituvchidan keyin 2 qator bo'sh joy
+        
+        # Ustun kengligi
+        for col in ws.columns:
+            ws.column_dimensions[col[0].column_letter].width = 16
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
 @dp.callback_query(F.data == "admin_excel_menu")
 async def admin_excel_report_start(callback: types.CallbackQuery):
     if not check_admin(callback.message.chat.id):
@@ -2445,110 +2568,6 @@ async def admin_excel_report_start(callback: types.CallbackQuery):
     builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back"))
     await callback.message.edit_text("Qaysi oy uchun Excel hisobot kerak?", reply_markup=builder.as_markup())
     await callback.answer()
-
-async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
-    import calendar
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-    
-    wb = Workbook()
-    # Standart sheetni o'chirib tashlaymiz, o'rniga sohalarni ochamiz
-    wb.remove(wb.active)
-    
-    # Border stili
-    thin = Side(border_style="thin", color="000000")
-    all_border = Border(top=thin, left=thin, right=thin, bottom=thin)
-    
-    header_fill = PatternFill(start_color="2E86AB", end_color="2E86AB", fill_type="solid")
-    header_font = Font(color="FFFFFF", bold=True)
-    
-    specs = ["IT", "Koreys tili", "Ofis xodimi"]
-    
-    # Ma'lumotlarni yig'ish
-    _, last_day = calendar.monthrange(year, month)
-    
-    for spec in specs:
-        ws = wb.create_sheet(title=spec)
-        headers = ['№', 'Sana', 'Hafta kuni', 'O\'qituvchi', 'Filial', 'Dars vaqti', 'Kelgan vaqti', 'Holat', 'Kechikish (min)']
-        ws.append(headers)
-        
-        # Header dizayni
-        for cell in ws[1]:
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = Alignment(horizontal="center")
-            cell.border = all_border
-
-        row_idx = 2
-        for d in range(1, last_day + 1):
-            target_date = f"{year}-{month:02d}-{d:02d}"
-            d_obj = d_date(year, month, d)
-            weekday = WEEKDAYS_UZ[d_obj.weekday()]
-            
-            day_records = []
-            # 1. Shu soha bo'yicha jadvallarni tekshirish
-            for s_id, s_data in schedules.items():
-                uid = s_data['user_id']
-                if user_specialty.get(uid) != spec: continue
-                if weekday not in s_data['days']: continue
-                
-                branch = s_data['branch']
-                sch_time = s_data['days'][weekday]
-                
-                # Davomat bormi?
-                actual_att = next((a for a in daily_attendance_log if a[0] == uid and a[1] == branch and a[2] == target_date), None)
-                
-                if actual_att:
-                    day_records.append({'time': sch_time, 'att': actual_att[3], 'name': user_names.get(uid), 'br': branch, 'st': 'PRESENT'})
-                else:
-                    day_records.append({'time': sch_time, 'att': "—", 'name': user_names.get(uid), 'br': branch, 'st': 'ABSENT'})
-
-            # 2. Jadvalda yo'q lekin kelganlar
-            for att in daily_attendance_log:
-                if att[2] == target_date and user_specialty.get(att[0]) == spec:
-                    if not any(r['name'] == user_names.get(att[0]) and r['br'] == att[1] for r in day_records):
-                        day_records.append({'time': "—", 'att': att[3], 'name': user_names.get(att[0]), 'br': att[1], 'st': 'PRESENT'})
-
-            # Saralash (Dars vaqti bo'yicha)
-            day_records.sort(key=lambda x: x['time'] if x['time'] != "—" else "99:99")
-
-            # Excelga yozish
-            for r in day_records:
-                if r['st'] == 'ABSENT':
-                    status_text, late_m = "KELMAGAN", "—"
-                else:
-                    ontime, mins = calculate_lateness(r['att'], r['time'] if r['time'] != "—" else r['att'][:5])
-                    status_text = "Vaqtida" if ontime else "Kechikkan"
-                    late_m = 0 if ontime else mins
-
-                row_data = [row_idx-1, target_date, weekday, r['name'], r['br'], r['time'], r['att'], status_text, late_m]
-                ws.append(row_data)
-                
-                # Kataklarni bezash (Border va Status rangi)
-                for col in range(1, 10):
-                    cell = ws.cell(row=row_idx, column=col)
-                    cell.border = all_border
-                    cell.alignment = Alignment(horizontal="center")
-                    
-                    # Faqat "Holat" ustunini (8-ustun) bo'yash
-                    if col == 8:
-                        if status_text == "Kechikkan": 
-                            cell.font = Font(color="FF0000", bold=True)
-                        elif status_text == "Vaqtida": 
-                            cell.font = Font(color="008000", bold=True)
-                        elif status_text == "KELMAGAN": 
-                            cell.fill = PatternFill(start_color="FFCCCC", fill_type="solid")
-                
-                row_idx += 1
-
-        # Ustun kengligi
-        for col in ws.columns:
-            ws.column_dimensions[col[0].column_letter].width = 18
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return buf
 
 @dp.callback_query(F.data.startswith("get_excel_"))
 async def process_excel_download(callback: types.CallbackQuery):
@@ -2883,8 +2902,7 @@ async def admin_stats_main(callback: types.CallbackQuery):
         
         await callback.message.edit_text(
             "📊 Statistika bo'limi\n\nKerakli statistikani tanlang:",
-            reply_markup=builder.as_markup(),
-            parse_mode="Markdown"
+            reply_markup=builder.as_markup()
         )
         await callback.answer()
     except Exception as e:
@@ -2954,8 +2972,7 @@ async def admin_stats_general(callback: types.CallbackQuery):
         
         await callback.message.edit_text(
             text,
-            reply_markup=builder.as_markup(),
-            parse_mode="Markdown"
+            reply_markup=builder.as_markup()
         )
         await callback.answer()
     except Exception as e:
@@ -2991,8 +3008,7 @@ async def admin_stats_branches(callback: types.CallbackQuery):
         
         await callback.message.edit_text(
             text,
-            reply_markup=builder.as_markup(),
-            parse_mode="Markdown"
+            reply_markup=builder.as_markup()
         )
         await callback.answer()
     except Exception as e:
@@ -3031,8 +3047,7 @@ async def admin_stats_teachers(callback: types.CallbackQuery):
         
         await callback.message.edit_text(
             text,
-            reply_markup=builder.as_markup(),
-            parse_mode="Markdown"
+            reply_markup=builder.as_markup()
         )
         await callback.answer()
     except Exception as e:
@@ -3075,8 +3090,7 @@ async def admin_monthly(callback: types.CallbackQuery):
         
         await callback.message.edit_text(
             report,
-            reply_markup=builder.as_markup(),
-            parse_mode="Markdown"
+            reply_markup=builder.as_markup()
         )
         await callback.answer()
     except Exception as e:
@@ -3104,8 +3118,7 @@ async def admin_users_main(callback: types.CallbackQuery):
         
         await callback.message.edit_text(
             "👥 Foydalanuvchilarni boshqarish\n\nKerakli amalni tanlang:",
-            reply_markup=builder.as_markup(),
-            parse_mode="Markdown"
+            reply_markup=builder.as_markup()
         )
         await callback.answer()
     except Exception as e:
@@ -3170,8 +3183,7 @@ Til: {lang}
     
     await callback.message.edit_text(
         text,
-        reply_markup=builder.as_markup(),
-        parse_mode="Markdown"
+        reply_markup=builder.as_markup()
     )
     await callback.answer()
 
@@ -3233,7 +3245,6 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
         
         await callback.message.edit_text(
             f"⏳ Foydalanuvchi o'chirilmoqda...\n\nID: `{uid}`\nIsm: {user_name}{spec_display}",
-            parse_mode="Markdown"
         )
         
     except ValueError as e:
@@ -3269,11 +3280,10 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
             user_schedules.pop(uid, None)
         
         await callback.message.edit_text(
-            f"✅ **Foydalanuvchi muvaffaqiyatli o'chirildi!**\n\n"
+            f"✅ Foydalanuvchi muvaffaqiyatli o'chirildi!\n\n"
             f"ID: `{uid}`\n"
             f"Ism: {user_name}{spec_display}\n\n"
-            f"Barcha ma'lumotlari bazadan tozalandi.",
-            parse_mode="Markdown"
+            f"Barcha ma'lumotlari bazadan tozalandi."
         )
         
         await callback.answer("✅ Foydalanuvchi o'chirildi!")
@@ -3340,13 +3350,12 @@ async def admin_user_delete(callback: types.CallbackQuery):
         )
         
         await callback.message.edit_text(
-            f"⚠️ **Foydalanuvchini o'chirish**\n\n"
+            f"⚠️ Foydalanuvchini o'chirish\n\n"
             f"ID: `{uid}`\n"
             f"Ism: {user_name}{spec_display}\n\n"
             f"Bu foydalanuvchini butunlay o'chirmoqchimisiz?\n"
             f"Barcha ma'lumotlari (davomatlar, dars jadvallari) ham o'chib ketadi!",
-            reply_markup=builder.as_markup(),
-            parse_mode="Markdown"
+            reply_markup=builder.as_markup()
         )
         await callback.answer()
         
@@ -3402,8 +3411,7 @@ async def admin_user_stats(callback: types.CallbackQuery):
     
     await callback.message.edit_text(
         text,
-        reply_markup=builder.as_markup(),
-        parse_mode="Markdown"
+        reply_markup=builder.as_markup()
     )
     await callback.answer()
 
@@ -3433,8 +3441,7 @@ async def admin_users_active(callback: types.CallbackQuery):
         
         await callback.message.edit_text(
             "✅ Faol foydalanuvchilar ro'yxati:",
-            reply_markup=builder.as_markup(),
-            parse_mode="Markdown"
+            reply_markup=builder.as_markup()
         )
         await callback.answer()
     except Exception as e:
@@ -3468,8 +3475,7 @@ async def admin_users_blocked(callback: types.CallbackQuery):
         
         await callback.message.edit_text(
             "⛔ Bloklangan foydalanuvchilar:",
-            reply_markup=builder.as_markup(),
-            parse_mode="Markdown"
+            reply_markup=builder.as_markup()
         )
         await callback.answer()
     except Exception as e:
@@ -3560,8 +3566,7 @@ async def admin_broadcast_message(message: types.Message, state: FSMContext):
             f"Xabar: {message.text or 'Rasm/hujjat'}\n"
             f"Qabul qiluvchilar: {total_users} ta foydalanuvchi\n\n"
             f"Yuborishni boshlaymizmi?",
-            reply_markup=builder.as_markup(),
-            parse_mode="Markdown"
+            reply_markup=builder.as_markup()
         )
     except Exception as e:
         logging.error(f"admin_broadcast_message error: {e}")
@@ -3671,8 +3676,7 @@ async def admin_schedules_main(callback: types.CallbackQuery):
         
         await callback.message.edit_text(
             "📅 Dars jadvallarini boshqarish",
-            reply_markup=builder.as_markup(),
-            parse_mode="Markdown"
+            reply_markup=builder.as_markup()
         )
         await callback.answer()
     except Exception as e:
@@ -3861,8 +3865,7 @@ async def admin_active_schedules(callback: types.CallbackQuery):
             
             await callback.message.answer(
                 text,
-                reply_markup=builder.as_markup(),
-                parse_mode="Markdown"
+                reply_markup=builder.as_markup()
             )
         
         await callback.message.delete()
@@ -3891,8 +3894,7 @@ async def admin_delete_schedule(callback: types.CallbackQuery):
                 lang = user_languages.get(teacher_id, 'uz')
                 await bot.send_message(
                     teacher_id,
-                    get_text(teacher_id, 'schedule_deleted_notify'),
-                    parse_mode="Markdown"
+                    get_text(teacher_id, 'schedule_deleted_notify')
                 )
             except Exception as e:
                 logging.error(f"Failed to notify teacher {teacher_id}: {e}")
@@ -4132,14 +4134,14 @@ async def admin_save_edited_schedule(message: types.Message, state: FSMContext):
     old_times = ", ".join([f"{k}:{v}" for k, v in old_schedule['days'].items()])
     new_times = ", ".join([f"{k}:{v}" for k, v in new_days.items()])
     
-    msg = (f"📢 **DIQQAT: Dars jadvalingiz o'zgardi!**\n\n"
+    msg = (f"📢 DIQQAT: Dars jadvalingiz o'zgardi!\n\n"
            f"🏢 Filial: {new_branch}\n"
            f"❌ Eski vaqtlar: {old_times}\n"
            f"✅ Yangi vaqtlar: {new_times}\n\n"
            f"Yangi jadval PDF ko'rinishida quyida biriktirildi.")
     
     try:
-        await bot.send_message(teacher_id, msg, parse_mode="Markdown")
+        await bot.send_message(teacher_id, msg)
         pdf = await create_schedule_pdf(teacher_id)
         await bot.send_document(teacher_id, types.BufferedInputFile(pdf.read(), filename="yangi_jadval.pdf"))
     except Exception as e:
@@ -4395,8 +4397,7 @@ async def admin_save_new_schedule(message: types.Message, state: FSMContext):
         try:
             await bot.send_message(
                 teacher_id,
-                get_text(teacher_id, 'schedule_updated'),
-                parse_mode="Markdown"
+                get_text(teacher_id, 'schedule_updated')
             )
             
             pdf_buffer = await create_schedule_pdf(teacher_id)
@@ -4439,8 +4440,7 @@ async def admin_locations_main(callback: types.CallbackQuery):
         
         await callback.message.edit_text(
             "🏢 Filiallarni boshqarish",
-            reply_markup=builder.as_markup(),
-            parse_mode="Markdown"
+            reply_markup=builder.as_markup()
         )
         await callback.answer()
     except Exception as e:
@@ -4567,8 +4567,7 @@ async def admin_back(callback: types.CallbackQuery):
         
         await callback.message.edit_text(
             "👨‍💼 Admin Panel\n\nKerakli bo'limni tanlang:",
-            reply_markup=builder.as_markup(),
-            parse_mode="Markdown"
+            reply_markup=builder.as_markup()
         )
         await callback.answer()
     except Exception as e:
@@ -4629,11 +4628,11 @@ async def check_schedule_reminders():
                 
                 # 1 daqiqa qolganda yuborish
                 if current_time == remind_time:
-                    msg = (f"🔔 **ESLATMA**\n\n"
-                           f"Bugun soat {lesson_time} da **{branch}** filialida darsingiz boshlanmoqda.\n"
+                    msg = (f"🔔 ESLATMA\n\n"
+                           f"Bugun soat {lesson_time} da {branch} filialida darsingiz boshlanmoqda.\n"
                            f"📍 Iltimos, darsingizni davomatini qilishni unutmang!")
                     try:
-                        await bot.send_message(user_id, msg, parse_mode="Markdown")
+                        await bot.send_message(user_id, msg)
                         logging.info(f"1-min reminder sent to {user_id} for {branch} at {lesson_time}")
                     except Exception as e:
                         logging.error(f"Failed to send reminder to {user_id}: {e}")
@@ -4642,12 +4641,12 @@ async def check_schedule_reminders():
                 elif current_time == check_time:
                     attended = any(k[0] == user_id and k[1] == branch and k[2] == today_date for k in daily_attendance_log)
                     if not attended:
-                        msg = (f"⚠️ **DIQQAT: DAVOMAT QILINMADI!**\n\n"
-                               f"Darsingiz soat {lesson_time} da **{branch}** filialida boshlangan.\n"
+                        msg = (f"⚠️ DIQQAT: DAVOMAT QILINMADI!\n\n"
+                               f"Darsingiz soat {lesson_time} da {branch} filialida boshlangan.\n"
                                f"Hozirgi vaqt: {now_uzb.strftime('%H:%M')}.\n\n"
                                f"Iltimos, darhol davomatni tasdiqlang!")
                         try:
-                            await bot.send_message(user_id, msg, parse_mode="Markdown")
+                            await bot.send_message(user_id, msg)
                             logging.info(f"Late reminder sent to {user_id} for {branch}")
                         except Exception as e:
                             logging.error(f"Failed to send late reminder to {user_id}: {e}")
