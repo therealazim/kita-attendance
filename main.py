@@ -843,82 +843,86 @@ def get_yandex_maps_link(lat: float, lon: float) -> str:
 
 async def create_schedule_pdf(user_id: int) -> io.BytesIO:
     pdf_buffer = io.BytesIO()
-    doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
+    doc = SimpleDocTemplate(pdf_buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     elements = []
     styles = getSampleStyleSheet()
     
     lang = user_languages.get(user_id, 'uz')
     
-    # Maxsus uslub (Unicode shrifti bilan)
+    # Sarlavha uslubi (Unicode shrifti bilan)
     title_style = ParagraphStyle(
         'CustomTitle',
-        parent=styles['Heading1'],
+        fontName=FONT_NAME,
         fontSize=18,
         alignment=1,
-        spaceAfter=20,
-        fontName=f"{FONT_NAME}-Bold" if FONT_NAME != 'Helvetica' else 'Helvetica-Bold'
+        spaceAfter=20
     )
     
-    normal_style = styles['Normal']
-    normal_style.fontName = FONT_NAME
+    # Oddiy matn uslubi
+    normal_style = ParagraphStyle(
+        'NormalStyle',
+        fontName=FONT_NAME,
+        fontSize=11,
+        spaceAfter=8
+    )
 
     name = user_names.get(user_id, "Foydalanuvchi")
     specialty = user_specialty.get(user_id, '')
     spec_display = get_specialty_display(specialty, lang)
     
-    # 1. Sarlavha: Masalan "Azimjon [Ofis xodimi] - 수업 시간표"
-    title_text = f"{name} [{spec_display}] - {TRANSLATIONS[lang]['pdf_title']}"
-    elements.append(Paragraph(title_text, title_style))
-    elements.append(Spacer(1, 10))
+    # PDF Sarlavhasi (Masalan: "Azimjon [사무원] - 수업 시간표")
+    pdf_main_title = TRANSLATIONS[lang]['pdf_title']
+    elements.append(Paragraph(f"<b>{name}</b> [{spec_display}] - {pdf_main_title}", title_style))
     
-    if user_id not in user_schedules or not user_schedules[user_id]:
+    user_sched_ids = user_schedules.get(user_id, [])
+    
+    if not user_sched_ids:
         elements.append(Paragraph(get_text(user_id, 'no_schedules'), normal_style))
     else:
-        for schedule_id in user_schedules[user_id]:
+        for schedule_id in user_sched_ids:
             schedule = schedules.get(schedule_id)
-            if schedule and schedule['user_id'] == user_id:
+            if schedule:
                 branch = schedule['branch']
                 lesson_type = schedule.get('lesson_type', 'Dars')
                 
-                branch_style = ParagraphStyle(
-                    'BranchStyle',
-                    parent=styles['Heading2'],
-                    fontSize=14,
-                    textColor=colors.blue,
-                    spaceAfter=10,
-                    fontName=f"{FONT_NAME}-Bold" if FONT_NAME != 'Helvetica' else 'Helvetica-Bold'
-                )
-                elements.append(Paragraph(f"🏢 {branch} - {lesson_type}", branch_style))
+                # Filial nomi
+                elements.append(Paragraph(f"<font color='blue'>🏢 {branch} - {lesson_type}</font>", normal_style))
                 
-                # Jadvallar: Sarlavhalarni tarjima qilish
+                # Jadval sarlavhalari (Kun | Vaqt)
                 col_headers = TRANSLATIONS[lang]['pdf_headers']
                 data = [col_headers]
                 
-                # Haftaning kunlarini o'qituvchi tiliga o'girish
+                # Kunlarni lug'atdan olish
                 days_dict = schedule['days']
-                # WEEKDAYS[lang] dan foydalanamiz
                 target_weekdays = WEEKDAYS[lang]
+                uz_weekdays = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
                 
-                # Saralash
-                for i, day_uz in enumerate(WEEKDAYS['uz']):
+                # Jadval ma'lumotlarini yig'ish (Xatto 1 kun bo'lsa ham ishlaydi)
+                for i, day_uz in enumerate(uz_weekdays):
                     if day_uz in days_dict:
                         data.append([target_weekdays[i], days_dict[day_uz]])
-                
-                table = Table(data, colWidths=[2.5*inch, 2.5*inch])
-                table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                    ('FONTNAME', (0, 0), (-1, -1), FONT_NAME),
-                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
-                    ('FONTSIZE', (0, 0), (-1, -1), 12)
-                ]))
-                elements.append(table)
-                elements.append(Spacer(1, 15))
-    
-    # 2. Footer: Yaratilgan sana
-    created_text = f"{TRANSLATIONS[lang]['pdf_created']}: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}"
-    elements.append(Paragraph(created_text, ParagraphStyle('Footer', parent=normal_style, alignment=2)))
+
+                # Jadvalni PDF ga chizish
+                if len(data) > 1:
+                    table = Table(data, colWidths=[2.5*inch, 2.5*inch])
+                    table.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                        ('FONTNAME', (0, 0), (-1, -1), FONT_NAME),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+                        ('FONTSIZE', (0, 0), (-1, -1), 11),
+                        ('TOPPADDING', (0, 0), (-1, -1), 6),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                    ]))
+                    elements.append(table)
+                    elements.append(Spacer(1, 15))
+
+    # Yaratilgan sana (Pastda)
+    created_label = TRANSLATIONS[lang]['pdf_created']
+    created_text = f"{created_label}: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}"
+    elements.append(Spacer(1, 20))
+    elements.append(Paragraph(created_text, ParagraphStyle('Footer', fontName=FONT_NAME, fontSize=9, alignment=2)))
     
     doc.build(elements)
     pdf_buffer.seek(0)
@@ -1618,6 +1622,125 @@ def format_weather_message(weather_data: dict, lang: str = 'uz') -> str:
 ⏰ {time_text}: {datetime.now(UZB_TZ).strftime('%H:%M')}
 """
     return message
+
+# Kalendar yaratish funksiyasi
+async def get_calendar_keyboard(year: int, month: int, lang: str):
+    builder = InlineKeyboardBuilder()
+    
+    # Oylar nomlari
+    month_names = {
+        'uz': ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"],
+        'ru': ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"],
+        'kr': ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"]
+    }
+    
+    # Hafta kunlari qisqartmasi
+    wd_names = {
+        'uz': ["Du", "Se", "Ch", "Pa", "Ju", "Sha", "Ya"],
+        'ru': ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
+        'kr': ["월", "화", "수", "목", "금", "토", "일"]
+    }
+
+    # 1. Sarlavha: Oy va Yil (Navigatsiya tugmalari bilan)
+    m_name = month_names[lang][month-1]
+    header_text = f"{m_name} {year}" if lang != 'kr' else f"{year}년 {m_name}"
+    
+    builder.row(
+        InlineKeyboardButton(text="⬅️", callback_data=f"cal_nav_prev_{year}_{month}"),
+        InlineKeyboardButton(text=header_text, callback_data="ignore"),
+        InlineKeyboardButton(text="➡️", callback_data=f"cal_nav_next_{year}_{month}")
+    )
+
+    # 2. Hafta kunlari sarlavhasi (Du, Se, Ch...)
+    header_days = [InlineKeyboardButton(text=day, callback_data="ignore") for day in wd_names[lang]]
+    builder.row(*header_days)
+
+    # 3. Kunlar kataklarini terish
+    month_calendar = calendar.monthcalendar(year, month)
+    for week in month_calendar:
+        row_btns = []
+        for day in week:
+            if day == 0:
+                row_btns.append(InlineKeyboardButton(text=" ", callback_data="ignore"))
+            else:
+                # Callback format: cal_set_2026-03-05
+                row_btns.append(InlineKeyboardButton(
+                    text=str(day), 
+                    callback_data=f"cal_set_{year}-{month:02d}-{day:02d}")
+                )
+        builder.row(*row_btns)
+
+    # 4. Pastki qism: Ortga qaytish
+    builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back"))
+    return builder.as_markup()
+
+@dp.callback_query(F.data == "admin_pdf_report")
+async def admin_pdf_report_start(callback: types.CallbackQuery):
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    now = datetime.now(UZB_TZ)
+    lang = user_languages.get(callback.from_user.id, 'uz')
+    
+    keyboard = await get_calendar_keyboard(now.year, now.month, lang)
+    await callback.message.edit_text(
+        "📅 Hisobot sanasini kalendardan tanlang:",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+# Oylarni o'tkazish (⬅️ va ➡️ bosilganda)
+@dp.callback_query(F.data.startswith("cal_nav_"))
+async def process_calendar_navigation(callback: types.CallbackQuery):
+    parts = callback.data.split("_")
+    action = parts[2] # prev yoki next
+    year = int(parts[3])
+    month = int(parts[4])
+    
+    if action == "prev":
+        month -= 1
+        if month == 0:
+            month = 12
+            year -= 1
+    else:
+        month += 1
+        if month == 13:
+            month = 1
+            year += 1
+            
+    lang = user_languages.get(callback.from_user.id, 'uz')
+    keyboard = await get_calendar_keyboard(year, month, lang)
+    
+    # Xabarni o'zgartirish (Faqat tugmalarni)
+    await callback.message.edit_reply_markup(reply_markup=keyboard)
+    await callback.answer()
+
+# Sana tanlanganda (Raqam bosilganda)
+@dp.callback_query(F.data.startswith("cal_set_"))
+async def process_calendar_selection(callback: types.CallbackQuery):
+    date_str = callback.data.replace("cal_set_", "")
+    report_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    
+    await callback.message.answer(f"⏳ {date_str} davomat hisoboti tayyorlanmoqda...")
+    
+    try:
+        pdf_buf = await get_combined_report_pdf(report_date)
+        
+        await callback.message.answer_document(
+            types.BufferedInputFile(pdf_buf.read(), filename=f"Davomat_{date_str}.pdf"),
+            caption=f"📊 {date_str} hisoboti (PDF formatda)."
+        )
+    except Exception as e:
+        logging.error(f"Calendar PDF error: {e}")
+        await callback.message.answer("❌ PDF yaratishda xatolik yuz berdi.")
+        
+    await callback.answer()
+
+# Bo'sh kataklar yoki sarlavhalar bosilganda hech narsa qilmaslik uchun
+@dp.callback_query(F.data == "ignore")
+async def process_ignore_callback(callback: types.CallbackQuery):
+    await callback.answer()
 
 @dp.message(Command("admin"))
 async def admin_panel(message: types.Message):
@@ -4022,21 +4145,20 @@ async def admin_location_add_coords(message: types.Message, state: FSMContext):
     await state.clear()
 
 @dp.callback_query(F.data == "admin_pdf_report")
-async def admin_pdf_report_start(callback: types.CallbackQuery, state: FSMContext):
+async def admin_pdf_report_start(callback: types.CallbackQuery):
     if not check_admin(callback.message.chat.id):
         await callback.answer("Ruxsat yo'q!")
         return
     
-    try:
-        await state.set_state(PDFReport.waiting_for_date)
-        await callback.message.edit_text(
-            "📅 Hisobot olish uchun sanani kiriting (format: YYYY-MM-DD)\n"
-            "Masalan: 2026-03-01"
-        )
-        await callback.answer()
-    except Exception as e:
-        logging.error(f"admin_pdf_report_start error: {e}")
-        await callback.answer("Xatolik yuz berdi")
+    now = datetime.now(UZB_TZ)
+    lang = user_languages.get(callback.from_user.id, 'uz')
+    
+    keyboard = await get_calendar_keyboard(now.year, now.month, lang)
+    await callback.message.edit_text(
+        "📅 Hisobot sanasini kalendardan tanlang:",
+        reply_markup=keyboard
+    )
+    await callback.answer()
 
 @dp.message(PDFReport.waiting_for_date)
 async def admin_pdf_report_date(message: types.Message, state: FSMContext):
