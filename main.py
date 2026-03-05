@@ -643,27 +643,105 @@ def sort_weekdays(days_dict):
 
 def calculate_lateness(attendance_time: str, lesson_time: str) -> tuple:
     try:
-        # attendance_time odatda "09:01:12" (HH:MM:SS)
-        # lesson_time odatda "09:00" (HH:MM)
-        fmt_att = "%H:%M:%S"
-        fmt_les = "%H:%M"
-
-        att_dt = datetime.strptime(attendance_time, fmt_att)
-        les_dt = datetime.strptime(lesson_time, fmt_les)
-
-        # Farqni soniyalarda hisoblaymiz
-        diff_seconds = (att_dt - les_dt).total_seconds()
-
-        # Agar farq 60 soniyadan kichik yoki teng bo'lsa - Vaqtida
-        if diff_seconds <= 60:
+        # attendance_time: "09:01:12", lesson_time: "09:00"
+        att_dt = datetime.strptime(attendance_time, "%H:%M:%S")
+        les_dt = datetime.strptime(lesson_time, "%H:%M")
+        
+        # Jami soniyalarda farqni hisoblaymiz
+        att_seconds = att_dt.hour * 3600 + att_dt.minute * 60 + att_dt.second
+        les_seconds = les_dt.hour * 3600 + les_dt.minute * 60
+        diff_seconds = att_seconds - les_seconds
+        
+        if diff_seconds <= 60:  # 60 soniyagacha kechikish hisoblanmaydi
             return True, 0
         else:
-            # 60 soniyadan oshsa - Kechikkan. Necha daqiqa ekanini yaxlitlab olamiz
-            minutes_late = int(diff_seconds / 60)
-            return False, minutes_late
+            return False, int(diff_seconds / 60)
     except Exception as e:
         logging.error(f"calculate_lateness error: {e}")
         return True, 0
+
+async def get_combined_report_pdf(report_date: d_date) -> io.BytesIO:
+    report_date_str = report_date.strftime("%Y-%m-%d")
+    report_weekday = WEEKDAYS_UZ[report_date.weekday()]
+    
+    # 1. Shu kungi davomatlarni yig'ish
+    check_ins = [list(att) for att in daily_attendance_log if att[2] == report_date_str]
+    attended_uids = [att[0] for att in check_ins]  # Kimlar keldi
+
+    # 2. Jadval bo'yicha kelishi kerak bo'lganlarni tekshirish (Kelmaganlarni aniqlash)
+    for s_id, s_data in schedules.items():
+        uid = s_data['user_id']
+        branch = s_data['branch']
+        if report_weekday in s_data['days']:
+            # Agar bu o'qituvchi shu kuni shu filialda davomat qilmagan bo'lsa
+            already_noted = any(c[0] == uid and c[1] == branch for c in check_ins)
+            if not already_noted:
+                # Kelmagan (ABSENT) sifatida qo'shamiz
+                check_ins.append([uid, branch, report_date_str, "00:00:00", "ABSENT"])
+
+    # 3. PDF yaratish (Landscape A4)
+    pdf_buffer = io.BytesIO()
+    doc = SimpleDocTemplate(pdf_buffer, pagesize=landscape(A4), topMargin=20)
+    elements = []
+    
+    # Sarlavha
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'Title',
+        parent=styles['Heading1'],
+        fontSize=20,
+        alignment=1,
+        spaceAfter=20,
+        fontName=FONT_NAME_BOLD
+    )
+    title = Paragraph(f"Davomat Hisoboti: {report_date.strftime('%d.%m.%Y')} ({report_weekday})", title_style)
+    elements.append(title)
+    elements.append(Spacer(1, 15))
+
+    # Jadval sarlavhasi
+    data = [['№', 'Davomat', 'Dars', 'O\'qituvchi', 'Mutaxassislik', 'Filial', 'Holat', 'Kechikish']]
+    
+    for i, att in enumerate(sorted(check_ins, key=lambda x: x[3] if x[3] != "00:00:00" else "23:59:59"), 1):
+        uid, branch, _, att_time, *extra = att
+        teacher_name = user_names.get(uid, "Noma'lum")
+        specialty = user_specialty.get(uid, "")
+        
+        # Dars vaqtini topish
+        lesson_time = "—"
+        for s_id in user_schedules.get(uid, []):
+            s = schedules.get(s_id)
+            if s and s['branch'] == branch and report_weekday in s['days']:
+                lesson_time = s['days'][report_weekday]
+                break
+        
+        if "ABSENT" in extra or att_time == "00:00:00":
+            status, late_text, att_time_disp = "KELMAGAN", "—", "—"
+        else:
+            ontime, mins = calculate_lateness(att_time, lesson_time)
+            status = "Vaqtida" if ontime else "Kechikkan"
+            late_text = "0" if ontime else f"{mins} min"
+            att_time_disp = att_time
+
+        data.append([str(i), att_time_disp, lesson_time, teacher_name, specialty, branch, status, late_text])
+
+    # Jadval stili
+    table = Table(data, colWidths=[0.4*inch, 1*inch, 1*inch, 2.2*inch, 1.2*inch, 2*inch, 1.1*inch, 0.9*inch])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2E86AB')),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('FONTNAME', (0,0), (-1,-1), FONT_NAME),
+        ('FONTNAME', (0,0), (-1,0), FONT_NAME_BOLD),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+        ('FONTSIZE', (0,0), (-1,-1), 10),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F9F9')])
+    ]))
+    
+    elements.append(table)
+    doc.build(elements)
+    pdf_buffer.seek(0)
+    return pdf_buffer
 
 async def main_keyboard(user_id: int):
     builder = ReplyKeyboardBuilder()
@@ -3710,150 +3788,12 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
     try:
         date_str = message.text.strip()
         report_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-        report_date_str = report_date.strftime("%Y-%m-%d")
-        report_weekday = WEEKDAYS_UZ[report_date.weekday()]
         
-        await message.answer("⏳ PDF hisobot yaratilmoqda...")
-        
-        day_attendances = []
-        for att in daily_attendance_log:
-            if att[2] == report_date_str:
-                day_attendances.append(att)
-        
-        pdf_buffer = io.BytesIO()
-        doc = SimpleDocTemplate(pdf_buffer, pagesize=landscape(letter))
-        elements =[]
-        styles = getSampleStyleSheet()
-        
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=18,
-            alignment=1,
-            spaceAfter=30,
-            fontName=FONT_NAME_BOLD
-        )
-        elements.append(Paragraph(f"Davomat Hisoboti - {report_date.strftime('%d.%m.%Y')} ({report_weekday})", title_style))
-        
-        elements.append(Paragraph(f"Hisobot yaratilgan vaqt: {datetime.now(UZB_TZ).strftime('%H:%M:%S')}", styles['Normal']))
-        elements.append(Spacer(1, 20))
-        
-        total_attendances = len(day_attendances)
-        unique_teachers = len(set(att[0] for att in day_attendances))
-        unique_branches = len(set(att[1] for att in day_attendances))
-        
-        ontime_count = 0
-        late_count = 0
-        late_minutes_total = 0
-        
-        for att in day_attendances:
-            user_id, branch, date, att_time = att
-            
-            lesson_time = None
-            if user_id in user_schedules:
-                for schedule_id in user_schedules[user_id]:
-                    schedule = schedules.get(schedule_id)
-                    if schedule and schedule['branch'] == branch:
-                        if report_weekday in schedule['days']:
-                            lesson_time = schedule['days'][report_weekday]
-                            break
-            
-            if lesson_time:
-                ontime, late_mins = calculate_lateness(att_time, lesson_time)
-                if ontime:
-                    ontime_count += 1
-                else:
-                    late_count += 1
-                    late_minutes_total += late_mins
-        
-        stats_data = [
-            ['Ko\'rsatkich', 'Qiymat'],
-            ['Jami davomatlar', str(total_attendances)],
-            ['O\'qituvchilar soni', str(unique_teachers)],
-            ['Filiallar soni', str(unique_branches)],
-            ['Vaqtida kelganlar', str(ontime_count)],
-            ['Kechikkanlar', str(late_count)],
-            ['O\'rtacha kechikish', f"{late_minutes_total / max(late_count, 1):.1f} min"],
-            ['Sana', report_date.strftime('%d.%m.%Y')]
-        ]
-        
-        stats_table = Table(stats_data, colWidths=[3*inch, 2*inch])
-        stats_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), FONT_NAME_BOLD),
-            ('FONTNAME', (0, 1), (-1, -1), FONT_NAME),
-            ('FONTSIZE', (0, 0), (-1, 0), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black)
-        ]))
-        elements.append(stats_table)
-        elements.append(Spacer(1, 20))
-        
-        if day_attendances:
-            elements.append(Paragraph(f"{report_date.strftime('%d.%m.%Y')} dagi davomatlar", styles['Heading2']))
-            
-            data = [['№', 'Davomat vaqti', 'Dars boshlanishi', 'O\'qituvchi', 'Mutaxassislik', 'Filial', 'Holat', 'Kechikish']]
-            
-            for i, (uid, branch, date, att_time) in enumerate(sorted(day_attendances, key=lambda x: x[3]), 1):
-                teacher_name = user_names.get(uid, f"ID: {uid}")
-                specialty = user_specialty.get(uid, '')
-                
-                lesson_time = None
-                if uid in user_schedules:
-                    for schedule_id in user_schedules[uid]:
-                        schedule = schedules.get(schedule_id)
-                        if schedule and schedule['branch'] == branch:
-                            if report_weekday in schedule['days']:
-                                lesson_time = schedule['days'][report_weekday]
-                                break
-                
-                lesson_time_display = lesson_time if lesson_time else "—"
-                
-                if lesson_time:
-                    ontime, late_mins = calculate_lateness(att_time, lesson_time)
-                    status = "Vaqtida" if ontime else "Kechikkan"
-                    late_text = "0" if ontime else f"{late_mins} min"
-                else:
-                    status = "Noma'lum"
-                    late_text = "-"
-                
-                data.append([
-                    str(i), 
-                    att_time,
-                    lesson_time_display,
-                    teacher_name, 
-                    specialty, 
-                    branch, 
-                    status, 
-                    late_text
-                ])
-            
-            # ColWidths ni kengaytiramiz va shriftni o'zgartiramiz
-            table = Table(data, colWidths=[0.3*inch, 0.8*inch, 0.8*inch, 1.8*inch, 1.1*inch, 1.6*inch, 0.8*inch, 0.8*inch])
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), FONT_NAME_BOLD),
-                ('FONTNAME', (0, 1), (-1, -1), FONT_NAME),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-                ('FONTSIZE', (0, 0), (-1, -1), 8),  # Shriftni biroz kichraytiramiz sig'ishi uchun
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ]))
-            
-            elements.append(table)
-        else:
-            elements.append(Paragraph("Bu kunda davomat yo'q", styles['Normal']))
-        
-        doc.build(elements)
-        pdf_buffer.seek(0)
+        pdf_buffer = await get_combined_report_pdf(report_date)
         
         await message.answer_document(
             types.BufferedInputFile(pdf_buffer.getvalue(), 
-                                    filename=f"davomat_{report_date_str}.pdf"),
+                                    filename=f"davomat_{report_date.strftime('%Y-%m-%d')}.pdf"),
             caption=f"📊 {report_date.strftime('%d.%m.%Y')} kunlik davomat hisoboti"
         )
         
@@ -3905,6 +3845,30 @@ async def admin_back(callback: types.CallbackQuery):
         logging.error(f"admin_back error: {e}")
         await callback.message.edit_text("❌ Admin panelga qaytishda xatolik yuz berdi")
         await callback.answer()
+
+async def auto_daily_report_task():
+    """Har kuni soat 10:10 da kechagi kun hisobotini yuboradi"""
+    while True:
+        now = datetime.now(UZB_TZ)
+        # 10:10 bo'lishini kutamiz
+        if now.hour == 10 and now.minute == 10:
+            yesterday = now.date() - timedelta(days=1)
+            logging.info(f"Avtomatik hisobot yuborilmoqda: {yesterday}")
+            
+            try:
+                pdf_buf = await get_combined_report_pdf(yesterday)
+                await bot.send_document(
+                    chat_id=ADMIN_GROUP_ID,
+                    document=types.BufferedInputFile(pdf_buf.read(), filename=f"hisobot_{yesterday}.pdf"),
+                    caption=f"📅 Kechagi kun ({yesterday}) uchun avtomatik davomat hisoboti."
+                )
+            except Exception as e:
+                logging.error(f"Auto report error: {e}")
+            
+            # Bir daqiqa kutib turamizki, qayta-qayta yubormasin
+            await asyncio.sleep(61)
+        
+        await asyncio.sleep(30)  # Har 30 soniyada vaqtni tekshirib turadi
 
 async def check_schedule_reminders():
     while True:
@@ -3987,6 +3951,7 @@ async def main():
     
     asyncio.create_task(start_web_server())
     asyncio.create_task(check_schedule_reminders())
+    asyncio.create_task(auto_daily_report_task())  # Avtomatik hisobot vazifasi
     
     # Webhook ni o'chirish va polling ni boshlash
     await bot.delete_webhook(drop_pending_updates=True)
