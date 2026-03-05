@@ -116,18 +116,17 @@ ALLOWED_DISTANCE = 500
 class MonthlyReport(StatesGroup):
     waiting_for_date_range = State()
 
-# --- OYLIK KALKULYATOR UCHUN STATE (YANGI FORMULALAR) ---
+# --- OYLIK KALKULYATOR UCHUN STATE (YANGI - KO'P FILIALLI) ---
 class SalaryCalc(StatesGroup):
     selecting_specialty = State()
     selecting_teacher = State()
-    selecting_branch = State()
+    # Yangi mantiq uchun tartib
+    entering_branch_data = State() 
     entering_students = State()
     entering_lessons = State()
-    selecting_percentage_it = State() # 35% yoki 45%
-    selecting_percentage_kr = State() # 10%-100%
-    entering_penalty_it_percent = State() # IT uchun jarima % da
-    entering_penalty_kr_manual = State()  # Koreys tili uchun jarima summasi
-    entering_payment_it = State()     # IT uchun jami tushum
+    selecting_percentage = State()
+    entering_penalty = State()
+    entering_payment = State() # Faqat IT uchun
 
 # --- VIZUAL JADVAL UCHUN STATE ---
 class VisualSchedule(StatesGroup):
@@ -1445,7 +1444,7 @@ async def weekly_top(message: types.Message):
         parse_mode="Markdown"
     )
 
-# --- YANGILANGAN LOKATSIYA HANDLERI (SOXTA LOKATSIYANI ANIQLASH) ---
+# --- YANGILANGAN QAT'IY LOKATSIYA HANDLERI (SOXTA LOKATSIYANI ANIQLASH) ---
 @dp.message(F.location)
 async def handle_location(message: types.Message):
     user_id = message.from_user.id
@@ -1456,19 +1455,30 @@ async def handle_location(message: types.Message):
         await message.answer(get_text(user_id, 'blocked_user'))
         return
 
-    # 2. SOXTA (FORWARD) LOKATSIYANI ANIQLASH (Ism yashirilgan bo'lsa ham ishlaydi)
+    # 2. QAT'IY TEKSHIRUV (STRICT VALIDATION)
+    # Agar xabar forward bo'lsa YOKI xaritadan qo'lda tanlangan bo'lsa (horizontal_accuracy bo'lmasa)
+    is_fake = False
+    fake_reason = ""
+    
     if message.forward_origin is not None:
-        # Foydalanuvchiga qattiq ogohlantirish
+        is_fake = True
+        fake_reason = "Forward qilingan lokatsiya"
+    elif message.location.horizontal_accuracy is None:
+        is_fake = True
+        fake_reason = "Xaritadan qo'lda tanlangan nuqta"
+
+    if is_fake:
+        # Foydalanuvchiga yuboriladigan qat'iy ogohlantirish
         user_warning = (
             "⚠️ **DIQQAT: SOXTA DAVOMATGA URINISH!**\n\n"
             "Siz boshqa foydalanuvchidan uzatilgan (forward) lokatsiyani yuborish orqali "
-            "**yolg'on davomat** qilishga urundingiz.\n\n"
+            "yoki xaritadan nuqtani qo'lda tanlab **yolg'on davomat** qilishga urundingiz.\n\n"
             "🚫 Ushbu harakatingiz soxtakorlik sifatida qayd etildi va **adminlarga (rahbariyatga) yuborildi!**\n"
             "Iltimos, darsga kelganingizda faqat botdagi maxsus tugmani bosing."
         )
         await message.answer(user_warning, parse_mode="Markdown")
 
-        # Adminga shoshilinch xabar yuborish
+        # Adminga yuboriladigan xabar
         t_name = user_names.get(user_id, message.from_user.full_name)
         t_spec = user_specialty.get(user_id, 'Noma\'lum')
         admin_alert = (
@@ -1476,22 +1486,13 @@ async def handle_location(message: types.Message):
             f"👤 **Xodim:** {t_name}\n"
             f"📚 **Soha:** {t_spec}\n"
             f"🆔 **ID:** `{user_id}`\n"
-            f"📍 **Holat:** Forward qilingan (soxta) lokatsiya yubordi.\n"
+            f"📍 **Holat:** {fake_reason}\n"
             f"🕒 **Vaqt:** {datetime.now(UZB_TZ).strftime('%H:%M:%S')}"
         )
         await bot.send_message(ADMIN_GROUP_ID, admin_alert, parse_mode="Markdown")
         return
 
-    # 3. QO'LDA TANLANGAN NUQTANI TEKSHIRISH (Manual Pin)
-    # Haqiqiy "Share location" tugmasida aniqlik darajasi (horizontal_accuracy) bo'ladi.
-    if message.location.horizontal_accuracy is None:
-        await message.answer(
-            "❌ **Xatolik!**\n\nXaritadan nuqtani qo'lda tanlab yuborish mumkin emas. "
-            "Iltimos, faqat **'📍 Kelganimni tasdiqlash'** tugmasini bosish orqali manzilingizni yuboring!"
-        )
-        return
-
-    # 4. AGAR HAMMASI TO'G'RI BO'LSA, MASOFANI O'LCHASHNI BOSHLAYMIZ
+    # 3. AGAR LOKATSIYA TO'G'RI (TUGMA ORQALI) YUBORILGAN BO'LSA
     now_uzb = datetime.now(UZB_TZ)
     today_date = now_uzb.strftime("%Y-%m-%d")
     current_month = now_uzb.strftime("%Y-%m")
@@ -1950,7 +1951,7 @@ async def visual_schedule_process(callback: types.CallbackQuery, state: FSMConte
     await state.clear()
     await callback.answer()
 
-# --- OYLIK KALKULYATOR HANDLERS (YANGI FORMULALAR) ---
+# --- OYLIK KALKULYATOR HANDLERS (YANGI - KO'P FILIALLI) ---
 @dp.callback_query(F.data == "admin_salary_calc")
 async def salary_calc_start(callback: types.CallbackQuery, state: FSMContext):
     if not check_admin(callback.message.chat.id):
@@ -1993,282 +1994,221 @@ async def salary_calc_spec(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 @dp.callback_query(SalaryCalc.selecting_teacher, F.data.startswith("sal_teacher_"))
-async def salary_calc_teacher(callback: types.CallbackQuery, state: FSMContext):
+async def salary_calc_teacher_selected(callback: types.CallbackQuery, state: FSMContext):
     uid = int(callback.data.replace("sal_teacher_", ""))
-    await state.update_data(teacher_id=uid, teacher_name=user_names.get(uid, f"ID: {uid}"))
     
-    # O'qituvchi dars o'tadigan filiallar ro'yxati
-    builder = InlineKeyboardBuilder()
-    teacher_branches = set()
+    # O'qituvchining barcha filiallarini schedules dan topamiz
+    branches = []
     for sid, sdata in schedules.items():
         if sdata['user_id'] == uid:
-            teacher_branches.add(sdata['branch'])
+            if sdata['branch'] not in branches:
+                branches.append(sdata['branch'])
     
-    # Agar o'qituvchiga filial biriktirilmagan bo'lsa, barcha filiallarni ko'rsatamiz
-    if not teacher_branches:
-        for loc in LOCATIONS:
-            teacher_branches.add(loc['name'])
-    
-    for br in sorted(teacher_branches):
-        builder.row(InlineKeyboardButton(text=br, callback_data=f"sal_br_{br}"))
-    
-    builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_salary_calc"))
-    await callback.message.edit_text(
-        "Qaysi filial uchun oylik hisoblaymiz?",
-        reply_markup=builder.as_markup()
+    if not branches:
+        await callback.message.answer("❌ Bu o'qituvchiga dars jadvali biriktirilmagan!")
+        await state.clear()
+        return
+
+    # Ma'lumotlarni saqlash uchun boshlang'ich konteyner
+    await state.update_data(
+        teacher_id=uid,
+        teacher_name=user_names.get(uid, f"ID: {uid}"),
+        specialty=user_specialty.get(uid, ''),
+        all_branches=branches,
+        current_branch_idx=0,
+        calculated_results=[] # Har bir filial natijalari shu yerga yig'iladi
     )
-    await state.set_state(SalaryCalc.selecting_branch)
+    
+    await salary_ask_next_branch(callback.message, state)
     await callback.answer()
 
-@dp.callback_query(SalaryCalc.selecting_branch, F.data.startswith("sal_br_"))
-async def salary_calc_branch(callback: types.CallbackQuery, state: FSMContext):
-    branch = callback.data.replace("sal_br_", "")
-    await state.update_data(branch=branch)
-    await callback.message.edit_text(
-        "👥 O'quvchilar sonini kiriting:"
-    )
+async def salary_ask_next_branch(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    idx = data['current_branch_idx']
+    branches = data['all_branches']
+    
+    current_branch = branches[idx]
+    await message.answer(f"🏢 **Filial: {current_branch}**\n\nUshbu filialdagi o'quvchilar sonini kiriting:")
     await state.set_state(SalaryCalc.entering_students)
-    await callback.answer()
 
 @dp.message(SalaryCalc.entering_students)
-async def salary_students(message: types.Message, state: FSMContext):
+async def salary_students_step(message: types.Message, state: FSMContext):
     if not message.text.isdigit():
-        await message.answer("❌ Faqat raqam kiriting!")
+        await message.answer("❌ Raqam kiriting!")
         return
-    await state.update_data(students=int(message.text))
-    await message.answer(
-        "📚 O'qituvchi bu oy necha marta dars o'tdi?"
-    )
+    await state.update_data(temp_students=int(message.text))
+    await message.answer("📚 Ushbu filialda bu oy necha marta dars o'tdi?")
     await state.set_state(SalaryCalc.entering_lessons)
 
 @dp.message(SalaryCalc.entering_lessons)
-async def salary_lessons(message: types.Message, state: FSMContext):
+async def salary_lessons_step(message: types.Message, state: FSMContext):
     if not message.text.isdigit():
-        await message.answer("❌ Faqat raqam kiriting!")
+        await message.answer("❌ Raqam kiriting!")
         return
-    await state.update_data(lessons=int(message.text))
+    await state.update_data(temp_lessons=int(message.text))
     
     data = await state.get_data()
     builder = InlineKeyboardBuilder()
     
     if data['specialty'] == "IT":
         builder.row(
-            InlineKeyboardButton(text="35%", callback_data="it_p_35"),
-            InlineKeyboardButton(text="45%", callback_data="it_p_45")
+            InlineKeyboardButton(text="35%", callback_data="p_it_35"),
+            InlineKeyboardButton(text="45%", callback_data="p_it_45")
         )
-        builder.row(
-            InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_salary_calc")
-        )
-        await message.answer(
-            "📊 Imtixon natijasini tanlang:",
-            reply_markup=builder.as_markup()
-        )
-        await state.set_state(SalaryCalc.selecting_percentage_it)
+        await message.answer("📊 Imtixon natijasini tanlang:", reply_markup=builder.as_markup())
     else:  # Koreys tili
-        # 10% dan 100% gacha tugmalar (10% qadam bilan)
         for p in range(10, 101, 10):
-            builder.add(InlineKeyboardButton(text=f"{p}%", callback_data=f"kr_p_{p}"))
+            builder.add(InlineKeyboardButton(text=f"{p}%", callback_data=f"p_kr_{p}"))
         builder.adjust(3)
-        builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_salary_calc"))
-        await message.answer(
-            "📊 Imtixon natijasini tanlang (%):",
-            reply_markup=builder.as_markup()
-        )
-        await state.set_state(SalaryCalc.selecting_percentage_kr)
+        await message.answer("📊 Imtixon natijasini tanlang (%):", reply_markup=builder.as_markup())
+    
+    await state.set_state(SalaryCalc.selecting_percentage)
 
-# --- IT JARIMA FOIZINI SO'RASH ---
-@dp.callback_query(SalaryCalc.selecting_percentage_it, F.data.startswith("it_p_"))
-async def salary_it_perc_selection(callback: types.CallbackQuery, state: FSMContext):
-    perc = int(callback.data.replace("it_p_", ""))
-    await state.update_data(percentage=perc)
-    await callback.message.edit_text(
-        "📊 O'qituvchiga necha FOIZ jarima qo'llaniladi?\n"
-        "(Faqat raqam kiriting, masalan: 10. Agar jarima bo'lmasa 0 yozing):"
-    )
-    await state.set_state(SalaryCalc.entering_penalty_it_percent)
+@dp.callback_query(SalaryCalc.selecting_percentage)
+async def salary_perc_step(callback: types.CallbackQuery, state: FSMContext):
+    # Callback format: p_it_35 yoki p_kr_40
+    parts = callback.data.split('_')
+    perc = int(parts[-1])
+    await state.update_data(temp_perc=perc)
+    await callback.message.edit_text("💰 Ushbu filial uchun jarima (shtraf) summasini kiriting (yo'q bo'lsa 0):")
+    await state.set_state(SalaryCalc.entering_penalty)
     await callback.answer()
 
-@dp.message(SalaryCalc.entering_penalty_it_percent)
-async def salary_it_penalty_process(message: types.Message, state: FSMContext):
-    if not message.text.isdigit():
-        await message.answer("❌ Iltimos, foizni raqamlarda kiriting!")
-        return
-    await state.update_data(penalty_percent=int(message.text))
-    await message.answer(
-        "💵 Ushbu filialdan jami o'quvchilar qilgan to'lov summasini kiriting (so'm):"
-    )
-    await state.set_state(SalaryCalc.entering_payment_it)
-
-# --- KOREYS TILI JARIMA SUMMASINI SO'RASH ---
-@dp.callback_query(SalaryCalc.selecting_percentage_kr, F.data.startswith("kr_p_"))
-async def salary_kr_perc_selection(callback: types.CallbackQuery, state: FSMContext):
-    perc = int(callback.data.replace("kr_p_", ""))
-    await state.update_data(percentage=perc)
-    await callback.message.edit_text(
-        "💰 O'qituvchiga bu oy uchun qancha jarima (summa) bor?\n"
-        "(Yo'q bo'lsa 0 yozing):"
-    )
-    await state.set_state(SalaryCalc.entering_penalty_kr_manual)
-    await callback.answer()
-
-@dp.message(SalaryCalc.entering_penalty_kr_manual)
-async def salary_kr_penalty_process(message: types.Message, state: FSMContext):
+@dp.message(SalaryCalc.entering_penalty)
+async def salary_penalty_step(message: types.Message, state: FSMContext):
     val = message.text.replace(' ', '').replace(',', '')
     if not val.isdigit():
-        await message.answer("❌ Iltimos, summani raqamlarda kiriting!")
+        await message.answer("❌ Raqam kiriting!")
         return
-    await state.update_data(penalty_manual=int(val))
-    await salary_final_processing(message, state)
+    await state.update_data(temp_penalty=int(val))
+    
+    data = await state.get_data()
+    if data['specialty'] == "IT":
+        await message.answer("💵 Ushbu filialdan jami o'quvchilar to'lovini kiriting (so'm):")
+        await state.set_state(SalaryCalc.entering_payment)
+    else:
+        await process_branch_calculation(message, state)
 
-@dp.message(SalaryCalc.entering_payment_it)
-async def salary_payment_it_process(message: types.Message, state: FSMContext):
+@dp.message(SalaryCalc.entering_payment)
+async def salary_payment_it_step(message: types.Message, state: FSMContext):
     val = message.text.replace(' ', '').replace(',', '')
     if not val.isdigit():
-        await message.answer("❌ To'lov summasini raqamlarda kiriting!\nMasalan: 5000000")
+        await message.answer("❌ Raqam kiriting!")
         return
-    await state.update_data(total_payment=int(val))
-    await salary_final_processing(message, state)
+    await state.update_data(temp_payment=int(val))
+    await process_branch_calculation(message, state)
 
-# --- YANGI OYLIK HISOB-KITOB MANTIQI (YAKUNIY) ---
-async def salary_final_processing(message: types.Message, state: FSMContext):
-    """Yakuniy hisob-kitob yangi formulalar asosida"""
+async def process_branch_calculation(message: types.Message, state: FSMContext):
+    """Har bir filial uchun hisob-kitob qilish va natijani saqlash"""
     data = await state.get_data()
     spec = data['specialty']
-    students = data['students']
-    lessons = data['lessons']
-    perc = data['percentage']
+    idx = data['current_branch_idx']
+    branch_name = data['all_branches'][idx]
     
-    final_gross = 0
-    total_payment = data.get('total_payment', 0)
-    exam_penalty = 0
-
+    # Filial uchun hisob-kitob
+    gross = 0
+    exam_pen = 0
+    students = data['temp_students']
+    lessons = data['temp_lessons']
+    perc = data['temp_perc']
+    penalty = data['temp_penalty']
+    
     if spec == "IT":
-        # 1. IT LOGIKASI
-        # O'qituvchining ulushi (35% yoki 45%)
-        base_share = (total_payment * perc / 100)
-        # Jarima foizini o'sha ulushdan ayiramiz
-        penalty_amount = (base_share * data.get('penalty_percent', 0) / 100)
-        final_gross = base_share - penalty_amount
+        # IT logikasi
+        total_payment = data.get('temp_payment', 0)
+        base_share = total_payment * perc / 100
+        gross = base_share - penalty
         
     else:
-        # 2. KOREYS TILI LOGIKASI
-        # Bazaviy oylik hisoblash
-        if students <= 10:
-            base_salary = 1800000
-        else:
-            # 11 tadan ko'p bo'lsa: 1.8 mln + (jami o'quvchi * 100,000)
-            base_salary = 1800000 + (students * 100000)
+        # Koreys tili logikasi
+        # Bazaviy oylik
+        base_salary = 1800000
+        if students > 10:
+            base_salary += students * 100000  # 11+ o'quvchi uchun har biriga 100k
         
-        # Imtixon natijasiga ko'ra jarima shkalasi
-        if perc < 10: exam_penalty = 900000
-        elif perc < 20: exam_penalty = 800000
-        elif perc < 30: exam_penalty = 700000
-        elif perc < 40: exam_penalty = 600000
-        elif perc < 50: exam_penalty = 500000
-        elif perc < 60: exam_penalty = 400000
-        elif perc < 70: exam_penalty = 300000
-        elif perc < 80: exam_penalty = 200000
-        elif perc < 90: exam_penalty = 100000
-        else: exam_penalty = 0
+        # Imtixon jarimasi
+        if perc < 10: exam_pen = 900000
+        elif perc < 20: exam_pen = 800000
+        elif perc < 30: exam_pen = 700000
+        elif perc < 40: exam_pen = 600000
+        elif perc < 50: exam_pen = 500000
+        elif perc < 60: exam_pen = 400000
+        elif perc < 70: exam_pen = 300000
+        elif perc < 80: exam_pen = 200000
+        elif perc < 90: exam_pen = 100000
+        else: exam_pen = 0
         
-        # Imtixon jarimasi ayirilgan summa
-        net_after_exam = base_salary - exam_penalty
+        mid_total = base_salary - exam_pen
         
-        # Dars soniga ko'ra pro-rata (12 ta dars qoidasi)
+        # 12 dars qoidasi
         if lessons < 12:
-            one_lesson_price = net_after_exam / 12
-            final_gross = one_lesson_price * lessons
+            one_lesson_price = mid_total / 12
+            gross = one_lesson_price * lessons
         else:
-            final_gross = net_after_exam
+            gross = mid_total
         
-        # Admin kiritgan qo'shimcha jarimani (manual penalty) ayirish
-        final_gross = final_gross - data.get('penalty_manual', 0)
+        gross -= penalty
 
-    # 3. SOLIQ USHLANMASI (7.5%)
-    # Barcha o'qituvchilar uchun final summadan 7.5% ayiriladi
-    tax_amount = final_gross * 0.075
-    net_salary = final_gross - tax_amount
+    # Filial natijasini ro'yxatga qo'shish
+    res = {
+        'branch': branch_name,
+        'students': students,
+        'lessons': lessons,
+        'percentage': perc,
+        'penalty': penalty,
+        'exam_penalty': exam_pen,
+        'payment': data.get('temp_payment', 0),
+        'gross': gross
+    }
+    
+    results_list = data['calculated_results']
+    results_list.append(res)
+    
+    new_idx = idx + 1
+    if new_idx < len(data['all_branches']):
+        # Keyingi filialga o'tamiz
+        await state.update_data(
+            current_branch_idx=new_idx, 
+            calculated_results=results_list
+        )
+        await salary_ask_next_branch(message, state)
+    else:
+        # Barcha filiallar tugadi - Final
+        await finalize_multi_branch_salary(message, state, results_list)
 
-    # Natijalarni chiroyli formatlash
-    s_tax = "{:,.0f}".format(tax_amount).replace(',', ' ')
-    s_net = "{:,.0f}".format(net_salary).replace(',', ' ')
-    s_gross = "{:,.0f}".format(final_gross).replace(',', ' ')
-    s_students = "{:,.0f}".format(students).replace(',', ' ')
-    s_lessons = "{:,.0f}".format(lessons).replace(',', ' ')
-    s_penalty = "{:,.0f}".format(data.get('penalty_manual', 0)).replace(',', ' ')
+async def finalize_multi_branch_salary(message: types.Message, state: FSMContext, results):
+    """Barcha filiallar bo'yicha yakuniy hisob-kitob va Excel yaratish"""
+    data = await state.get_data()
     
-    # --- EXCEL YARATISH ---
-    wb = Workbook()
-    ws = wb.active
-    ws.title = spec
+    total_gross = sum(r['gross'] for r in results)
+    tax = total_gross * 0.075
+    net = total_gross - tax
     
-    # Border va Stil sozlamalari
-    thin = Side(border_style="thin", color="000000")
-    border = Border(top=thin, left=thin, right=thin, bottom=thin)
-    header_fill = PatternFill(start_color="2E86AB", end_color="2E86AB", fill_type="solid")
+    # Excel yaratish
+    excel_file = await create_multi_branch_excel(
+        teacher_name=data['teacher_name'],
+        specialty=data['specialty'],
+        results=results,
+        total_gross=total_gross,
+        tax=tax,
+        net=net
+    )
     
-    # Excel Header
-    headers = ['Parametr', 'Qiymat']
-    ws.append(headers)
+    s_net = "{:,.0f}".format(net).replace(',', ' ')
+    s_gross = "{:,.0f}".format(total_gross).replace(',', ' ')
+    s_tax = "{:,.0f}".format(tax).replace(',', ' ')
     
-    # Ma'lumotlar ro'yxati
-    excel_data = [
-        ['O\'qituvchi', data['teacher_name']],
-        ['Filial', data['branch']],
-        ['Mutaxassislik', spec],
-        ['O\'quvchilar soni', s_students],
-        ['O\'tilgan darslar', s_lessons],
-        ['Imtixon natijasi', f"{perc}%"],
-        ['Imtixon jarimasi', f"{exam_penalty:,.0f}"],
-        ['Qo\'shimcha jarima', s_penalty if spec != 'IT' else f"{data.get('penalty_percent', 0)}%"],
-        ['Jami to\'lov', f"{total_payment:,.0f}" if spec == 'IT' else "—"],
-        ['Soliqdan avvalgi summa', f"{final_gross:,.0f}"],
-        ['Soliq (7.5%)', f"{tax_amount:,.0f}"],
-        ['Qo\'lga tegadigan summa', f"{net_salary:,.0f}"]
-    ]
-    
-    for row in excel_data:
-        ws.append(row)
-
-    # Dizayn berish
-    for cell in ws[1]:
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
-    
-    for row in ws.iter_rows(min_row=1, max_row=len(excel_data)+1, min_col=1, max_col=2):
-        for cell in row:
-            cell.border = border
-            if cell.column == 1 and cell.row > 1:
-                cell.font = Font(bold=True)
-    
-    # Oxirgi qatorni (Qo'lga tegadigan summa) ajratib ko'rsatish
-    last_row = len(excel_data) + 1
-    ws[f'A{last_row}'].font = Font(bold=True, size=12)
-    ws[f'B{last_row}'].font = Font(bold=True, size=12, color="006100")
-    ws[f'B{last_row}'].fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-
-    ws.column_dimensions['A'].width = 25
-    ws.column_dimensions['B'].width = 30
-
-    excel_file = io.BytesIO()
-    wb.save(excel_file)
-    excel_file.seek(0)
-
-    # Natijani adminga yuborish
     caption = (
-        f"✅ **Oylik hisob-kitob yakunlandi**\n\n"
+        f"✅ **Oylik hisob-kitob yakunlandi (Barcha filiallar)**\n\n"
         f"👤 Xodim: {data['teacher_name']}\n"
-        f"🏢 Filial: {data['branch']}\n"
-        f"📚 Mutaxassislik: {spec}\n"
-        f"👥 O'quvchilar: {s_students} ta\n"
-        f"📅 Darslar: {s_lessons} ta\n"
+        f"📚 Mutaxassislik: {data['specialty']}\n"
+        f"🏢 Filiallar soni: {len(results)} ta\n"
         f"──────────────────\n"
-        f"💰 Umumiy: {s_gross} so'm\n"
+        f"💰 Jami (soliqsiz): {s_gross} so'm\n"
         f"💸 Soliq (7.5%): {s_tax} so'm\n"
         f"💵 **Qo'lga tegadi: {s_net} so'm**"
     )
-
+    
     await message.answer_document(
         types.BufferedInputFile(excel_file.read(), filename=f"Oylik_{data['teacher_name']}_{datetime.now(UZB_TZ).strftime('%Y%m')}.xlsx"),
         caption=caption,
@@ -2285,6 +2225,82 @@ async def salary_final_processing(message: types.Message, state: FSMContext):
         "Boshqa amalni tanlang:",
         reply_markup=builder.as_markup()
     )
+
+async def create_multi_branch_excel(teacher_name, specialty, results, total_gross, tax, net):
+    """Ko'p filialli hisob-kitob uchun Excel fayl yaratish"""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Oylik Hisoboti"
+    
+    # Border stili
+    thin = Side(border_style="thin", color="000000")
+    border = Border(top=thin, left=thin, right=thin, bottom=thin)
+    
+    # Sarlavhalar
+    headers = ['Filial', 'O\'quvchilar', 'Darslar', 'Imtixon %', 'Jarima', 'Imtixon jarimasi', 'Tushum', 'Filial oyligi']
+    ws.append(headers)
+    
+    # Header dizayni
+    header_fill = PatternFill(start_color="2E86AB", end_color="2E86AB", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+    
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+        cell.border = border
+
+    # Ma'lumotlarni yozish
+    for r in results:
+        row = [
+            r['branch'],
+            r['students'],
+            r['lessons'],
+            f"{r['percentage']}%",
+            f"{r['penalty']:,.0f}",
+            f"{r['exam_penalty']:,.0f}",
+            f"{r['payment']:,.0f}" if r['payment'] > 0 else "—",
+            f"{r['gross']:,.0f}"
+        ]
+        ws.append(row)
+        
+        # Har bir qatorga border qo'shish
+        for cell in ws[ws.max_row]:
+            cell.border = border
+            cell.alignment = Alignment(horizontal="center")
+
+    # Bo'sh qator
+    ws.append([])
+    
+    # Jami qatorlari
+    summary_rows = [
+        ['', '', '', '', '', 'JAMI (Soliqsiz):', f"{total_gross:,.0f}"],
+        ['', '', '', '', '', 'Soliq (7.5%):', f"{tax:,.0f}"],
+        ['', '', '', '', '', 'QO\'LGA TEGADI:', f"{net:,.0f}"]
+    ]
+    
+    for s_row in summary_rows:
+        ws.append(s_row)
+        for cell in ws[ws.max_row]:
+            cell.border = border
+            if s_row[5] in ['JAMI (Soliqsiz):', 'Soliq (7.5%):', 'QO\'LGA TEGADI:']:
+                cell.font = Font(bold=True)
+                if s_row[5] == 'QO\'LGA TEGADI:':
+                    ws.cell(row=ws.max_row, column=7).font = Font(bold=True, color="006100")
+                    ws.cell(row=ws.max_row, column=7).fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+
+    # Ustun kengligi
+    column_widths = [20, 12, 10, 10, 15, 15, 15, 15]
+    for i, width in enumerate(column_widths, 1):
+        ws.column_dimensions[chr(64 + i)].width = width
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
 
 @dp.callback_query(F.data == "admin_monthly_report")
 async def admin_monthly_report_start(callback: types.CallbackQuery):
