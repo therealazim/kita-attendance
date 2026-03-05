@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, landscape, A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
@@ -1438,7 +1438,6 @@ async def admin_monthly_report_start(callback: types.CallbackQuery):
         return
     
     now = datetime.now(UZB_TZ)
-    # Xatolikni tuzatish: start_date ga ham tzinfo=UZB_TZ beramiz
     start_date = datetime(2026, 3, 1, tzinfo=UZB_TZ) 
     
     builder = InlineKeyboardBuilder()
@@ -2655,103 +2654,114 @@ async def admin_schedules_pdf(callback: types.CallbackQuery):
     await callback.answer()
 
 async def create_all_schedules_pdf() -> io.BytesIO:
+    from reportlab.lib.pagesizes import landscape, A4
+    from reportlab.platypus import PageBreak
+    
     pdf_buffer = io.BytesIO()
-    # Landscape (albom) formatida qilish jadvalni kengroq va tushunarliroq ko'rsatadi
-    doc = SimpleDocTemplate(pdf_buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    # Landscape format (yotqizilgan A4)
+    doc = SimpleDocTemplate(
+        pdf_buffer, 
+        pagesize=landscape(A4),
+        rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20
+    )
     elements = []
     styles = getSampleStyleSheet()
-    
-    # Maxsus uslublar
-    title_style = ParagraphStyle(
-        'MainTitle',
-        parent=styles['Heading1'],
-        fontSize=22,
-        alignment=1,
-        spaceAfter=10,
-        textColor=colors.HexColor('#2E86AB'),
-        fontName='Helvetica-Bold'
+
+    # Maxsus uslublar (Dizayn uchun)
+    main_title_style = ParagraphStyle(
+        'MainTitle', parent=styles['Heading1'], fontSize=26, alignment=1, 
+        spaceAfter=10, textColor=colors.HexColor('#1A237E'), fontName='Helvetica-Bold'
     )
     
-    teacher_style = ParagraphStyle(
-        'TeacherHeader',
-        parent=styles['Heading2'],
-        fontSize=14,
-        textColor=colors.white,
-        backColor=colors.HexColor('#A53F2B'),
-        leftIndent=5,
-        spaceBefore=15,
-        spaceAfter=5,
-        borderPadding=5,
-        borderRadius=3
+    section_style = ParagraphStyle(
+        'SectionHeader', parent=styles['Heading2'], fontSize=18, alignment=1,
+        textColor=colors.whitesmoke, backColor=colors.HexColor('#283593'),
+        spaceBefore=10, spaceAfter=15, borderPadding=10, borderRadius=5
     )
 
-    branch_style = ParagraphStyle(
-        'BranchHeader',
-        parent=styles['Normal'],
-        fontSize=11,
-        textColor=colors.HexColor('#2E86AB'),
-        fontName='Helvetica-Bold',
-        spaceBefore=5
+    teacher_name_style = ParagraphStyle(
+        'TeacherName', parent=styles['Heading3'], fontSize=14, 
+        textColor=colors.HexColor('#B71C1C'), spaceBefore=12, spaceAfter=5, fontName='Helvetica-Bold'
     )
 
-    elements.append(Paragraph("HANCOM ACADEMY", title_style))
-    elements.append(Paragraph("O'QITUVCHILARNING UMUMIY DARS JADVALI", styles['Normal']))
-    elements.append(Paragraph(f"Yaratilgan sana: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", styles['Italic']))
-    elements.append(Spacer(1, 15))
+    branch_info_style = ParagraphStyle(
+        'BranchInfo', parent=styles['Normal'], fontSize=11, 
+        textColor=colors.HexColor('#0D47A1'), fontName='Helvetica-Bold'
+    )
+
+    # 1. Sarlavha
+    elements.append(Paragraph("HANCOM ACADEMY", main_title_style))
+    elements.append(Paragraph("O'QITUVCHILAR VA XODIMLARNING UMUMIY DARS JADVALI", 
+                             ParagraphStyle('Sub', parent=styles['Normal'], alignment=1, fontSize=12, spaceAfter=20)))
+
+    # 2. Ma'lumotlarni mutaxassislik bo'yicha guruhlash
+    # Specialty -> Teacher -> Schedules
+    grouped_data = defaultdict(lambda: defaultdict(list))
     
-    if not schedules:
-        elements.append(Paragraph("📭 Hali dars jadvallari mavjud emas.", styles['Normal']))
-    else:
-        # O'qituvchilarni alifbo bo'yicha saralash
-        teacher_ids = sorted(user_schedules.keys(), key=lambda uid: user_names.get(uid, '').lower())
+    for s_id, s_data in schedules.items():
+        uid = s_data['user_id']
+        spec = user_specialty.get(uid, "Boshqa")
+        t_name = user_names.get(uid, f"ID: {uid}")
+        grouped_data[spec][t_name].append(s_data)
+
+    # Mutaxassisliklar tartibi
+    spec_order = ["IT", "Koreys tili", "Ofis xodimi"]
+    
+    for spec in spec_order:
+        if spec not in grouped_data: continue
         
-        for teacher_id in teacher_ids:
-            if not user_schedules[teacher_id]: continue
+        # Bo'lim sarlavhasi (Banner)
+        elements.append(Paragraph(f"{spec.upper()} BO'LIMI JADVALLARI", section_style))
+        
+        # O'qituvchilarni alifbo bo'yicha chiqarish
+        sorted_teachers = sorted(grouped_data[spec].keys())
+        
+        for t_name in sorted_teachers:
+            elements.append(Paragraph(f"👤 O'qituvchi: {t_name}", teacher_name_style))
             
-            name = user_names.get(teacher_id, "Noma'lum")
-            spec = user_specialty.get(teacher_id, '')
-            elements.append(Paragraph(f"👤 {name.upper()} | {spec}", teacher_style))
+            # Har bir o'qituvchining filiallari
+            teacher_scheds = grouped_data[spec][t_name]
             
-            # Har bir filial uchun jadvalni chiqarish
-            for schedule_id in user_schedules[teacher_id]:
-                schedule = schedules.get(schedule_id)
-                if not schedule: continue
+            # Filiallar jadvalini bitta qatorga 2 tadan sig'dirish uchun kichik jadvallar yasaymiz
+            for s_data in teacher_scheds:
+                branch = s_data['branch']
+                l_type = s_data.get('lesson_type', 'Dars')
                 
-                branch = schedule['branch']
-                l_type = schedule.get('lesson_type', 'Dars')
+                elements.append(Paragraph(f"📍 Filial: {branch} ({l_type})", branch_info_style))
                 
-                elements.append(Paragraph(f"🏢 Filial: {branch} ({l_type})", branch_style))
+                # Kunlar va vaqtlar jadvali
+                days = sort_weekdays(s_data['days'])
+                table_data = [['Hafta kuni', 'Dars boshlanish vaqti']] # Header
                 
-                # Jadval ma'lumotlarini tayyorlash
-                days = sort_weekdays(schedule['days'])
-                data = [['Kun', 'Dars vaqti']] # Table Header
-                
-                for day, time in days.items():
-                    data.append([day, time])
+                for d_name, d_time in days.items():
+                    table_data.append([d_name, d_time])
                 
                 # Jadval dizayni
-                table = Table(data, colWidths=[2.5*inch, 2.5*inch])
-                table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2E86AB')), # Header rangi
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                t = Table(table_data, colWidths=[2.5*inch, 2.5*inch])
+                t.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E3F2FD')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1565C0')),
                     ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                     ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                     ('FONTSIZE', (0, 0), (-1, -1), 10),
                     ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F2F2F2')]) # Zebra stripes
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F5F5')]),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                    ('TOPPADDING', (0, 0), (-1, -1), 5),
                 ]))
                 
-                elements.append(table)
+                elements.append(t)
                 elements.append(Spacer(1, 10))
             
             elements.append(Spacer(1, 5))
-    
+            elements.append(Paragraph("<hr/>", styles['Normal'])) # Chiziq ajratish uchun
+            
+        elements.append(PageBreak()) # Har bir bo'limdan keyin yangi betga o'tish
+
     # Footer
-    footer_text = f"Hisobot avtomatik tarzda shakllantirildi • {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}"
-    elements.append(Spacer(1, 20))
+    footer_text = f"Hisobot yaratildi: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')} | Hancom Academy Management System"
     elements.append(Paragraph(footer_text, ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, alignment=2, textColor=colors.grey)))
-    
+
     doc.build(elements)
     pdf_buffer.seek(0)
     return pdf_buffer
