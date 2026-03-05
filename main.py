@@ -128,6 +128,10 @@ class SalaryCalc(StatesGroup):
     entering_penalty_manual = State()  # Admin kiritadigan qo'shimcha jarima
     entering_payment_it = State()      # IT uchun jami to'lov
 
+# --- VIZUAL JADVAL UCHUN STATE (YANGI) ---
+class VisualSchedule(StatesGroup):
+    selecting_branch = State()
+
 # --- POSTGRESQL DATABASE CLASS ---
 class Database:
     def __init__(self, url):
@@ -1440,15 +1444,53 @@ async def weekly_top(message: types.Message):
         parse_mode="Markdown"
     )
 
+# --- YANGILANGAN LOKATSIYA HANDLERI (SOXTA LOKATSIYANI ANIQLASH) ---
 @dp.message(F.location)
 async def handle_location(message: types.Message):
     user_id = message.from_user.id
     user_ids.add(user_id)
     
+    # 1. BLOKLANGAN FOYDALANUVCHINI TEKSHIRISH
     if user_status.get(user_id) == 'blocked':
         await message.answer(get_text(user_id, 'blocked_user'))
         return
-    
+
+    # 2. SOXTA (FORWARD) LOKATSIYANI ANIQLASH (Ism yashirilgan bo'lsa ham ishlaydi)
+    if message.forward_origin is not None:
+        # Foydalanuvchiga qattiq ogohlantirish
+        user_warning = (
+            "⚠️ **DIQQAT: SOXTA DAVOMATGA URINISH!**\n\n"
+            "Siz boshqa foydalanuvchidan uzatilgan (forward) lokatsiyani yuborish orqali "
+            "**yolg'on davomat** qilishga urundingiz.\n\n"
+            "🚫 Ushbu harakatingiz soxtakorlik sifatida qayd etildi va **adminlarga (rahbariyatga) yuborildi!**\n"
+            "Iltimos, darsga kelganingizda faqat botdagi maxsus tugmani bosing."
+        )
+        await message.answer(user_warning, parse_mode="Markdown")
+
+        # Adminga shoshilinch xabar yuborish
+        t_name = user_names.get(user_id, message.from_user.full_name)
+        t_spec = user_specialty.get(user_id, 'Noma\'lum')
+        admin_alert = (
+            f"🚨 **SOXTA DAVOMATGA URINISH!**\n\n"
+            f"👤 **Xodim:** {t_name}\n"
+            f"📚 **Soha:** {t_spec}\n"
+            f"🆔 **ID:** `{user_id}`\n"
+            f"📍 **Holat:** Forward qilingan (soxta) lokatsiya yubordi.\n"
+            f"🕒 **Vaqt:** {datetime.now(UZB_TZ).strftime('%H:%M:%S')}"
+        )
+        await bot.send_message(ADMIN_GROUP_ID, admin_alert, parse_mode="Markdown")
+        return
+
+    # 3. QO'LDA TANLANGAN NUQTANI TEKSHIRISH (Manual Pin)
+    # Haqiqiy "Share location" tugmasida aniqlik darajasi (horizontal_accuracy) bo'ladi.
+    if message.location.horizontal_accuracy is None:
+        await message.answer(
+            "❌ **Xatolik!**\n\nXaritadan nuqtani qo'lda tanlab yuborish mumkin emas. "
+            "Iltimos, faqat **'📍 Kelganimni tasdiqlash'** tugmasini bosish orqali manzilingizni yuboring!"
+        )
+        return
+
+    # 4. AGAR HAMMASI TO'G'RI BO'LSA, MASOFANI O'LCHASHNI BOSHLAYMIZ
     now_uzb = datetime.now(UZB_TZ)
     today_date = now_uzb.strftime("%Y-%m-%d")
     current_month = now_uzb.strftime("%Y-%m")
@@ -1752,21 +1794,25 @@ async def admin_panel(message: types.Message):
     
     try:
         builder = InlineKeyboardBuilder()
-        # 1-qator: Oylik kalkulyatori (YANGI)
+        # 1-qator: Oylik kalkulyatori
         builder.row(
             InlineKeyboardButton(text="💰 Oylik hisoblash", callback_data="admin_salary_calc")
         )
-        # 2-qator: Boshqaruv
+        # 2-qator: Vizual jadval
+        builder.row(
+            InlineKeyboardButton(text="🖼 Vizual Jadval (Haftalik)", callback_data="admin_visual_schedule")
+        )
+        # 3-qator: Boshqaruv
         builder.row(
             InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
             InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast")
         )
-        # 3-qator: Tuzilma
+        # 4-qator: Tuzilma
         builder.row(
             InlineKeyboardButton(text="🏢 Filiallar", callback_data="admin_locations_main"),
             InlineKeyboardButton(text="📅 Dars jadvallari", callback_data="admin_schedules_main")
         )
-        # 4-qator: Hisobotlar
+        # 5-qator: Hisobotlar
         builder.row(
             InlineKeyboardButton(text="📊 Oylik hisobot (Excel)", callback_data="admin_excel_menu"),
             InlineKeyboardButton(text="📊 Kunlik PDF", callback_data="admin_pdf_report")
@@ -1780,6 +1826,128 @@ async def admin_panel(message: types.Message):
     except Exception as e:
         logging.error(f"admin_panel error: {e}")
         await message.answer("❌ Admin panelni ochishda xatolik yuz berdi")
+
+# --- VIZUAL JADVAL FUNKSIYASI ---
+async def create_visual_timetable_img(branch_name: str):
+    # Sozlamalar
+    days = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba']
+    # Dars vaqtlari (Y o'qi uchun)
+    time_slots = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00']
+    
+    plt.figure(figsize=(14, 8))
+    ax = plt.gca()
+    
+    # Ranglar palitrasi
+    colors_map = {
+        'IT': '#E3F2FD',      # Och ko'k
+        'Koreys tili': '#E8F5E9', # Och yashil
+        'Ofis xodimi': '#FFF3E0'  # Och sariq
+    }
+    border_map = {
+        'IT': '#1565C0', 
+        'Koreys tili': '#2E7D32', 
+        'Ofis xodimi': '#EF6C00'
+    }
+
+    # Jadval chizish
+    for i in range(len(days) + 1):
+        plt.axvline(i, color='gray', linestyle='--', alpha=0.3)
+    for i in range(len(time_slots) + 1):
+        plt.axhline(i, color='gray', linestyle='--', alpha=0.3)
+
+    found_any = False
+    for sid, data in schedules.items():
+        if data['branch'] == branch_name:
+            found_any = True
+            uid = data['user_id']
+            spec = user_specialty.get(uid, 'IT')
+            t_name = user_names.get(uid, "Noma'lum")
+            
+            for day, t_val in data['days'].items():
+                if day in days:
+                    day_idx = days.index(day)
+                    # Vaqtni aniqlash (Masalan "14:20" -> 14.33)
+                    try:
+                        h, m = map(int, t_val.split(':'))
+                        # Vaqtni Y o'qiga moslash
+                        start_y = h + (m/60)
+                        # Soatni indeksga aylantirish (08:00 - bu 0 indeks)
+                        y_pos = len(time_slots) - (start_y - 8)
+                        
+                        # Blok chizish
+                        rect = plt.Rectangle((day_idx + 0.05, y_pos - 0.9), 0.9, 0.8, 
+                                            facecolor=colors_map.get(spec, '#F5F5F5'),
+                                            edgecolor=border_map.get(spec, 'gray'),
+                                            linewidth=1.5, alpha=0.9, zorder=3)
+                        ax.add_patch(rect)
+                        
+                        # Matn yozish
+                        plt.text(day_idx + 0.5, y_pos - 0.5, f"{t_name}\n({t_val})\n{spec}", 
+                                 ha='center', va='center', fontsize=8, fontweight='bold', zorder=4)
+                    except: continue
+
+    plt.xticks(np.arange(0.5, len(days), 1), days, fontweight='bold')
+    plt.yticks(np.arange(0.5, len(time_slots), 1), time_slots[::-1], fontweight='bold')
+    
+    plt.title(f"🏢 {branch_name} - Haftalik Bandlik Jadvali", fontsize=16, pad=20, fontweight='bold', color='#1A237E')
+    plt.xlim(0, len(days))
+    plt.ylim(0, len(time_slots))
+    
+    # Legend (Izoh)
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], marker='s', color='w', label='IT Bo\'limi', markerfacecolor='#E3F2FD', markersize=15, markeredgecolor='#1565C0'),
+        Line2D([0], [0], marker='s', color='w', label='Koreys tili', markerfacecolor='#E8F5E9', markersize=15, markeredgecolor='#2E7D32'),
+        Line2D([0], [0], marker='s', color='w', label='Ofis xodimi', markerfacecolor='#FFF3E0', markersize=15, markeredgecolor='#EF6C00')
+    ]
+    ax.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=3)
+
+    img_buf = io.BytesIO()
+    plt.savefig(img_buf, format='png', bbox_inches='tight', dpi=150)
+    img_buf.seek(0)
+    plt.close()
+    return img_buf, found_any
+
+# --- VIZUAL JADVAL HANDLERLARI ---
+@dp.callback_query(F.data == "admin_visual_schedule")
+async def visual_schedule_start(callback: types.CallbackQuery, state: FSMContext):
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    builder = InlineKeyboardBuilder()
+    for loc in LOCATIONS:
+        builder.row(InlineKeyboardButton(text=loc['name'], callback_data=f"v_br_{loc['name']}"))
+    builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back"))
+    
+    await callback.message.edit_text(
+        "Qaysi filialning vizual bandlik jadvalini ko'rmoqchisiz?",
+        reply_markup=builder.as_markup()
+    )
+    await state.set_state(VisualSchedule.selecting_branch)
+    await callback.answer()
+
+@dp.callback_query(VisualSchedule.selecting_branch, F.data.startswith("v_br_"))
+async def visual_schedule_process(callback: types.CallbackQuery, state: FSMContext):
+    branch_name = callback.data.replace("v_br_", "")
+    await callback.message.answer(f"⏳ {branch_name} uchun vizual jadval tayyorlanmoqda...")
+    
+    try:
+        img_buf, found = await create_visual_timetable_img(branch_name)
+        if not found:
+            await callback.message.answer(f"📭 {branch_name} filialida hali darslar belgilanmagan.")
+        else:
+            await callback.message.answer_photo(
+                types.BufferedInputFile(img_buf.read(), filename="timetable.png"),
+                caption=f"🖼 **{branch_name}** filialining haftalik bandlik xaritasi."
+            )
+    except Exception as e:
+        logging.error(f"Visual schedule error: {e}")
+        traceback.print_exc()
+        await callback.message.answer("❌ Jadvalni chizishda xatolik yuz berdi.")
+    
+    await state.clear()
+    await callback.answer()
 
 # --- OYLIK KALKULYATOR HANDLERS (YANGILANGAN) ---
 @dp.callback_query(F.data == "admin_salary_calc")
@@ -2837,7 +3005,7 @@ async def admin_stats_teachers(callback: types.CallbackQuery):
             text += f"{medal} {name}{specialty_display}: {count} ta davomat\n"
         
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_stats_main"))
+        builder.row(InlineKeyboardButton text="🔙 Ortga", callback_data="admin_stats_main"))
         
         await callback.message.edit_text(
             text,
@@ -4355,17 +4523,21 @@ async def admin_back(callback: types.CallbackQuery):
         builder.row(
             InlineKeyboardButton(text="💰 Oylik hisoblash", callback_data="admin_salary_calc")
         )
-        # 2-qator: Boshqaruv
+        # 2-qator: Vizual jadval
+        builder.row(
+            InlineKeyboardButton(text="🖼 Vizual Jadval (Haftalik)", callback_data="admin_visual_schedule")
+        )
+        # 3-qator: Boshqaruv
         builder.row(
             InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
             InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast")
         )
-        # 3-qator: Tuzilma
+        # 4-qator: Tuzilma
         builder.row(
             InlineKeyboardButton(text="🏢 Filiallar", callback_data="admin_locations_main"),
             InlineKeyboardButton(text="📅 Dars jadvallari", callback_data="admin_schedules_main")
         )
-        # 4-qator: Hisobotlar
+        # 5-qator: Hisobotlar
         builder.row(
             InlineKeyboardButton(text="📊 Oylik hisobot (Excel)", callback_data="admin_excel_menu"),
             InlineKeyboardButton(text="📊 Kunlik PDF", callback_data="admin_pdf_report")
