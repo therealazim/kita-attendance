@@ -730,21 +730,36 @@ async def get_combined_report_pdf(report_date: d_date) -> io.BytesIO:
 
         data.append([str(i), att_time_disp, lesson_time, teacher_name, specialty, branch, status, late_text])
 
-    # Jadval stili
-    table = Table(data, colWidths=[0.4*inch, 1*inch, 1*inch, 2.2*inch, 1.2*inch, 2*inch, 1.1*inch, 0.9*inch])
-    table.setStyle(TableStyle([
+    # Jadvalni yaratish
+    table = Table(data, colWidths=[0.4*inch, 0.9*inch, 0.9*inch, 1.8*inch, 1.0*inch, 1.5*inch, 1.0*inch, 0.8*inch])
+
+    # Standart stil
+    style_commands = [
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2E86AB')),
         ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('FONTNAME', (0,0), (-1,0), FONT_NAME_BOLD),
-        ('FONTNAME', (0,1), (-1,-1), FONT_NAME),
+        ('FONTNAME', (0,0), (-1,-1), FONT_NAME),
         ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
         ('FONTSIZE', (0,0), (-1,-1), 9),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('LEFTPADDING', (0,0), (-1,-1), 3),
-        ('RIGHTPADDING', (0,0), (-1,-1), 3),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F9F9')])
-    ]))
+    ]
+
+    # Dinamik ranglar (Har bir qator uchun)
+    for row_idx, row_data in enumerate(data[1:], start=1):
+        status = row_data[6]  # 'Holat' ustuni
+        if status == "Kechikkan":
+            # Kechikkanlar uchun qizil box (Holat katagi)
+            style_commands.append(('BACKGROUND', (6, row_idx), (6, row_idx), colors.HexColor('#FFCDD2')))
+            style_commands.append(('TEXTCOLOR', (6, row_idx), (6, row_idx), colors.red))
+        elif status == "Vaqtida":
+            # Vaqtida kelganlar uchun yashil status
+            style_commands.append(('TEXTCOLOR', (6, row_idx), (6, row_idx), colors.green))
+        elif status == "KELMAGAN":
+            # Kelmaganlar uchun to'q qizil
+            style_commands.append(('BACKGROUND', (6, row_idx), (6, row_idx), colors.HexColor('#EF5350')))
+            style_commands.append(('TEXTCOLOR', (6, row_idx), (6, row_idx), colors.white))
+
+    table.setStyle(TableStyle(style_commands))
     
     elements.append(table)
     doc.build(elements)
@@ -2719,29 +2734,27 @@ async def admin_broadcast_start(callback: types.CallbackQuery, state: FSMContext
         await callback.answer("Ruxsat yo'q!")
         return
     
-    try:
-        user_id = callback.from_user.id
-        lang = user_languages.get(user_id, 'uz')
-        
-        builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text=TRANSLATIONS[lang]['specialty_it'], callback_data="broadcast_spec_IT"),
-            InlineKeyboardButton(text=TRANSLATIONS[lang]['specialty_korean'], callback_data="broadcast_spec_Koreys tili"),
-            InlineKeyboardButton(text=TRANSLATIONS[lang]['specialty_office'], callback_data="broadcast_spec_Ofis xodimi")
-        )
-        builder.row(
-            InlineKeyboardButton(text=TRANSLATIONS[lang]['all_teachers'], callback_data="broadcast_spec_all")
-        )
-        
-        await state.set_state(Broadcast.selecting_specialty)
-        await callback.message.edit_text(
-            get_text(user_id, 'select_broadcast_specialty'),
-            reply_markup=builder.as_markup()
-        )
-        await callback.answer()
-    except Exception as e:
-        logging.error(f"admin_broadcast_start error: {e}")
-        await callback.answer("Xatolik yuz berdi")
+    user_id = callback.from_user.id
+    lang = user_languages.get(user_id, 'uz')
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text=TRANSLATIONS[lang]['specialty_it'], callback_data="broadcast_spec_IT"),
+        InlineKeyboardButton(text=TRANSLATIONS[lang]['specialty_korean'], callback_data="broadcast_spec_Koreys tili")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🏢 Ofis xodimi", callback_data="broadcast_spec_Ofis xodimi"),
+        InlineKeyboardButton(text=TRANSLATIONS[lang]['all_teachers'], callback_data="broadcast_spec_all")
+    )
+    # ORTGA TUGMASI
+    builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back"))
+    
+    await state.set_state(Broadcast.selecting_specialty)
+    await callback.message.edit_text(
+        get_text(user_id, 'select_broadcast_specialty'),
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
 
 @dp.callback_query(Broadcast.selecting_specialty, F.data.startswith("broadcast_spec_"))
 async def admin_broadcast_specialty(callback: types.CallbackQuery, state: FSMContext):
@@ -3883,14 +3896,11 @@ async def check_schedule_reminders():
     while True:
         now_uzb = datetime.now(UZB_TZ)
         current_time = now_uzb.strftime("%H:%M")
-        current_weekday = now_uzb.weekday()
         today_date = now_uzb.strftime("%Y-%m-%d")
-        
-        current_day_name = WEEKDAYS_UZ[current_weekday]
+        current_day_name = WEEKDAYS_UZ[now_uzb.weekday()]
         
         for schedule_id, schedule in schedules.items():
             user_id = schedule['user_id']
-            
             if user_status.get(user_id) == 'blocked':
                 continue
             
@@ -3898,60 +3908,43 @@ async def check_schedule_reminders():
             days = schedule['days']
             
             if current_day_name in days:
-                lesson_time = days[current_day_name]
-                
+                lesson_time = days[current_day_name]  # Masalan "14:00"
                 lesson_dt = datetime.strptime(lesson_time, "%H:%M")
                 
-                reminder_dt = lesson_dt - timedelta(minutes=15)
-                reminder_time = reminder_dt.strftime("%H:%M")
+                # 1. Darsga 1 daqiqa qolganda ogohlantirish
+                remind_dt = lesson_dt - timedelta(minutes=1)
+                remind_time = remind_dt.strftime("%H:%M")
                 
-                lesson_start_time = lesson_dt.strftime("%H:%M")
+                # 2. Dars boshlangandagi eslatma (masalan 14:01 da tekshiradi)
+                check_dt = lesson_dt + timedelta(minutes=1)
+                check_time = check_dt.strftime("%H:%M")
                 
-                lesson_passed_dt = lesson_dt + timedelta(minutes=5)
-                lesson_passed_time = lesson_passed_dt.strftime("%H:%M")
-                
-                lang = user_languages.get(user_id, 'uz')
-                
-                if current_time == reminder_time:
+                # 1 daqiqa qolganda yuborish
+                if current_time == remind_time:
+                    msg = (f"🔔 **ESLATMA**\n\n"
+                           f"Bugun soat {lesson_time} da **{branch}** filialida darsingiz boshlanmoqda.\n"
+                           f"📍 Iltimos, darsingizni davomatini qilishni unutmang!")
                     try:
-                        await bot.send_message(
-                            user_id,
-                            get_text(user_id, 'reminder', time=lesson_time, branch=branch),
-                            parse_mode="Markdown"
-                        )
-                        logging.info(f"Reminder sent to {user_id} for {branch} at {lesson_time}")
+                        await bot.send_message(user_id, msg, parse_mode="Markdown")
+                        logging.info(f"1-min reminder sent to {user_id} for {branch} at {lesson_time}")
                     except Exception as e:
                         logging.error(f"Failed to send reminder to {user_id}: {e}")
                 
-                elif current_time == lesson_start_time:
-                    attended_today = any(k[0] == user_id and k[1] == branch and k[2] == today_date for k in daily_attendance_log)
-                    
-                    if attended_today:
+                # Dars boshlanganda davomat qilmagan bo'lsa yuborish
+                elif current_time == check_time:
+                    attended = any(k[0] == user_id and k[1] == branch and k[2] == today_date for k in daily_attendance_log)
+                    if not attended:
+                        msg = (f"⚠️ **DIQQAT: DAVOMAT QILINMADI!**\n\n"
+                               f"Darsingiz soat {lesson_time} da **{branch}** filialida boshlangan.\n"
+                               f"Hozirgi vaqt: {now_uzb.strftime('%H:%M')}.\n\n"
+                               f"Iltimos, darhol davomatni tasdiqlang!")
                         try:
-                            await bot.send_message(
-                                user_id,
-                                get_text(user_id, 'lesson_started_attended'),
-                                parse_mode="Markdown"
-                            )
-                            logging.info(f"Lesson started message sent to {user_id} for {branch}")
-                        except Exception as e:
-                            logging.error(f"Failed to send lesson started message to {user_id}: {e}")
-                
-                elif current_time == lesson_passed_time:
-                    attended_today = any(k[0] == user_id and k[1] == branch and k[2] == today_date for k in daily_attendance_log)
-                    
-                    if not attended_today:
-                        try:
-                            await bot.send_message(
-                                user_id,
-                                get_text(user_id, 'lesson_started_not_attended', time=lesson_time, branch=branch),
-                                parse_mode="Markdown"
-                            )
+                            await bot.send_message(user_id, msg, parse_mode="Markdown")
                             logging.info(f"Late reminder sent to {user_id} for {branch}")
                         except Exception as e:
                             logging.error(f"Failed to send late reminder to {user_id}: {e}")
         
-        await asyncio.sleep(60)
+        await asyncio.sleep(60)  # Har minutda tekshirish
 
 async def main():
     await db.create_pool()
