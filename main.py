@@ -7,6 +7,7 @@ import aiohttp
 import json
 import csv
 import calendar
+import re  # Emoji tozalash uchun
 from datetime import datetime, timedelta, date as d_date, time as d_time
 from collections import defaultdict
 from aiogram import Bot, Dispatcher, types, F
@@ -19,6 +20,7 @@ from geopy.distance import geodesic
 from aiohttp import web
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.utils import get_column_letter  # Muhim import
 from openpyxl.workbook import Workbook
 import matplotlib
 matplotlib.use('Agg')
@@ -35,10 +37,18 @@ from reportlab.pdfbase.ttfonts import TTFont
 import asyncpg
 import pickle
 import traceback
-import re
 
 # --- LOGGING ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# --- EMOJI TOZALASH FUNKSIYASI ---
+def clean_text_for_pdf(text: str) -> str:
+    """PDF uchun matnni emojilardan tozalaydi (to'rtburchaklar chiqmasligi uchun)"""
+    if not text: 
+        return ""
+    # Faqat harflar, raqamlar va tinish belgilarini qoldiradi
+    # Kirill, Koreys va Lotin harflarini saqlaydi
+    return re.sub(r'[^\x00-\x7F\u0400-\u04FF\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F\s]+', '', text)
 
 # --- SOZLAMALAR ---
 TOKEN = os.environ.get("BOT_TOKEN")
@@ -63,7 +73,7 @@ try:
     FONT_NAME_BOLD = 'DejaVu-Bold'
     logging.info("✅ DejaVu shrifti yuklandi")
 except:
-    # Agar shrift topilmasa standartga qaytadi (lekin ruscha harflar chiqmasligi mumkin)
+    # Agar shrift topilmasa standartga qaytadi
     FONT_NAME = 'Helvetica'
     FONT_NAME_BOLD = 'Helvetica-Bold'
     logging.warning("⚠️ DejaVu shrifti topilmadi, Helvetica ishlatiladi")
@@ -116,27 +126,18 @@ ALLOWED_DISTANCE = 500
 class MonthlyReport(StatesGroup):
     waiting_for_date_range = State()
 
-# --- OYLIK KALKULYATOR UCHUN STATE (YANGI - PROFESSIONAL) ---
+# --- OYLIK KALKULYATOR UCHUN STATE ---
 class SalaryCalc(StatesGroup):
     selecting_specialty = State()
     selecting_teacher = State()
     # Ko'p filialli hisob uchun
-    current_branch_idx = State()
-    all_branches = State()
-    calculated_results = State()
-    # Vaqtinchalik ma'lumotlar
-    temp_students = State()
-    temp_lessons = State()
-    temp_perc = State()
-    temp_penalty_val = State()
-    temp_payment = State()
-    # Holatlar
+    entering_branch_data = State() 
     entering_students = State()
     entering_lessons = State()
     selecting_percentage = State()
     entering_penalty_it_percent = State()  # IT uchun % jarima
     entering_penalty_kr_sum = State()      # Koreys tili uchun so'mda jarima
-    entering_payment = State()
+    entering_payment = State()              # IT uchun jami tushum
 
 # --- VIZUAL JADVAL UCHUN STATE ---
 class VisualSchedule(StatesGroup):
@@ -858,88 +859,113 @@ async def specialty_keyboard(user_id: int):
 def get_yandex_maps_link(lat: float, lon: float) -> str:
     return f"https://yandex.com/maps/?pt={lon},{lat}&z=17&l=map"
 
+# --- YANGI PROFESSIONAL PDF FUNKSIYASI (LANDSCAPE) ---
 async def create_schedule_pdf(user_id: int) -> io.BytesIO:
     pdf_buffer = io.BytesIO()
-    doc = SimpleDocTemplate(pdf_buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    # Landscape format (A4 yotqizilgan)
+    doc = SimpleDocTemplate(
+        pdf_buffer, 
+        pagesize=landscape(A4),
+        rightMargin=40, leftMargin=40, topMargin=30, bottomMargin=30
+    )
     elements = []
     styles = getSampleStyleSheet()
-    
     lang = user_languages.get(user_id, 'uz')
     
-    # Sarlavha uslubi (Unicode shrifti bilan)
+    # --- MAXSUS USLUBLAR ---
     title_style = ParagraphStyle(
-        'CustomTitle',
-        fontName=FONT_NAME,
-        fontSize=18,
-        alignment=1,
-        spaceAfter=20
+        'CustomTitle', 
+        fontName=FONT_NAME_BOLD,
+        fontSize=26, 
+        alignment=1, 
+        spaceAfter=10, 
+        textColor=colors.HexColor('#1A237E')
     )
-    
-    # Oddiy matn uslubi
+    sub_title_style = ParagraphStyle(
+        'SubTitle', 
+        fontName=FONT_NAME, 
+        fontSize=16, 
+        alignment=1, 
+        spaceAfter=30, 
+        textColor=colors.HexColor('#3F51B5')
+    )
     normal_style = ParagraphStyle(
-        'NormalStyle',
-        fontName=FONT_NAME,
-        fontSize=11,
-        spaceAfter=8
+        'NormalStyle', 
+        fontName=FONT_NAME, 
+        fontSize=13, 
+        spaceAfter=12, 
+        leading=18
     )
 
-    name = user_names.get(user_id, "Foydalanuvchi")
+    # Ma'lumotlarni tozalash
+    raw_name = user_names.get(user_id, "Foydalanuvchi")
+    name = clean_text_for_pdf(raw_name)
     specialty = user_specialty.get(user_id, '')
-    spec_display = get_specialty_display(specialty, lang)
+    spec_display = clean_text_for_pdf(get_specialty_display(specialty, lang))
     
-    # PDF Sarlavhasi (Masalan: "Azimjon [사무원] - 수업 시간표")
-    pdf_main_title = TRANSLATIONS[lang]['pdf_title']
-    elements.append(Paragraph(f"<b>{name}</b> [{spec_display}] - {pdf_main_title}", title_style))
+    # 1. SARLAVHA QISMI
+    pdf_main_title = clean_text_for_pdf(TRANSLATIONS[lang].get('pdf_title', "Dars Jadvali"))
+    elements.append(Paragraph(f"<b>{name.upper()}</b>", title_style))
+    elements.append(Paragraph(f"{spec_display} | {pdf_main_title}", sub_title_style))
     
     user_sched_ids = user_schedules.get(user_id, [])
     
     if not user_sched_ids:
-        elements.append(Paragraph(get_text(user_id, 'no_schedules'), normal_style))
+        elements.append(Paragraph(clean_text_for_pdf(get_text(user_id, 'no_schedules')), normal_style))
     else:
         for schedule_id in user_sched_ids:
             schedule = schedules.get(schedule_id)
             if schedule:
-                branch = schedule['branch']
-                lesson_type = schedule.get('lesson_type', 'Dars')
+                branch = clean_text_for_pdf(schedule['branch'])
+                lesson_type = clean_text_for_pdf(schedule.get('lesson_type', 'Dars'))
                 
-                # Filial nomi
-                elements.append(Paragraph(f"<font color='blue'>🏢 {branch} - {lesson_type}</font>", normal_style))
+                # Filial Headeri (Ko'k banner)
+                branch_info = [[Paragraph(f"🏢 <b>{branch} - {lesson_type}</b>", 
+                               ParagraphStyle('Br', fontName=FONT_NAME, fontSize=14, textColor=colors.white))]]
+                br_table = Table(branch_info, colWidths=[9*inch])
+                br_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#283593')),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 15),
+                    ('TOPPADDING', (0, 0), (-1, -1), 8),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ]))
+                elements.append(br_table)
+                elements.append(Spacer(1, 5))
                 
-                # Jadval sarlavhalari (Kun | Vaqt)
-                col_headers = TRANSLATIONS[lang]['pdf_headers']
-                data = [col_headers]
+                # Jadval sarlavhalari
+                col_headers = TRANSLATIONS[lang].get('pdf_headers', ['Kun', 'Vaqt'])
+                data = [[clean_text_for_pdf(h) for h in col_headers]]
                 
-                # Kunlarni lug'atdan olish
                 days_dict = schedule['days']
                 target_weekdays = WEEKDAYS[lang]
                 uz_weekdays = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
                 
-                # Jadval ma'lumotlarini yig'ish (Xatto 1 kun bo'lsa ham ishlaydi)
+                # Kunlarni tartib bilan yig'ish
                 for i, day_uz in enumerate(uz_weekdays):
                     if day_uz in days_dict:
-                        data.append([target_weekdays[i], days_dict[day_uz]])
+                        data.append([clean_text_for_pdf(target_weekdays[i]), str(days_dict[day_uz])])
 
-                # Jadvalni PDF ga chizish
                 if len(data) > 1:
-                    table = Table(data, colWidths=[2.5*inch, 2.5*inch])
+                    # Jadval dizayni (Zebra style)
+                    table = Table(data, colWidths=[4.5*inch, 4.5*inch])
                     table.setStyle(TableStyle([
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E8EAF6')),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1A237E')),
                         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                         ('FONTNAME', (0, 0), (-1, -1), FONT_NAME),
-                        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-                        ('FONTSIZE', (0, 0), (-1, -1), 11),
-                        ('TOPPADDING', (0, 0), (-1, -1), 6),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                        ('FONTSIZE', (0, 0), (-1, -1), 12),
+                        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F5F5')]),
+                        ('TOPPADDING', (0, 0), (-1, -1), 12),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
                     ]))
                     elements.append(table)
-                    elements.append(Spacer(1, 15))
+                    elements.append(Spacer(1, 25))
 
-    # Yaratilgan sana (Pastda)
-    created_label = TRANSLATIONS[lang]['pdf_created']
-    created_text = f"{created_label}: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}"
-    elements.append(Spacer(1, 20))
-    elements.append(Paragraph(created_text, ParagraphStyle('Footer', fontName=FONT_NAME, fontSize=9, alignment=2)))
+    # FOOTER: Yaratilgan sana
+    created_label = clean_text_for_pdf(TRANSLATIONS[lang].get('pdf_created', "Yaratilgan sana"))
+    footer_text = f"{created_label}: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}"
+    elements.append(Paragraph(footer_text, ParagraphStyle('Footer', fontName=FONT_NAME, fontSize=10, alignment=2, textColor=colors.grey)))
     
     doc.build(elements)
     pdf_buffer.seek(0)
@@ -1004,8 +1030,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     
     await message.answer(
         welcome_text,
-        reply_markup=keyboard,
-        parse_mode="Markdown"
+        reply_markup=keyboard
     )
 
 @dp.message(Registration.waiting_for_name)
@@ -1059,8 +1084,7 @@ async def process_specialty(message: types.Message, state: FSMContext):
     
     await message.answer(
         welcome_text,
-        reply_markup=keyboard,
-        parse_mode="Markdown"
+        reply_markup=keyboard
     )
 
 @dp.callback_query(F.data.startswith("lang_"))
@@ -1108,8 +1132,7 @@ async def set_changed_language(callback: types.CallbackQuery):
         keyboard = await main_keyboard(user_id)
         await callback.message.answer(
             get_text(user_id, 'language_changed'),
-            reply_markup=keyboard,
-            parse_mode="Markdown"
+            reply_markup=keyboard
         )
     except Exception as e:
         logging.error(f"set_changed_language error: {e}")
@@ -1145,8 +1168,7 @@ async def show_profile(message: types.Message):
     
     await message.answer(
         profile_text,
-        reply_markup=builder.as_markup(),
-        parse_mode="Markdown"
+        reply_markup=builder.as_markup()
     )
 
 @dp.callback_query(F.data == "edit_my_specialty")
@@ -1233,8 +1255,7 @@ async def process_new_name(message: types.Message, state: FSMContext):
     await state.clear()
     
     await message.answer(
-        get_text(user_id, 'name_updated'),
-        parse_mode="Markdown"
+        get_text(user_id, 'name_updated')
     )
     
     await show_profile(message)
@@ -1267,9 +1288,10 @@ async def view_my_schedule_pdf(message: types.Message):
     try:
         pdf_buffer = await create_schedule_pdf(user_id)
         
+        clean_name = clean_text_for_pdf(user_names.get(user_id, 'user'))
         await message.answer_document(
             types.BufferedInputFile(pdf_buffer.getvalue(), 
-                                    filename=f"dars_jadvali_{user_names.get(user_id, 'user')}.pdf"),
+                                    filename=f"Dars_Jadvali_{clean_name}.pdf"),
             caption=get_text(user_id, 'my_schedule')
         )
     except Exception as e:
@@ -1294,7 +1316,7 @@ async def my_stats(message: types.Message):
             user_attendances[branch].append((date, time))
     
     if not user_attendances:
-        await message.answer(get_text(user_id, 'no_stats'), parse_mode="Markdown")
+        await message.answer(get_text(user_id, 'no_stats'))
         return
     
     month_names_uz = {
@@ -1368,7 +1390,7 @@ async def my_stats(message: types.Message):
         
         text += "\n"
     
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text)
 
 @dp.message(F.text.in_({'\U0001F3E2 Filiallar', '\U0001F3E2 Филиалы', '\U0001F3E2 지점'}))
 async def show_branches(message: types.Message):
@@ -1400,8 +1422,7 @@ async def help_command(message: types.Message):
         return
     
     await message.answer(
-        get_text(user_id, 'help'),
-        parse_mode="Markdown"
+        get_text(user_id, 'help')
     )
 
 @dp.message(F.text.in_({'\U0001F3C6 Hafta topi', '\U0001F3C6 Топ недели', '\U0001F3C6 주간 TOP'}))
@@ -1450,8 +1471,7 @@ async def weekly_top(message: types.Message):
         top_list += f"{medal} {name}{specialty_display}: **{count}** marta\n"
     
     await message.answer(
-        get_text(user_id, 'weekly_top', top_list=top_list),
-        parse_mode="Markdown"
+        get_text(user_id, 'weekly_top', top_list=top_list)
     )
 
 # --- YANGILANGAN QAT'IY LOKATSIYA HANDLERI (SOXTA LOKATSIYANI ANIQLASH) ---
@@ -1986,7 +2006,7 @@ async def salary_calc_spec(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(specialty=spec)
     
     builder = InlineKeyboardBuilder()
-    # Faqat tanlangan soha o'qituvchilarini chiqaramiz (ofis xodimlari kiritilmaydi)
+    # Faqat tanlangan soha o'qituvchilarini chiqaramiz
     for uid, name in user_names.items():
         if user_specialty.get(uid) == spec:
             builder.row(InlineKeyboardButton(text=str(name), callback_data=f"sal_teacher_{uid}"))
@@ -2035,7 +2055,6 @@ async def salary_ask_next_branch(message: types.Message, state: FSMContext):
     branches = data['all_branches']
     current_branch = branches[idx]
     
-    # ** belgilari olib tashlandi
     await message.answer(f"🏢 Filial: {current_branch}\n\nUshbu filialdagi o'quvchilar sonini kiriting:")
     await state.set_state(SalaryCalc.entering_students)
 
@@ -2286,7 +2305,7 @@ async def create_multi_branch_excel(teacher_name, specialty, results, total_gros
     # Ustun kengligi
     column_widths = [20, 12, 10, 10, 15, 15, 15]
     for i, width in enumerate(column_widths, 1):
-        ws.column_dimensions[chr(64 + i)].width = width
+        ws.column_dimensions[get_column_letter(i)].width = width
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -2408,18 +2427,19 @@ async def process_month_gen(callback: types.CallbackQuery):
     )
     await callback.answer()
 
-# --- PROFESSIONAL EXCEL HISOBOT (YANGI) ---
+# --- PROFESSIONAL EXCEL HISOBOT (XATOSIZ) ---
 async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
     import calendar
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter  # Muhim import
 
     wb = Workbook()
     wb.remove(wb.active) # Standart sheetni o'chiramiz
 
-    # Ranglar va Borderlar
-    thin = Side(border_style="thin", color="000000")
-    all_border = Border(top=thin, left=thin, right=thin, bottom=thin)
+    # Border stili (Hamma borderlar uchun)
+    thin_side = Side(border_style="thin", color="000000")
+    all_border = Border(top=thin_side, left=thin_side, right=thin_side, bottom=thin_side)
     
     main_header_fill = PatternFill(start_color="92D050", fill_type="solid") # Yashil
     user_header_fill = PatternFill(start_color="D9D9D9", fill_type="solid") # Kulrang
@@ -2437,31 +2457,34 @@ async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
     for spec in specs:
         ws = wb.create_sheet(title=spec)
         
-        # 1. Eng yuqoridagi asosiy sarlavha (IT OQITUVCHILARI MART OYI XISOBOTI)
+        # 1. Asosiy sarlavha
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=9)
         main_title = ws.cell(row=1, column=1)
         main_title.value = f"{spec.upper()} OQITUVCHILARI {months_uz[month]} OYI XISOBOTI"
         main_title.fill = main_header_fill
         main_title.font = Font(size=14, bold=True)
         main_title.alignment = Alignment(horizontal="center")
+        # Birlashtirilgan kataklarning har biriga border qo'shish
+        for col in range(1, 10):
+            ws.cell(row=1, column=col).border = all_border
         
         current_row = 3
-        
-        # Shu sohadagi barcha o'qituvchilarni topamiz
         teachers_in_spec = [uid for uid, s in user_specialty.items() if s == spec]
         
         if not teachers_in_spec:
             continue
 
         for uid in sorted(teachers_in_spec, key=lambda x: user_names.get(x, "")):
-            # 2. O'qituvchi nomi sarlavhasi (AZAMAT MART OYLIK XISOBOT)
+            # 2. O'qituvchi nomi (Birlashtirilgan katak)
             ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=9)
             user_title = ws.cell(row=current_row, column=1)
             user_title.value = f"{user_names.get(uid, '').upper()} {months_uz[month]} OYLIK XISOBOT"
             user_title.fill = user_header_fill
             user_title.font = bold_font
             user_title.alignment = Alignment(horizontal="center")
-            user_title.border = all_border
+            # Birlashtirilgan kataklarning har biriga border qo'shish
+            for col in range(1, 10):
+                ws.cell(row=current_row, column=col).border = all_border
             
             current_row += 1
             
@@ -2477,20 +2500,17 @@ async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
             
             current_row += 1
             
-            # 4. Ushbu o'qituvchi uchun ma'lumotlarni yig'ish
+            # 4. Ma'lumotlarni yig'ish
             user_records = []
             for d in range(1, last_day + 1):
                 target_date = f"{year}-{month:02d}-{d:02d}"
                 d_obj = d_date(year, month, d)
                 weekday = WEEKDAYS_UZ[d_obj.weekday()]
                 
-                # Jadvaldagi darslari
                 for sid, sdata in schedules.items():
                     if sdata['user_id'] == uid and weekday in sdata['days']:
                         branch = sdata['branch']
                         sch_time = sdata['days'][weekday]
-                        
-                        # Davomat bormi?
                         att = next((a for a in daily_attendance_log if a[0] == uid and a[1] == branch and a[2] == target_date), None)
                         
                         if att:
@@ -2500,7 +2520,7 @@ async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
                             user_records.append({'date': target_date, 'weekday': weekday, 'branch': branch, 
                                                'sch_time': sch_time, 'att_time': "—", 'st': 'ABSENT'})
 
-            # Ma'lumotlarni yozish
+            # Excelga qatorlarni yozish
             num = 1
             for r in sorted(user_records, key=lambda x: (x['date'], x['sch_time'])):
                 if r['st'] == 'ABSENT':
@@ -2512,29 +2532,30 @@ async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
 
                 row_vals = [num, r['date'], r['weekday'], user_names.get(uid), r['branch'], r['sch_time'], r['att_time'], status_text, late_m]
                 
-                for col, val in enumerate(row_vals, 1):
-                    cell = ws.cell(row=current_row, column=col)
+                for col_idx, val in enumerate(row_vals, 1):
+                    cell = ws.cell(row=current_row, column=col_idx)
                     cell.value = val
                     cell.border = all_border
                     cell.alignment = Alignment(horizontal="center")
                     
-                    # Status ranglari
-                    if col == 8:
-                        if status_text == "Kechikkan": 
-                            cell.font = Font(color="FF0000", bold=True)
-                        elif status_text == "Vaqtida": 
-                            cell.font = Font(color="008000", bold=True)
-                        elif status_text == "KELMAGAN": 
-                            cell.fill = PatternFill(start_color="FFCCCC", fill_type="solid")
+                    # FAQAT "Holat" ustuniga rang berish (8-ustun)
+                    if col_idx == 8:
+                        if status_text == "Kechikkan":
+                            cell.font = Font(color="FF0000", bold=True) # Qizil matn
+                        elif status_text == "Vaqtida":
+                            cell.font = Font(color="008000", bold=True) # Yashil matn
+                        elif status_text == "KELMAGAN":
+                            cell.fill = PatternFill(start_color="FFCCCC", fill_type="solid") # Qizil fon
                 
                 num += 1
                 current_row += 1
             
-            current_row += 2 # Har bir o'qituvchidan keyin 2 qator bo'sh joy
-        
-        # Ustun kengligi
-        for col in ws.columns:
-            ws.column_dimensions[col[0].column_letter].width = 16
+            current_row += 2 # Oraliq masofa
+
+        # Ustun kengligini o'rnatishning xavfsiz usuli
+        for i in range(1, 10):
+            column_letter = get_column_letter(i)
+            ws.column_dimensions[column_letter].width = 18
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -3244,7 +3265,7 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
         spec_display = f" [{user_spec}]" if user_spec else ""
         
         await callback.message.edit_text(
-            f"⏳ Foydalanuvchi o'chirilmoqda...\n\nID: `{uid}`\nIsm: {user_name}{spec_display}",
+            f"⏳ Foydalanuvchi o'chirilmoqda...\n\nID: `{uid}`\nIsm: {user_name}{spec_display}"
         )
         
     except ValueError as e:
@@ -4130,7 +4151,7 @@ async def admin_save_edited_schedule(message: types.Message, state: FSMContext):
     user_schedules[teacher_id].append(new_s_id)
     await db.save_schedule(new_s_id, teacher_id, new_branch, new_lesson_type, new_days)
 
-    # 3. O'QITUVCHIGA XABAR
+    # 3. O'QITUVCHIGA XABAR (YANGI LANDSCAPE PDF BILAN)
     old_times = ", ".join([f"{k}:{v}" for k, v in old_schedule['days'].items()])
     new_times = ", ".join([f"{k}:{v}" for k, v in new_days.items()])
     
@@ -4143,7 +4164,12 @@ async def admin_save_edited_schedule(message: types.Message, state: FSMContext):
     try:
         await bot.send_message(teacher_id, msg)
         pdf = await create_schedule_pdf(teacher_id)
-        await bot.send_document(teacher_id, types.BufferedInputFile(pdf.read(), filename="yangi_jadval.pdf"))
+        clean_name = clean_text_for_pdf(user_names.get(teacher_id, 'user'))
+        await bot.send_document(
+            teacher_id, 
+            types.BufferedInputFile(pdf.read(), filename=f"Dars_Jadvali_{clean_name}.pdf"),
+            caption="📅 Yangi dars jadvalingiz (Landscape formatda)"
+        )
     except Exception as e:
         logging.error(f"Notify error: {e}")
 
@@ -4394,6 +4420,7 @@ async def admin_save_new_schedule(message: types.Message, state: FSMContext):
         
         await db.save_schedule(schedule_id, teacher_id, branch, lesson_type, days_with_names)
         
+        # O'qituvchiga xabar (YANGI LANDSCAPE PDF BILAN)
         try:
             await bot.send_message(
                 teacher_id,
@@ -4401,11 +4428,12 @@ async def admin_save_new_schedule(message: types.Message, state: FSMContext):
             )
             
             pdf_buffer = await create_schedule_pdf(teacher_id)
+            clean_name = clean_text_for_pdf(user_names.get(teacher_id, 'user'))
             await bot.send_document(
                 teacher_id,
                 types.BufferedInputFile(pdf_buffer.getvalue(), 
-                                        filename=f"dars_jadvali_{user_names.get(teacher_id, 'user')}.pdf"),
-                caption="📅 Sizning yangi dars jadvalingiz"
+                                        filename=f"Dars_Jadvali_{clean_name}.pdf"),
+                caption="📅 Yangi dars jadvalingiz (Landscape formatda)"
             )
         except Exception as e:
             logging.error(f"Failed to notify teacher {teacher_id}: {e}")
