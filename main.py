@@ -874,23 +874,37 @@ async def specialty_keyboard(user_id: int):
 def get_yandex_maps_link(lat: float, lon: float) -> str:
     return f"https://yandex.com/maps/?pt={lon},{lat}&z=17&l=map"
 
-# --- PROFESSIONAL PDF FUNKSIYASI (LANDSCAPE, TO'RTBURCHAKLARSIZ) ---
+# --- STANDARTLASHTIRILGAN PDF FUNKSIYASI (XUDDI ADMIN PANELIDAGIDEK) ---
 async def create_schedule_pdf(user_id: int) -> io.BytesIO:
     pdf_buffer = io.BytesIO()
-    doc = SimpleDocTemplate(pdf_buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    # Landscape format (A4 yotqizilgan) va keng hoshiyalar
+    doc = SimpleDocTemplate(
+        pdf_buffer, 
+        pagesize=landscape(A4), 
+        rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30
+    )
     elements = []
     styles = getSampleStyleSheet()
     lang = user_languages.get(user_id, 'uz')
     
-    # Nanum shriftini majburiy qilamiz
-    title_style = ParagraphStyle('T', fontName=FONT_NAME, fontSize=22, alignment=1, spaceAfter=20, textColor=colors.HexColor('#1A237E'))
+    # Shriftni majburiy belgilash
+    title_font = FONT_NAME_BOLD
+    
+    # Sarlavha uslubi (Asosiy sarlavha ko'k rangda)
+    title_style = ParagraphStyle(
+        'T', fontName=title_font, fontSize=22, alignment=1, 
+        spaceAfter=20, textColor=colors.HexColor('#1A237E')
+    )
+    
+    # Oddiy matn uslubi
     normal_style = ParagraphStyle('N', fontName=FONT_NAME, fontSize=14, spaceAfter=10)
 
-    # Ma'lumotlarni tozalash
-    name = clean_pdf_text(user_names.get(user_id, "Xodim"))
-    spec = clean_pdf_text(get_specialty_display(user_specialty.get(user_id, ''), lang))
+    # Ma'lumotlarni emojilardan tozalash
+    name = clean_pdf_text(user_names.get(user_id, "User"))
+    specialty = clean_pdf_text(get_specialty_display(user_specialty.get(user_id, ''), lang))
     
-    title_text = f"{name.upper()} | {spec} | {clean_pdf_text(TRANSLATIONS[lang]['pdf_title'])}"
+    # 1. ASOSIY SARLAVHA: ISM | SOHA | DARS JADVALI
+    title_text = f"<b>{name.upper()}</b> | {specialty} | {clean_pdf_text(TRANSLATIONS[lang]['pdf_title'])}"
     elements.append(Paragraph(title_text, title_style))
     
     sched_ids = user_schedules.get(user_id, [])
@@ -904,42 +918,52 @@ async def create_schedule_pdf(user_id: int) -> io.BytesIO:
             branch = clean_pdf_text(s['branch'])
             l_type = clean_pdf_text(s.get('lesson_type', 'Dars'))
             
-            # Filial sarlavhasi
-            header_p = Paragraph(f"Filial: {branch} ({l_type})", ParagraphStyle('B', fontName=FONT_NAME, fontSize=16, textColor=colors.white))
-            br_table = Table([[header_p]], colWidths=[9*inch])
+            # 2. FILIAL SARLAVHASI (KO'K BANNER)
+            branch_p = Paragraph(f"Filial: {branch} ({l_type})", 
+                                 ParagraphStyle('B', fontName=title_font, fontSize=16, textColor=colors.white))
+            
+            br_table = Table([[branch_p]], colWidths=[9.5*inch])
             br_table.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#283593')),
-                ('TOPPADDING', (0,0), (-1,-1), 8),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-                ('LEFTPADDING', (0,0), (-1,-1), 20)
+                ('LEFTPADDING', (0,0), (-1,-1), 20),
+                ('TOPPADDING', (0,0), (-1,-1), 10),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 10),
             ]))
             elements.append(br_table)
             elements.append(Spacer(1, 5))
             
-            # Jadval ma'lumotlari
-            data = [TRANSLATIONS[lang]['pdf_headers']]
+            # 3. JADVAL QISMI
+            headers = [clean_pdf_text(h) for h in TRANSLATIONS[lang]['pdf_headers']]
+            data = [headers]
+            
+            # Hafta kunlari (Bazadagi kalitlar bilan solishtirish)
             uz_days = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
             target_days = WEEKDAYS[lang]
             
             for i, d_uz in enumerate(uz_days):
                 if d_uz in s['days']:
-                    data.append([target_days[i], str(s['days'][d_uz])])
+                    data.append([clean_pdf_text(target_days[i]), str(s['days'][d_uz])])
 
             if len(data) > 1:
-                t = Table(data, colWidths=[4.5*inch, 4.5*inch])
+                # Jadval dizayni (Chiroyli och ko'k fon va zebra style)
+                t = Table(data, colWidths=[4.75*inch, 4.75*inch])
                 t.setStyle(TableStyle([
                     ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E8EAF6')),
-                    ('FONTNAME', (0, 0), (-1, -1), FONT_NAME),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1A237E')),
                     ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, -1), FONT_NAME),
                     ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                    ('FONTSIZE', (0, 0), (-1, -1), 12),
-                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F5F5')])
+                    ('FONTSIZE', (0, 0), (-1, -1), 13),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F5F5')]),
+                    ('TOPPADDING', (0, 0), (-1, -1), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
                 ]))
                 elements.append(t)
                 elements.append(Spacer(1, 20))
 
-    elements.append(Paragraph(f"{clean_pdf_text(TRANSLATIONS[lang]['pdf_created'])}: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", 
-                             ParagraphStyle('F', fontName=FONT_NAME, fontSize=10, alignment=2)))
+    # 4. FOOTER: YARATILGAN SANA
+    footer_text = f"{clean_pdf_text(TRANSLATIONS[lang]['pdf_created'])}: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}"
+    elements.append(Paragraph(footer_text, ParagraphStyle('F', fontName=FONT_NAME, fontSize=10, alignment=2, textColor=colors.grey)))
     
     doc.build(elements)
     pdf_buffer.seek(0)
@@ -2330,6 +2354,7 @@ async def process_month_gen(callback: types.CallbackQuery):
     )
     await callback.answer()
 
+# --- YANGI PROFESSIONAL EXCEL HISOBOT (FILIALLAR BO'YICHA GURUHLANGAN) ---
 async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
     import calendar
     from openpyxl import Workbook
@@ -2339,12 +2364,13 @@ async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
     wb = Workbook()
     wb.remove(wb.active)
 
-    thin_side = Side(border_style="thin", color="000000")
-    all_border = Border(top=thin_side, left=thin_side, right=thin_side, bottom=thin_side)
+    thin = Side(border_style="thin", color="000000")
+    all_border = Border(top=thin, left=thin, right=thin, bottom=thin)
     
-    main_header_fill = PatternFill(start_color="92D050", fill_type="solid")
-    user_header_fill = PatternFill(start_color="D9D9D9", fill_type="solid")
-    table_header_fill = PatternFill(start_color="2E86AB", fill_type="solid")
+    main_header_fill = PatternFill(start_color="92D050", fill_type="solid") # Yashil sarlavha
+    user_header_fill = PatternFill(start_color="D9D9D9", fill_type="solid") # Kulrang o'qituvchi nomi
+    branch_header_fill = PatternFill(start_color="FDE9D9", fill_type="solid") # Och jigarrang filial nomi
+    table_header_fill = PatternFill(start_color="2E86AB", fill_type="solid") # Ko'k jadval header
     
     white_font = Font(color="FFFFFF", bold=True)
     bold_font = Font(bold=True)
@@ -2358,6 +2384,7 @@ async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
     for spec in specs:
         ws = wb.create_sheet(title=spec)
         
+        # 1. Asosiy sarlavha
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=9)
         main_title = ws.cell(row=1, column=1)
         main_title.value = f"{spec.upper()} OQITUVCHILARI {months_uz[month]} OYI XISOBOTI"
@@ -2368,83 +2395,94 @@ async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
             ws.cell(row=1, column=col).border = all_border
         
         current_row = 3
-        teachers_in_spec = [uid for uid, s in user_specialty.items() if s == spec]
+        teachers = [uid for uid, s in user_specialty.items() if s == spec]
         
-        if not teachers_in_spec:
+        if not teachers:
             continue
 
-        for uid in sorted(teachers_in_spec, key=lambda x: user_names.get(x, "")):
+        for uid in sorted(teachers, key=lambda x: user_names.get(x, "")):
+            # 2. O'qituvchi nomi (Kulrang)
             ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=9)
             user_title = ws.cell(row=current_row, column=1)
-            user_title.value = f"{user_names.get(uid, '').upper()} {months_uz[month]} OYLIK XISOBOT"
+            user_title.value = f"👤 {user_names.get(uid, '').upper()} {months_uz[month]} OYLIK XISOBOT"
             user_title.fill = user_header_fill
             user_title.font = bold_font
             user_title.alignment = Alignment(horizontal="center")
             for col in range(1, 10):
                 ws.cell(row=current_row, column=col).border = all_border
-            
             current_row += 1
-            
-            headers = ['№', 'Sana', 'Hafta kuni', 'O\'qituvchi', 'Filial', 'Dars vaqti', 'Kelgan vaqti', 'Holat', 'Kechikish (min)']
-            for col, text in enumerate(headers, 1):
-                cell = ws.cell(row=current_row, column=col)
-                cell.value = text
-                cell.fill = table_header_fill
-                cell.font = white_font
-                cell.alignment = Alignment(horizontal="center")
-                cell.border = all_border
-            
-            current_row += 1
-            
-            user_records = []
-            for d in range(1, last_day + 1):
-                target_date = f"{year}-{month:02d}-{d:02d}"
-                d_obj = d_date(year, month, d)
-                weekday = WEEKDAYS_UZ[d_obj.weekday()]
-                
-                for sid, sdata in schedules.items():
-                    if sdata['user_id'] == uid and weekday in sdata['days']:
-                        branch = sdata['branch']
-                        sch_time = sdata['days'][weekday]
-                        att = next((a for a in daily_attendance_log if a[0] == uid and a[1] == branch and a[2] == target_date), None)
-                        
-                        if att:
-                            user_records.append({'date': target_date, 'weekday': weekday, 'branch': branch, 
-                                               'sch_time': sch_time, 'att_time': att[3], 'st': 'PRESENT'})
-                        else:
-                            user_records.append({'date': target_date, 'weekday': weekday, 'branch': branch, 
-                                               'sch_time': sch_time, 'att_time': "—", 'st': 'ABSENT'})
 
-            num = 1
-            for r in sorted(user_records, key=lambda x: (x['date'], x['sch_time'])):
-                if r['st'] == 'ABSENT':
-                    status_text, late_m = "KELMAGAN", "—"
-                else:
-                    ontime, mins = calculate_lateness(r['att_time'], r['sch_time'])
-                    status_text = "Vaqtida" if ontime else "Kechikkan"
-                    late_m = 0 if ontime else mins
-
-                row_vals = [num, r['date'], r['weekday'], user_names.get(uid), r['branch'], r['sch_time'], r['att_time'], status_text, late_m]
-                
-                for col_idx, val in enumerate(row_vals, 1):
-                    cell = ws.cell(row=current_row, column=col_idx)
-                    cell.value = val
-                    cell.border = all_border
-                    cell.alignment = Alignment(horizontal="center")
-                    
-                    if col_idx == 8:
-                        if status_text == "Kechikkan":
-                            cell.font = Font(color="FF0000", bold=True)
-                        elif status_text == "Vaqtida":
-                            cell.font = Font(color="008000", bold=True)
-                        elif status_text == "KELMAGAN":
-                            cell.fill = PatternFill(start_color="FFCCCC", fill_type="solid")
-                
-                num += 1
+            # 3. Ushbu o'qituvchi ishlaydigan filiallarni aniqlash
+            teacher_branches = sorted(list(set([s['branch'] for sid, s in schedules.items() if s['user_id'] == uid])))
+            
+            for branch in teacher_branches:
+                # 4. Filial sarlavhasi (Och jigarrang)
+                ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=9)
+                branch_title = ws.cell(row=current_row, column=1)
+                branch_title.value = f"🏢 Filial: {branch}"
+                branch_title.fill = branch_header_fill
+                branch_title.font = Font(italic=True, bold=True)
+                branch_title.alignment = Alignment(horizontal="center")
+                for col in range(1, 10):
+                    ws.cell(row=current_row, column=col).border = all_border
                 current_row += 1
-            
-            current_row += 2
 
+                # 5. Jadval headeri
+                headers = ['№', 'Sana', 'Hafta kuni', 'O\'qituvchi', 'Filial', 'Dars vaqti', 'Kelgan vaqti', 'Holat', 'Kechikish']
+                for col, text in enumerate(headers, 1):
+                    cell = ws.cell(row=current_row, column=col)
+                    cell.value = text
+                    cell.fill = table_header_fill
+                    cell.font = white_font
+                    cell.alignment = Alignment(horizontal="center")
+                    cell.border = all_border
+                current_row += 1
+
+                # 6. Ma'lumotlarni yozish
+                num = 1
+                for d in range(1, last_day + 1):
+                    target_date = f"{year}-{month:02d}-{d:02d}"
+                    d_obj = d_date(year, month, d)
+                    weekday = WEEKDAYS_UZ[d_obj.weekday()]
+                    
+                    # Jadvaldagi darsni qidirish
+                    for sid, sdata in schedules.items():
+                        if sdata['user_id'] == uid and sdata['branch'] == branch and weekday in sdata['days']:
+                            sch_time = sdata['days'][weekday]
+                            att = next((a for a in daily_attendance_log if a[0] == uid and a[1] == branch and a[2] == target_date), None)
+                            
+                            if att:
+                                ontime, mins = calculate_lateness(att[3], sch_time)
+                                status_text = "Vaqtida" if ontime else "Kechikkan"
+                                att_time = att[3]
+                                late_m = 0 if ontime else mins
+                            else:
+                                status_text = "KELMAGAN"
+                                att_time = "—"
+                                late_m = "—"
+
+                            row_vals = [num, target_date, weekday, user_names.get(uid), branch, sch_time, att_time, status_text, late_m]
+                            for col_idx, val in enumerate(row_vals, 1):
+                                cell = ws.cell(row=current_row, column=col_idx)
+                                cell.value = val
+                                cell.border = all_border
+                                cell.alignment = Alignment(horizontal="center")
+                                
+                                # Holat ustuniga rang berish
+                                if col_idx == 8:
+                                    if status_text == "Kechikkan":
+                                        cell.font = Font(color="FF0000", bold=True)
+                                    elif status_text == "Vaqtida":
+                                        cell.font = Font(color="008000", bold=True)
+                                    elif status_text == "KELMAGAN":
+                                        cell.fill = PatternFill(start_color="FFCCCC", fill_type="solid")
+                            
+                            num += 1
+                            current_row += 1
+                current_row += 1 # Filiallar orasida kichik masofa
+            current_row += 2 # O'qituvchilar orasida katta masofa
+
+        # Ustun kengligi
         for i in range(1, 10):
             column_letter = get_column_letter(i)
             ws.column_dimensions[column_letter].width = 18
