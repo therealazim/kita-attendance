@@ -25,10 +25,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, landscape, A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak, KeepTogether
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 import asyncpg
 import pickle
 import traceback
@@ -50,6 +52,20 @@ WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 if not WEATHER_API_KEY:
     raise ValueError("WEATHER_API_KEY topilmadi! Render.com da environment variable qo'shing")
 WEATHER_API_URL = "http://api.openweathermap.org/data/2.5/weather"
+
+# --- SHRIFT SOZLAMALARI ---
+try:
+    # Render.com yoki Ubuntu serverlarda odatda ushbu shrift bo'ladi
+    pdfmetrics.registerFont(TTFont('DejaVu', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
+    pdfmetrics.registerFont(TTFont('DejaVu-Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'))
+    FONT_NAME = 'DejaVu'
+    FONT_NAME_BOLD = 'DejaVu-Bold'
+    logging.info("✅ DejaVu shrifti yuklandi")
+except:
+    # Agar shrift topilmasa standartga qaytadi (lekin ruscha harflar chiqmasligi mumkin)
+    FONT_NAME = 'Helvetica'
+    FONT_NAME_BOLD = 'Helvetica-Bold'
+    logging.warning("⚠️ DejaVu shrifti topilmadi, Helvetica ishlatiladi")
 
 # Bot obyektini yaratish
 bot = Bot(token=TOKEN)
@@ -98,6 +114,15 @@ ALLOWED_DISTANCE = 500
 # --- OYLIK HISOBOT UCHUN STATE ---
 class MonthlyReport(StatesGroup):
     waiting_for_date_range = State()
+
+# --- OYLIK KALKULYATOR UCHUN STATE ---
+class SalaryCalc(StatesGroup):
+    selecting_specialty = State()
+    selecting_teacher = State()
+    entering_students = State()
+    entering_lessons = State()
+    selecting_percentage = State()
+    entering_payment = State()
 
 # --- POSTGRESQL DATABASE CLASS ---
 class Database:
@@ -618,16 +643,26 @@ def sort_weekdays(days_dict):
 
 def calculate_lateness(attendance_time: str, lesson_time: str) -> tuple:
     try:
-        att_dt = datetime.strptime(attendance_time, "%H:%M")
-        les_dt = datetime.strptime(lesson_time, "%H:%M")
-        
-        if att_dt <= les_dt:
+        # attendance_time odatda "09:01:12" (HH:MM:SS)
+        # lesson_time odatda "09:00" (HH:MM)
+        fmt_att = "%H:%M:%S"
+        fmt_les = "%H:%M"
+
+        att_dt = datetime.strptime(attendance_time, fmt_att)
+        les_dt = datetime.strptime(lesson_time, fmt_les)
+
+        # Farqni soniyalarda hisoblaymiz
+        diff_seconds = (att_dt - les_dt).total_seconds()
+
+        # Agar farq 60 soniyadan kichik yoki teng bo'lsa - Vaqtida
+        if diff_seconds <= 60:
             return True, 0
         else:
-            diff = att_dt - les_dt
-            minutes_late = int(diff.total_seconds() / 60)
+            # 60 soniyadan oshsa - Kechikkan. Necha daqiqa ekanini yaxlitlab olamiz
+            minutes_late = int(diff_seconds / 60)
             return False, minutes_late
-    except:
+    except Exception as e:
+        logging.error(f"calculate_lateness error: {e}")
         return True, 0
 
 async def main_keyboard(user_id: int):
@@ -679,7 +714,8 @@ async def create_schedule_pdf(user_id: int) -> io.BytesIO:
         parent=styles['Heading1'],
         fontSize=16,
         alignment=1,
-        spaceAfter=20
+        spaceAfter=20,
+        fontName=FONT_NAME_BOLD
     )
     
     name = user_names.get(user_id, "Foydalanuvchi")
@@ -703,7 +739,8 @@ async def create_schedule_pdf(user_id: int) -> io.BytesIO:
                     parent=styles['Heading2'],
                     fontSize=14,
                     textColor=colors.blue,
-                    spaceAfter=10
+                    spaceAfter=10,
+                    fontName=FONT_NAME_BOLD
                 )
                 elements.append(Paragraph(f"🏢 {branch} - {lesson_type}", branch_style))
                 
@@ -717,7 +754,8 @@ async def create_schedule_pdf(user_id: int) -> io.BytesIO:
                     ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                     ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                     ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTNAME', (0, 0), (-1, 0), FONT_NAME_BOLD),
+                    ('FONTNAME', (0, 1), (-1, -1), FONT_NAME),
                     ('GRID', (0, 0), (-1, -1), 1, colors.black),
                     ('FONTSIZE', (0, 0), (-1, -1), 12)
                 ]))
@@ -729,7 +767,8 @@ async def create_schedule_pdf(user_id: int) -> io.BytesIO:
         parent=styles['Normal'],
         fontSize=10,
         alignment=2,
-        spaceBefore=20
+        spaceBefore=20,
+        fontName=FONT_NAME
     )
     elements.append(Paragraph(f"Yaratilgan sana: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", date_style))
     
@@ -1410,6 +1449,9 @@ async def admin_panel(message: types.Message):
     try:
         builder = InlineKeyboardBuilder()
         builder.row(
+            InlineKeyboardButton(text="💰 Oylik xisoblash", callback_data="admin_salary_calc")
+        )
+        builder.row(
             InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
             InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast")
         )
@@ -1430,6 +1472,140 @@ async def admin_panel(message: types.Message):
     except Exception as e:
         logging.error(f"admin_panel error: {e}")
         await message.answer("❌ Admin panelni ochishda xatolik yuz berdi")
+
+# --- OYLIK KALKULYATOR HANDLERS ---
+@dp.callback_query(F.data == "admin_salary_calc")
+async def salary_calc_start(callback: types.CallbackQuery, state: FSMContext):
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="💻 IT", callback_data="sal_spec_IT"),
+        InlineKeyboardButton(text="🇰🇷 Koreys tili", callback_data="sal_spec_Koreys tili")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🏢 Ofis xodimi", callback_data="sal_spec_Ofis xodimi")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back")
+    )
+    await callback.message.edit_text(
+        "Qaysi fan o'qituvchisiga oylik xisoblamoqchisiz?",
+        reply_markup=builder.as_markup()
+    )
+    await state.set_state(SalaryCalc.selecting_specialty)
+    await callback.answer()
+
+@dp.callback_query(SalaryCalc.selecting_specialty, F.data.startswith("sal_spec_"))
+async def salary_calc_spec(callback: types.CallbackQuery, state: FSMContext):
+    spec = callback.data.replace("sal_spec_", "")
+    await state.update_data(specialty=spec)
+    
+    builder = InlineKeyboardBuilder()
+    for uid, name in user_names.items():
+        if user_specialty.get(uid) == spec:
+            builder.row(InlineKeyboardButton(text=name, callback_data=f"sal_teacher_{uid}"))
+    
+    builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_salary_calc"))
+    await callback.message.edit_text(
+        f"{spec} o'qituvchisini tanlang:",
+        reply_markup=builder.as_markup()
+    )
+    await state.set_state(SalaryCalc.selecting_teacher)
+    await callback.answer()
+
+@dp.callback_query(SalaryCalc.selecting_teacher, F.data.startswith("sal_teacher_"))
+async def salary_calc_teacher(callback: types.CallbackQuery, state: FSMContext):
+    uid = int(callback.data.replace("sal_teacher_", ""))
+    await state.update_data(teacher_id=uid, teacher_name=user_names.get(uid, f"ID: {uid}"))
+    await callback.message.edit_text(
+        f"👤 {user_names.get(uid, 'Noma\'lum')}\n\nO'quvchilar sonini kiriting:"
+    )
+    await state.set_state(SalaryCalc.entering_students)
+    await callback.answer()
+
+@dp.message(SalaryCalc.entering_students)
+async def salary_students(message: types.Message, state: FSMContext):
+    if not message.text.isdigit():
+        await message.answer("❌ Faqat raqam kiriting!")
+        return
+    await state.update_data(students=int(message.text))
+    await message.answer("O'qituvchi bu oy necha marta dars o'tdi?")
+    await state.set_state(SalaryCalc.entering_lessons)
+
+@dp.message(SalaryCalc.entering_lessons)
+async def salary_lessons(message: types.Message, state: FSMContext):
+    if not message.text.isdigit():
+        await message.answer("❌ Faqat raqam kiriting!")
+        return
+    await state.update_data(lessons=int(message.text))
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="35%", callback_data="perc_35"),
+        InlineKeyboardButton(text="45%", callback_data="perc_45")
+    )
+    builder.row(
+        InlineKeyboardButton(text="50%", callback_data="perc_50"),
+        InlineKeyboardButton(text="60%", callback_data="perc_60")
+    )
+    await message.answer(
+        "Imtixon natijasiga ko'ra foizni tanlang:",
+        reply_markup=builder.as_markup()
+    )
+    await state.set_state(SalaryCalc.selecting_percentage)
+
+@dp.callback_query(SalaryCalc.selecting_percentage, F.data.startswith("perc_"))
+async def salary_perc(callback: types.CallbackQuery, state: FSMContext):
+    perc = int(callback.data.replace("perc_", ""))
+    await state.update_data(percentage=perc)
+    await callback.message.edit_text(
+        "Jami o'quvchilar qilgan to'lov summasini kiriting (so'm):"
+    )
+    await state.set_state(SalaryCalc.entering_payment)
+    await callback.answer()
+
+@dp.message(SalaryCalc.entering_payment)
+async def salary_final(message: types.Message, state: FSMContext):
+    # Bo'sh joylarni olib tashlash
+    text = message.text.replace(' ', '')
+    if not text.isdigit():
+        await message.answer("❌ To'lov summasini raqamlarda kiriting!\nMasalan: 5000000")
+        return
+    
+    payment = int(text)
+    data = await state.get_data()
+    
+    # Hisoblash
+    salary = (payment * data['percentage']) / 100
+    
+    # Formatlash
+    payment_str = f"{payment:,}".replace(',', ' ')
+    salary_str = f"{salary:,.0f}".replace(',', ' ')
+    
+    result = (
+        f"💰 **Oylik Hisob-Kitobi**\n\n"
+        f"👤 O'qituvchi: {data['teacher_name']}\n"
+        f"📚 Mutaxassislik: {data['specialty']}\n"
+        f"👥 O'quvchilar soni: {data['students']} ta\n"
+        f"📅 Darslar soni: {data['lessons']} marta\n"
+        f"📈 Tanlangan foiz: {data['percentage']}%\n"
+        f"💵 Jami to'lov: {payment_str} so'm\n"
+        f"──────────────────\n"
+        f"💸 **OYLIK: {salary_str} so'm**"
+    )
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🔙 Admin Panel", callback_data="admin_back"))
+    builder.row(InlineKeyboardButton(text="🔄 Yangi hisoblash", callback_data="admin_salary_calc"))
+    
+    await message.answer(
+        result,
+        parse_mode="Markdown",
+        reply_markup=builder.as_markup()
+    )
+    await state.clear()
 
 @dp.callback_query(F.data == "admin_monthly_report")
 async def admin_monthly_report_start(callback: types.CallbackQuery):
@@ -1468,8 +1644,23 @@ async def create_monthly_grouped_pdf(year: int, month: int) -> io.BytesIO:
     
     months_uz = {1: "Yanvar", 2: "Fevral", 3: "Mart", 4: "Aprel", 5: "May", 6: "Iyun", 
                  7: "Iyul", 8: "Avgust", 9: "Sentabr", 10: "Oktabr", 11: "Noyabr", 12: "Dekabr"}
-    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=20, alignment=1, spaceAfter=20)
-    day_style = ParagraphStyle('DayHeader', parent=styles['Heading2'], fontSize=14, backColor=colors.lightgrey, spaceBefore=15, spaceAfter=5)
+    title_style = ParagraphStyle(
+        'Title',
+        parent=styles['Heading1'],
+        fontSize=20,
+        alignment=1,
+        spaceAfter=20,
+        fontName=FONT_NAME_BOLD
+    )
+    day_style = ParagraphStyle(
+        'DayHeader',
+        parent=styles['Heading2'],
+        fontSize=14,
+        backColor=colors.lightgrey,
+        spaceBefore=15,
+        spaceAfter=5,
+        fontName=FONT_NAME_BOLD
+    )
     
     elements.append(Paragraph(f"{months_uz[month]} {year} - Oylik Davomat Hisoboti", title_style))
     _, last_day = calendar.monthrange(year, month)
@@ -1503,6 +1694,8 @@ async def create_monthly_grouped_pdf(year: int, month: int) -> io.BytesIO:
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2E86AB')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), FONT_NAME_BOLD),
+            ('FONTNAME', (0, 1), (-1, -1), FONT_NAME),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F9F9')])
@@ -1524,7 +1717,8 @@ async def process_month_gen(callback: types.CallbackQuery):
     await callback.message.answer(f"⏳ {month}/{year} uchun hisobot tayyorlanmoqda...")
     pdf = await create_monthly_grouped_pdf(int(year), int(month))
     await callback.message.answer_document(
-        types.BufferedInputFile(pdf.read(), filename=f"hisobot_{year}_{month}.pdf")
+        types.BufferedInputFile(pdf.read(), filename=f"hisobot_{year}_{month}.pdf"),
+        caption=f"📊 {month}/{year} oylik davomat hisoboti"
     )
     await callback.answer()
 
@@ -1564,7 +1758,8 @@ async def create_general_stats_pdf() -> io.BytesIO:
         parent=styles['Heading1'],
         fontSize=18,
         alignment=1,
-        spaceAfter=30
+        spaceAfter=30,
+        fontName=FONT_NAME_BOLD
     )
     elements.append(Paragraph("📊 Umumiy statistika", title_style))
     elements.append(Paragraph(f"Hisobot yaratilgan sana: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
@@ -1603,7 +1798,8 @@ async def create_general_stats_pdf() -> io.BytesIO:
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 0), (-1, 0), FONT_NAME_BOLD),
+        ('FONTNAME', (0, 1), (-1, -1), FONT_NAME),
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ('FONTSIZE', (0, 0), (-1, -1), 12)
     ]))
@@ -1624,7 +1820,8 @@ async def create_branches_stats_pdf() -> io.BytesIO:
         parent=styles['Heading1'],
         fontSize=18,
         alignment=1,
-        spaceAfter=30
+        spaceAfter=30,
+        fontName=FONT_NAME_BOLD
     )
     elements.append(Paragraph("🏆 Filiallar reytingi", title_style))
     elements.append(Paragraph(f"Hisobot yaratilgan sana: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
@@ -1645,7 +1842,8 @@ async def create_branches_stats_pdf() -> io.BytesIO:
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 0), (-1, 0), FONT_NAME_BOLD),
+        ('FONTNAME', (0, 1), (-1, -1), FONT_NAME),
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
     ]))
     elements.append(table)
@@ -1665,7 +1863,8 @@ async def create_teachers_stats_pdf() -> io.BytesIO:
         parent=styles['Heading1'],
         fontSize=18,
         alignment=1,
-        spaceAfter=30
+        spaceAfter=30,
+        fontName=FONT_NAME_BOLD
     )
     elements.append(Paragraph("👥 O'qituvchilar reytingi", title_style))
     elements.append(Paragraph(f"Hisobot yaratilgan sana: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
@@ -1694,7 +1893,8 @@ async def create_teachers_stats_pdf() -> io.BytesIO:
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 0), (-1, 0), FONT_NAME_BOLD),
+        ('FONTNAME', (0, 1), (-1, -1), FONT_NAME),
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
     ]))
     elements.append(table)
@@ -1718,7 +1918,8 @@ async def create_monthly_stats_pdf() -> io.BytesIO:
         parent=styles['Heading1'],
         fontSize=18,
         alignment=1,
-        spaceAfter=30
+        spaceAfter=30,
+        fontName=FONT_NAME_BOLD
     )
     elements.append(Paragraph(f"📅 {month_name} oyi hisoboti", title_style))
     elements.append(Paragraph(f"Hisobot yaratilgan sana: {now_uzb.strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
@@ -1749,10 +1950,11 @@ async def create_monthly_stats_pdf() -> io.BytesIO:
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 0), (-1, 0), FONT_NAME_BOLD),
+        ('FONTNAME', (0, 1), (-1, -1), FONT_NAME),
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ('BACKGROUND', (-2, -1), (-1, -1), colors.lightgrey),
-        ('FONTNAME', (-2, -1), (-1, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (-2, -1), (-1, -1), FONT_NAME_BOLD),
     ]))
     elements.append(table)
     
@@ -2654,9 +2856,6 @@ async def admin_schedules_pdf(callback: types.CallbackQuery):
     await callback.answer()
 
 async def create_all_schedules_pdf() -> io.BytesIO:
-    from reportlab.lib.pagesizes import landscape, A4
-    from reportlab.platypus import PageBreak
-    
     pdf_buffer = io.BytesIO()
     # Landscape format (yotqizilgan A4)
     doc = SimpleDocTemplate(
@@ -2670,32 +2869,39 @@ async def create_all_schedules_pdf() -> io.BytesIO:
     # Maxsus uslublar (Dizayn uchun)
     main_title_style = ParagraphStyle(
         'MainTitle', parent=styles['Heading1'], fontSize=26, alignment=1, 
-        spaceAfter=10, textColor=colors.HexColor('#1A237E'), fontName='Helvetica-Bold'
+        spaceAfter=10, textColor=colors.HexColor('#1A237E'), fontName=FONT_NAME_BOLD
     )
     
     section_style = ParagraphStyle(
         'SectionHeader', parent=styles['Heading2'], fontSize=18, alignment=1,
         textColor=colors.whitesmoke, backColor=colors.HexColor('#283593'),
-        spaceBefore=10, spaceAfter=15, borderPadding=10, borderRadius=5
+        spaceBefore=10, spaceAfter=15, borderPadding=10, borderRadius=5,
+        fontName=FONT_NAME_BOLD
     )
 
     teacher_name_style = ParagraphStyle(
         'TeacherName', parent=styles['Heading3'], fontSize=14, 
-        textColor=colors.HexColor('#B71C1C'), spaceBefore=12, spaceAfter=5, fontName='Helvetica-Bold'
+        textColor=colors.HexColor('#B71C1C'), spaceBefore=12, spaceAfter=5,
+        fontName=FONT_NAME_BOLD
     )
 
     branch_info_style = ParagraphStyle(
         'BranchInfo', parent=styles['Normal'], fontSize=11, 
-        textColor=colors.HexColor('#0D47A1'), fontName='Helvetica-Bold'
+        textColor=colors.HexColor('#0D47A1'), fontName=FONT_NAME_BOLD
+    )
+
+    normal_style = ParagraphStyle(
+        'Normal', parent=styles['Normal'], fontName=FONT_NAME
     )
 
     # 1. Sarlavha
     elements.append(Paragraph("HANCOM ACADEMY", main_title_style))
-    elements.append(Paragraph("O'QITUVCHILAR VA XODIMLARNING UMUMIY DARS JADVALI", 
-                             ParagraphStyle('Sub', parent=styles['Normal'], alignment=1, fontSize=12, spaceAfter=20)))
+    elements.append(Paragraph(
+        "O'QITUVCHILAR VA XODIMLARNING UMUMIY DARS JADVALI",
+        ParagraphStyle('Sub', parent=normal_style, alignment=1, fontSize=12, spaceAfter=20, fontName=FONT_NAME)
+    ))
 
     # 2. Ma'lumotlarni mutaxassislik bo'yicha guruhlash
-    # Specialty -> Teacher -> Schedules
     grouped_data = defaultdict(lambda: defaultdict(list))
     
     for s_id, s_data in schedules.items():
@@ -2708,7 +2914,8 @@ async def create_all_schedules_pdf() -> io.BytesIO:
     spec_order = ["IT", "Koreys tili", "Ofis xodimi"]
     
     for spec in spec_order:
-        if spec not in grouped_data: continue
+        if spec not in grouped_data:
+            continue
         
         # Bo'lim sarlavhasi (Banner)
         elements.append(Paragraph(f"{spec.upper()} BO'LIMI JADVALLARI", section_style))
@@ -2717,21 +2924,22 @@ async def create_all_schedules_pdf() -> io.BytesIO:
         sorted_teachers = sorted(grouped_data[spec].keys())
         
         for t_name in sorted_teachers:
-            elements.append(Paragraph(f"👤 O'qituvchi: {t_name}", teacher_name_style))
+            teacher_block = []  # Ism va jadvallarni birga saqlash uchun
+            
+            teacher_block.append(Paragraph(f"👤 O'qituvchi: {t_name}", teacher_name_style))
             
             # Har bir o'qituvchining filiallari
             teacher_scheds = grouped_data[spec][t_name]
             
-            # Filiallar jadvalini bitta qatorga 2 tadan sig'dirish uchun kichik jadvallar yasaymiz
             for s_data in teacher_scheds:
                 branch = s_data['branch']
                 l_type = s_data.get('lesson_type', 'Dars')
                 
-                elements.append(Paragraph(f"📍 Filial: {branch} ({l_type})", branch_info_style))
+                teacher_block.append(Paragraph(f"📍 Filial: {branch} ({l_type})", branch_info_style))
                 
                 # Kunlar va vaqtlar jadvali
                 days = sort_weekdays(s_data['days'])
-                table_data = [['Hafta kuni', 'Dars boshlanish vaqti']] # Header
+                table_data = [['Hafta kuni', 'Dars boshlanish vaqti']]  # Header
                 
                 for d_name, d_time in days.items():
                     table_data.append([d_name, d_time])
@@ -2742,7 +2950,8 @@ async def create_all_schedules_pdf() -> io.BytesIO:
                     ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E3F2FD')),
                     ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1565C0')),
                     ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTNAME', (0, 0), (-1, 0), FONT_NAME_BOLD),
+                    ('FONTNAME', (0, 1), (-1, -1), FONT_NAME),
                     ('FONTSIZE', (0, 0), (-1, -1), 10),
                     ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
                     ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F5F5')]),
@@ -2750,17 +2959,22 @@ async def create_all_schedules_pdf() -> io.BytesIO:
                     ('TOPPADDING', (0, 0), (-1, -1), 5),
                 ]))
                 
-                elements.append(t)
-                elements.append(Spacer(1, 10))
+                teacher_block.append(t)
+                teacher_block.append(Spacer(1, 10))
             
+            # KeepTogether - Ism va jadval bitta betda qolishini ta'minlaydi
+            elements.append(KeepTogether(teacher_block))
             elements.append(Spacer(1, 5))
-            elements.append(Paragraph("<hr/>", styles['Normal'])) # Chiziq ajratish uchun
-            
-        elements.append(PageBreak()) # Har bir bo'limdan keyin yangi betga o'tish
+            elements.append(Paragraph("<hr/>", normal_style))  # Chiziq ajratish uchun
+        
+        elements.append(PageBreak())  # Har bir bo'limdan keyin yangi betga o'tish
 
     # Footer
     footer_text = f"Hisobot yaratildi: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')} | Hancom Academy Management System"
-    elements.append(Paragraph(footer_text, ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, alignment=2, textColor=colors.grey)))
+    elements.append(Paragraph(
+        footer_text,
+        ParagraphStyle('Footer', parent=normal_style, fontSize=8, alignment=2, textColor=colors.grey, fontName=FONT_NAME)
+    ))
 
     doc.build(elements)
     pdf_buffer.seek(0)
@@ -3516,7 +3730,8 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
             parent=styles['Heading1'],
             fontSize=18,
             alignment=1,
-            spaceAfter=30
+            spaceAfter=30,
+            fontName=FONT_NAME_BOLD
         )
         elements.append(Paragraph(f"Davomat Hisoboti - {report_date.strftime('%d.%m.%Y')} ({report_weekday})", title_style))
         
@@ -3567,7 +3782,8 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 0), (-1, 0), FONT_NAME_BOLD),
+            ('FONTNAME', (0, 1), (-1, -1), FONT_NAME),
             ('FONTSIZE', (0, 0), (-1, 0), 12),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
             ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
@@ -3615,14 +3831,16 @@ async def admin_pdf_report_date(message: types.Message, state: FSMContext):
                     late_text
                 ])
             
-            table = Table(data, colWidths=[0.4*inch, 0.9*inch, 0.9*inch, 1.8*inch, 1.0*inch, 1.5*inch, 0.8*inch, 0.8*inch])
+            # ColWidths ni kengaytiramiz va shriftni o'zgartiramiz
+            table = Table(data, colWidths=[0.3*inch, 0.8*inch, 0.8*inch, 1.8*inch, 1.1*inch, 1.6*inch, 0.8*inch, 0.8*inch])
             table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTNAME', (0, 0), (-1, 0), FONT_NAME_BOLD),
+                ('FONTNAME', (0, 1), (-1, -1), FONT_NAME),
                 ('GRID', (0, 0), (-1, -1), 1, colors.black),
-                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),  # Shriftni biroz kichraytiramiz sig'ishi uchun
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ]))
             
@@ -3661,6 +3879,9 @@ async def admin_back(callback: types.CallbackQuery):
     
     try:
         builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="💰 Oylik xisoblash", callback_data="admin_salary_calc")
+        )
         builder.row(
             InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
             InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast")
