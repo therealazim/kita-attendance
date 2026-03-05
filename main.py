@@ -644,18 +644,18 @@ def sort_weekdays(days_dict):
 def calculate_lateness(attendance_time: str, lesson_time: str) -> tuple:
     try:
         # attendance_time: "09:01:12", lesson_time: "09:00"
-        att_dt = datetime.strptime(attendance_time, "%H:%M:%S")
-        les_dt = datetime.strptime(lesson_time, "%H:%M")
+        att_parts = list(map(int, attendance_time.split(':')))
+        les_parts = list(map(int, lesson_time.split(':')))
         
-        # Jami soniyalarda farqni hisoblaymiz
-        att_seconds = att_dt.hour * 3600 + att_dt.minute * 60 + att_dt.second
-        les_seconds = les_dt.hour * 3600 + les_dt.minute * 60
-        diff_seconds = att_seconds - les_seconds
+        att_seconds = att_parts[0] * 3600 + att_parts[1] * 60 + att_parts[2]
+        les_seconds = les_parts[0] * 3600 + les_parts[1] * 60
         
-        if diff_seconds <= 60:  # 60 soniyagacha kechikish hisoblanmaydi
+        diff = att_seconds - les_seconds
+        
+        if diff <= 60: # 1 daqiqa (60 soniya) gacha ruxsat
             return True, 0
         else:
-            return False, int(diff_seconds / 60)
+            return False, int(diff / 60)
     except Exception as e:
         logging.error(f"calculate_lateness error: {e}")
         return True, 0
@@ -702,7 +702,11 @@ async def get_combined_report_pdf(report_date: d_date) -> io.BytesIO:
     data = [['№', 'Davomat', 'Dars', 'O\'qituvchi', 'Mutaxassislik', 'Filial', 'Holat', 'Kechikish']]
     
     for i, att in enumerate(sorted(check_ins, key=lambda x: x[3] if x[3] != "00:00:00" else "23:59:59"), 1):
-        uid, branch, _, att_time, *extra = att
+        uid = att[0]
+        branch = att[1]
+        att_time = att[3]
+        is_absent = len(att) > 4 and att[4] == "ABSENT"
+        
         teacher_name = user_names.get(uid, "Noma'lum")
         specialty = user_specialty.get(uid, "")
         
@@ -714,8 +718,10 @@ async def get_combined_report_pdf(report_date: d_date) -> io.BytesIO:
                 lesson_time = s['days'][report_weekday]
                 break
         
-        if "ABSENT" in extra or att_time == "00:00:00":
-            status, late_text, att_time_disp = "KELMAGAN", "—", "—"
+        if is_absent or att_time == "00:00:00":
+            status = "KELMAGAN"
+            late_text = "—"
+            att_time_disp = "—"
         else:
             ontime, mins = calculate_lateness(att_time, lesson_time)
             status = "Vaqtida" if ontime else "Kechikkan"
@@ -730,11 +736,13 @@ async def get_combined_report_pdf(report_date: d_date) -> io.BytesIO:
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2E86AB')),
         ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('FONTNAME', (0,0), (-1,-1), FONT_NAME),
         ('FONTNAME', (0,0), (-1,0), FONT_NAME_BOLD),
+        ('FONTNAME', (0,1), (-1,-1), FONT_NAME),
         ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-        ('FONTSIZE', (0,0), (-1,-1), 10),
+        ('FONTSIZE', (0,0), (-1,-1), 9),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('LEFTPADDING', (0,0), (-1,-1), 3),
+        ('RIGHTPADDING', (0,0), (-1,-1), 3),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F9F9')])
     ]))
     
@@ -1527,7 +1535,7 @@ async def admin_panel(message: types.Message):
     try:
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(text="💰 Oylik xisoblash", callback_data="admin_salary_calc")
+            InlineKeyboardButton(text="💰 Oylik hisoblash", callback_data="admin_salary_calc")
         )
         builder.row(
             InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
@@ -1570,7 +1578,7 @@ async def salary_calc_start(callback: types.CallbackQuery, state: FSMContext):
         InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back")
     )
     await callback.message.edit_text(
-        "Qaysi fan o'qituvchisiga oylik xisoblamoqchisiz?",
+        "Qaysi fan o'qituvchisiga oylik hisoblamoqchisiz?",
         reply_markup=builder.as_markup()
     )
     await state.set_state(SalaryCalc.selecting_specialty)
@@ -1597,9 +1605,10 @@ async def salary_calc_spec(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(SalaryCalc.selecting_teacher, F.data.startswith("sal_teacher_"))
 async def salary_calc_teacher(callback: types.CallbackQuery, state: FSMContext):
     uid = int(callback.data.replace("sal_teacher_", ""))
-    await state.update_data(teacher_id=uid, teacher_name=user_names.get(uid, f"ID: {uid}"))
+    teacher_name = user_names.get(uid, "Noma'lum")
+    await state.update_data(teacher_id=uid, teacher_name=teacher_name)
     await callback.message.edit_text(
-        f"👤 {user_names.get(uid, 'Noma\'lum')}\n\nO'quvchilar sonini kiriting:"
+        f"👤 {teacher_name}\n\nO'quvchilar sonini kiriting:"
     )
     await state.set_state(SalaryCalc.entering_students)
     await callback.answer()
@@ -1609,7 +1618,7 @@ async def salary_students(message: types.Message, state: FSMContext):
     if not message.text.isdigit():
         await message.answer("❌ Faqat raqam kiriting!")
         return
-    await state.update_data(students=int(message.text))
+    await state.update_data(students=message.text)
     await message.answer("O'qituvchi bu oy necha marta dars o'tdi?")
     await state.set_state(SalaryCalc.entering_lessons)
 
@@ -1618,7 +1627,7 @@ async def salary_lessons(message: types.Message, state: FSMContext):
     if not message.text.isdigit():
         await message.answer("❌ Faqat raqam kiriting!")
         return
-    await state.update_data(lessons=int(message.text))
+    await state.update_data(lessons=message.text)
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="35%", callback_data="perc_35"),
@@ -1647,7 +1656,7 @@ async def salary_perc(callback: types.CallbackQuery, state: FSMContext):
 @dp.message(SalaryCalc.entering_payment)
 async def salary_final(message: types.Message, state: FSMContext):
     # Bo'sh joylarni olib tashlash
-    text = message.text.replace(' ', '')
+    text = message.text.replace(' ', '').replace(',', '')
     if not text.isdigit():
         await message.answer("❌ To'lov summasini raqamlarda kiriting!\nMasalan: 5000000")
         return
@@ -1659,8 +1668,8 @@ async def salary_final(message: types.Message, state: FSMContext):
     salary = (payment * data['percentage']) / 100
     
     # Formatlash
-    payment_str = f"{payment:,}".replace(',', ' ')
-    salary_str = f"{salary:,.0f}".replace(',', ' ')
+    formatted_payment = "{:,.0f}".format(payment).replace(',', ' ')
+    formatted_salary = "{:,.0f}".format(salary).replace(',', ' ')
     
     result = (
         f"💰 **Oylik Hisob-Kitobi**\n\n"
@@ -1669,9 +1678,9 @@ async def salary_final(message: types.Message, state: FSMContext):
         f"👥 O'quvchilar soni: {data['students']} ta\n"
         f"📅 Darslar soni: {data['lessons']} marta\n"
         f"📈 Tanlangan foiz: {data['percentage']}%\n"
-        f"💵 Jami to'lov: {payment_str} so'm\n"
+        f"💵 Jami to'lov: {formatted_payment} so'm\n"
         f"──────────────────\n"
-        f"💸 **OYLIK: {salary_str} so'm**"
+        f"💸 **OYLIK: {formatted_salary} so'm**"
     )
     
     builder = InlineKeyboardBuilder()
@@ -3820,7 +3829,7 @@ async def admin_back(callback: types.CallbackQuery):
     try:
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(text="💰 Oylik xisoblash", callback_data="admin_salary_calc")
+            InlineKeyboardButton(text="💰 Oylik hisoblash", callback_data="admin_salary_calc")
         )
         builder.row(
             InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
@@ -3863,7 +3872,7 @@ async def auto_daily_report_task():
                     caption=f"📅 Kechagi kun ({yesterday}) uchun avtomatik davomat hisoboti."
                 )
             except Exception as e:
-                logging.error(f"Auto report error: {e}")
+                logging.error(f"Auto report xatosi: {e}")
             
             # Bir daqiqa kutib turamizki, qayta-qayta yubormasin
             await asyncio.sleep(61)
