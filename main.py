@@ -311,7 +311,7 @@ class Database:
             result = []
             for row in rows:
                 data = dict(row)
-                data['days'] = json.loads data['days_data']
+                data['days'] = json.loads(data['days_data'])
                 result.append(data)
             return result
     
