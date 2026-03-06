@@ -8,7 +8,7 @@ import json
 import csv
 import calendar
 import re
-import requests  # Shrift yuklash uchun
+import requests
 from datetime import datetime, timedelta, date as d_date, time as d_time
 from collections import defaultdict
 from aiogram import Bot, Dispatcher, types, F
@@ -24,10 +24,11 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.workbook import Workbook
 import matplotlib
-matplotlib.use(‘Agg’)
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 from reportlab.lib import colors
+
 from reportlab.lib.pagesizes import letter, landscape, A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak, KeepTogether
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
