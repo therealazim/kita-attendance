@@ -311,7 +311,7 @@ class Database:
             result = []
             for row in rows:
                 data = dict(row)
-                data['days'] = json.loads(data['days_data'])
+                data['days'] = json.loads data['days_data']
                 result.append(data)
             return result
     
@@ -1468,7 +1468,7 @@ async def weekly_top(message: types.Message):
         get_text(user_id, 'weekly_top', top_list=top_list)
     )
 
-# --- AYYORLIKNI 100% ANIQLAYDIGAN LOKATSIYA HANDLERI ---
+# --- BARQAROR LOKATSIYA HANDLERI (FAQAT OCHIQ FORWARD TEKSHIRILADI) ---
 @dp.message(F.location)
 async def handle_location(message: types.Message):
     user_id = message.from_user.id
@@ -1479,7 +1479,31 @@ async def handle_location(message: types.Message):
         await message.answer(get_text(user_id, 'blocked_user'))
         return
 
-    # 2. KERAKLI MA'LUMOTLARNI TAYYORLASH
+    # 2. FAQAT OCHIQ FORWARDNI TEKSHIRAMIZ
+    # (Yashirin forwardlarni tekshirish haqiqiy foydalanuvchilarga xalaqit beryapti)
+    if message.forward_origin is not None:
+        user_warning = (
+            "⚠️ **DIQQAT: SOXTA DAVOMATGA URINISH!**\n\n"
+            "Siz boshqa foydalanuvchidan uzatilgan (forward) lokatsiyani yuborish orqali "
+            "**yolg'on davomat** qilishga urundingiz.\n\n"
+            "🚫 Ushbu harakatingiz soxtakorlik sifatida qayd etildi va adminlarga yuborildi!"
+        )
+        await message.answer(user_warning, parse_mode="Markdown")
+
+        t_name = user_names.get(user_id, message.from_user.full_name)
+        t_spec = user_specialty.get(user_id, 'Noma\'lum')
+        admin_alert = (
+            f"🚨 **SOXTA DAVOMATGA URINISH!**\n\n"
+            f"👤 Xodim: {t_name}\n"
+            f"📚 Soha: {t_spec}\n"
+            f"🆔 ID: `{user_id}`\n"
+            f"📍 Holat: Forward qilingan lokatsiya yubordi.\n"
+            f"🕒 Vaqt: {datetime.now(UZB_TZ).strftime('%H:%M:%S')}"
+        )
+        await bot.send_message(ADMIN_GROUP_ID, admin_alert, parse_mode="Markdown")
+        return
+
+    # 3. MASOFANI O'LCHASH
     now_uzb = datetime.now(UZB_TZ)
     today_date = now_uzb.strftime("%Y-%m-%d")
     current_month = now_uzb.strftime("%Y-%m")
@@ -1489,7 +1513,6 @@ async def handle_location(message: types.Message):
     found_branch = None
     min_distance = float('inf')
     
-    # 3. AVVAL MASOFANI O'LCHAYMIZ
     for branch in LOCATIONS:
         dist = geodesic((branch["lat"], branch["lon"]), user_coords).meters
         if dist <= ALLOWED_DISTANCE:
@@ -1497,43 +1520,15 @@ async def handle_location(message: types.Message):
                 min_distance = dist
                 found_branch = branch["name"]
     
-    # 4. AGAR HUDUDDA BO'LSA, ENDI UNI "HALOLLIGINI" TEKSHIRAMIZ
+    # 4. NATIJAGA QARAB JAVOB BERISH
     if found_branch:
-        is_real_button = (message.location.horizontal_accuracy is not None)
-        is_forwarded = (message.forward_origin is not None or message.forward_date is not None)
-
-        # AGAR FORWARD BO'LSA YOKI TUGMA BOSILMAGAN BO'LSA (Manual Pin)
-        if is_forwarded or not is_real_button:
-            # SOXTA DAVOMAT XABARI
-            user_warning = (
-                "⚠️ **DIQQAT: SOXTA DAVOMATGA URINISH!**\n\n"
-                "Siz hududda tursangiz ham, botdagi maxsus tugmani bosmasdan, "
-                "lokatsiyani forward qildingiz yoki xaritadan tanladingiz.\n\n"
-                "🚫 Ushbu harakatingiz soxtakorlik deb qayd etildi va adminlarga yuborildi!"
-            )
-            await message.answer(user_warning, parse_mode="Markdown")
-
-            t_name = user_names.get(user_id, message.from_user.full_name)
-            t_spec = user_specialty.get(user_id, 'Noma\'lum')
-            admin_alert = (
-                f"🚨 **SOXTA DAVOMAT!**\n\n"
-                f"👤 Xodim: {t_name}\n"
-                f"📚 Soha: {t_spec}\n"
-                f"🆔 ID: `{user_id}`\n"
-                f"📍 Hudud: {found_branch}\n"
-                f"❌ Holat: Yashirin Forward yoki Manual Pin.\n"
-                f"🕒 Vaqt: {datetime.now(UZB_TZ).strftime('%H:%M:%S')}"
-            )
-            await bot.send_message(ADMIN_GROUP_ID, admin_alert, parse_mode="Markdown")
-            return
-
-        # --- AGAR HAMMASI TOZA BO'LSA (TUGMA BOSILGAN) ---
+        # Avval davomat qilganmi?
         already_attended = any(k[0] == user_id and k[1] == found_branch and k[2] == today_date for k in daily_attendance_log)
         if already_attended:
             await message.answer(get_text(user_id, 'already_attended', branch=found_branch), parse_mode="Markdown")
             return
 
-        # Saqlash
+        # PostgreSQL va RAM ga saqlash
         await db.save_attendance(user_id, found_branch, today_date, now_time)
         daily_attendance_log.add((user_id, found_branch, today_date, now_time))
         
@@ -1541,6 +1536,7 @@ async def handle_location(message: types.Message):
         attendance_counter[counter_key] = attendance_counter.get(counter_key, 0) + 1
         visit_number = attendance_counter[counter_key]
         
+        # Adminga hisobot
         full_name = user_names.get(user_id, message.from_user.full_name)
         specialty = user_specialty.get(user_id, '')
         specialty_display = f" [{specialty}]" if specialty else ""
@@ -1554,9 +1550,9 @@ async def handle_location(message: types.Message):
             f"📊 Shu oydagi tashrif: {visit_number}-marta\n"
             f"📍 Masofa: {min_distance:.1f} metr"
         )
-        
         await bot.send_message(chat_id=ADMIN_GROUP_ID, text=report, parse_mode="Markdown")
 
+        # Foydalanuvchiga muvaffaqiyat xabari
         success_text = get_text(
             user_id, 
             'attendance_success', 
@@ -1572,9 +1568,8 @@ async def handle_location(message: types.Message):
         weather_message = format_weather_message(weather_data, user_languages.get(user_id, 'uz'))
         
         await message.answer(f"{success_text}\n\n{weather_message}", parse_mode="Markdown")
-
     else:
-        # HUDUDDA EMAS (bu holda soxta demaymiz, shunchaki masofa uzoq deymiz)
+        # FAQAT HUDUDDAN TASHQARIDA BO'LSA
         await message.answer(get_text(user_id, 'not_in_area'), parse_mode="Markdown")
 
 async def get_weather_by_coords(lat: float, lon: float):
