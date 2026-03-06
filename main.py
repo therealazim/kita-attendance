@@ -1468,51 +1468,53 @@ async def weekly_top(message: types.Message):
         get_text(user_id, 'weekly_top', top_list=top_list)
     )
 
-# --- QAT'IY LOKATSIYA HANDLERI (SOXTA LOKATSIYANI ANIQLASH) ---
+# --- TO'G'RILANGAN LOKATSIYA HANDLERI (SOXTA DAVOMAT VA HUDUDDAN TASHQARI) ---
 @dp.message(F.location)
 async def handle_location(message: types.Message):
     user_id = message.from_user.id
     user_ids.add(user_id)
     
+    # 1. BLOKLANGAN FOYDALANUVCHINI TEKSHIRISH
     if user_status.get(user_id) == 'blocked':
         await message.answer(get_text(user_id, 'blocked_user'))
         return
 
-    # QAT'IY TEKSHIRUV
-    is_fake = False
+    # 2. TEXNIK SOXTA LOKATSIYANI TEKSHIRISH (Forward yoki Manual Pin)
+    is_fake_format = False
     fake_reason = ""
     
     if message.forward_origin is not None:
-        is_fake = True
+        is_fake_format = True
         fake_reason = "Forward qilingan lokatsiya"
     elif message.location.horizontal_accuracy is None:
-        is_fake = True
+        is_fake_format = True
         fake_reason = "Xaritadan qo'lda tanlangan nuqta"
 
-    if is_fake:
+    if is_fake_format:
+        # Bu holatda foydalanuvchi tugmani bosmagan, balki lokatsiyani soxtalashtirgan
         user_warning = (
-            "⚠️ DIQQAT: SOXTA DAVOMATGA URINISH!\n\n"
+            "⚠️ **DIQQAT: SOXTA DAVOMATGA URINISH!**\n\n"
             "Siz boshqa foydalanuvchidan uzatilgan (forward) lokatsiyani yuborish orqali "
-            "yoki xaritadan nuqtani qo'lda tanlab yolg'on davomat qilishga urundingiz.\n\n"
-            "🚫 Ushbu harakatingiz soxtakorlik sifatida qayd etildi va adminlarga (rahbariyatga) yuborildi!\n"
-            "Iltimos, darsga kelganingizda faqat botdagi maxsus tugmani bosing."
+            "yoki xaritadan nuqtani qo'lda tanlab **yolg'on davomat** qilishga urundingiz.\n\n"
+            "🚫 Ushbu harakatingiz soxtakorlik sifatida qayd etildi va **adminlarga yuborildi!**"
         )
-        await message.answer(user_warning)
+        await message.answer(user_warning, parse_mode="Markdown")
 
+        # Adminga xabar
         t_name = user_names.get(user_id, message.from_user.full_name)
         t_spec = user_specialty.get(user_id, 'Noma\'lum')
         admin_alert = (
-            f"🚨 SOXTA DAVOMATGA URINISH!\n\n"
+            f"🚨 **SOXTA DAVOMATGA URINISH!**\n\n"
             f"👤 Xodim: {t_name}\n"
             f"📚 Soha: {t_spec}\n"
             f"🆔 ID: `{user_id}`\n"
             f"📍 Holat: {fake_reason}\n"
             f"🕒 Vaqt: {datetime.now(UZB_TZ).strftime('%H:%M:%S')}"
         )
-        await bot.send_message(ADMIN_GROUP_ID, admin_alert)
+        await bot.send_message(ADMIN_GROUP_ID, admin_alert, parse_mode="Markdown")
         return
 
-    # TO'G'RI LOKATSIYA
+    # 3. AGAR LOKATSIYA HAQIQIY (TUGMA ORQALI) BO'LSA, MASOFANI O'LCHASH
     now_uzb = datetime.now(UZB_TZ)
     today_date = now_uzb.strftime("%Y-%m-%d")
     current_month = now_uzb.strftime("%Y-%m")
@@ -1529,9 +1531,9 @@ async def handle_location(message: types.Message):
                 min_distance = dist
                 found_branch = branch["name"]
     
-    logging.info(f"📍 Location from user {user_id}: found_branch={found_branch}, distance={min_distance:.1f}m")
-
+    # 4. NATIJAGA QARAB JAVOB BERISH
     if found_branch:
+        # --- MUVAFFAQIYATLI DAVOMAT ---
         already_attended = False
         for (uid, branch, date, time) in daily_attendance_log:
             if uid == user_id and branch == found_branch and date == today_date:
@@ -1539,25 +1541,24 @@ async def handle_location(message: types.Message):
                 break
         
         if already_attended:
-            await message.answer(
-                get_text(user_id, 'already_attended', branch=found_branch)
-            )
+            await message.answer(get_text(user_id, 'already_attended', branch=found_branch), parse_mode="Markdown")
             return
 
+        # Davomatni saqlash
         counter_key = (user_id, found_branch, current_month)
         attendance_counter[counter_key] = attendance_counter.get(counter_key, 0) + 1
         visit_number = attendance_counter[counter_key]
         
         await db.save_attendance(user_id, found_branch, today_date, now_time)
-        
         daily_attendance_log.add((user_id, found_branch, today_date, now_time))
         
+        # Adminga hisobot
         full_name = user_names.get(user_id, message.from_user.full_name)
         specialty = user_specialty.get(user_id, '')
         specialty_display = f" [{specialty}]" if specialty else ""
         
         report = (
-            f"✅ Yangi Davomat\n\n"
+            f"✅ **Yangi Davomat**\n\n"
             f"👤 O'qituvchi: {full_name}{specialty_display}\n"
             f"📍 Manzil: {found_branch}\n"
             f"📅 Sana: {today_date}\n"
@@ -1569,35 +1570,35 @@ async def handle_location(message: types.Message):
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="👤 Profilni ko'rish", url=f"tg://user?id={user_id}"))
 
-        try:
-            await bot.send_message(
-                chat_id=ADMIN_GROUP_ID, 
-                text=report, 
-                reply_markup=builder.as_markup()
-            )
-            
-            success_text = get_text(
-                user_id, 
-                'attendance_success',
-                branch=found_branch,
-                date=today_date,
-                time=now_time,
-                count=visit_number,
-                distance=min_distance
-            )
-            
-            weather_data = await get_weather_by_coords(user_coords[0], user_coords[1])
-            weather_message = format_weather_message(weather_data, user_languages.get(user_id, 'uz'))
-            
-            full_response = f"{success_text}\n\n{weather_message}"
-            await message.answer(full_response)
-            
-        except Exception as e:
-            logging.error(f"Error: {e}")
-    else:
-        await message.answer(
-            get_text(user_id, 'not_in_area')
+        await bot.send_message(
+            chat_id=ADMIN_GROUP_ID, 
+            text=report, 
+            parse_mode="Markdown",
+            reply_markup=builder.as_markup()
         )
+
+        # Foydalanuvchiga muvaffaqiyat xabari
+        success_text = get_text(
+            user_id, 
+            'attendance_success',
+            branch=found_branch,
+            date=today_date,
+            time=now_time,
+            count=visit_number,
+            distance=min_distance
+        )
+        
+        # Ob-havo ma'lumoti
+        weather_data = await get_weather_by_coords(user_coords[0], user_coords[1])
+        weather_message = format_weather_message(weather_data, user_languages.get(user_id, 'uz'))
+        
+        full_response = f"{success_text}\n\n{weather_message}"
+        await message.answer(full_response, parse_mode="Markdown")
+
+    else:
+        # --- FAQAT HUDUDDAN TASHQARIDA BO'LSA ---
+        # Bu yerda soxta degan xabar chiqmaydi, shunchaki hududda emassiz deydi
+        await message.answer(get_text(user_id, 'not_in_area'), parse_mode="Markdown")
 
 async def get_weather_by_coords(lat: float, lon: float):
     params = {
@@ -2354,7 +2355,7 @@ async def process_month_gen(callback: types.CallbackQuery):
     )
     await callback.answer()
 
-# --- YANGI PROFESSIONAL EXCEL HISOBOT (FILIALLAR BO'YICHA GURUHLANGAN) ---
+# --- PROFESSIONAL EXCEL HISOBOT (FILIALLAR BO'YICHA GURUHLANGAN) ---
 async def create_monthly_excel(year: int, month: int) -> io.BytesIO:
     import calendar
     from openpyxl import Workbook
