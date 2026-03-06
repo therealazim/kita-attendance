@@ -177,6 +177,10 @@ class CreateGroup(StatesGroup):
     adding_student_phone = State()
     confirm_student = State()
 
+# --- O'QUVCHILAR DAVOMATI UCHUN STATE (YANGI) ---
+class StudentAttendance(StatesGroup):
+    selecting_students = State()
+
 # --- POSTGRESQL DATABASE CLASS ---
 class Database:
     def __init__(self, url):
@@ -582,6 +586,9 @@ TRANSLATIONS = {
         'pdf_title': "Dars Jadvali",
         'pdf_headers': ['Kun', 'Vaqt'],
         'pdf_created': "Yaratilgan sana",
+        'group_students_title': "O'quvchilar davomati",
+        'group_students_submit': "Davomatni yuborish",
+        'group_students_sent': "✅ O'quvchilar davomati yuborildi!",
         'buttons': {
             'attendance': "📍 Kelganimni tasdiqlash",
             'my_stats': "📊 Mening statistikam",
@@ -648,6 +655,9 @@ TRANSLATIONS = {
         'pdf_title': "Расписание занятий",
         'pdf_headers': ['День', 'Время'],
         'pdf_created': "Дата создания",
+        'group_students_title': "Отметка учеников",
+        'group_students_submit': "Отправить отметку",
+        'group_students_sent': "✅ Отметка учеников отправлена!",
         'buttons': {
             'attendance': "📍 Подтвердить прибытие",
             'my_stats': "📊 Моя статистика",
@@ -714,6 +724,9 @@ TRANSLATIONS = {
         'pdf_title': "수업 시간표",
         'pdf_headers': ["요일", "시간"],
         'pdf_created': "작성일",
+        'group_students_title': "학생 출석 체크",
+        'group_students_submit': "출석 보내기",
+        'group_students_sent': "✅ 학생 출석이 전송되었습니다!",
         'buttons': {
             'attendance': "📍 출석 확인",
             'my_stats': "📊 내 통계",
@@ -988,17 +1001,18 @@ async def create_schedule_pdf(user_id: int) -> io.BytesIO:
             elements.append(br_table)
             elements.append(Spacer(1, 5))
             
-            # 3. JADVAL QISMI
+            # 3. JADVAL QISMI - TO'G'RILANGAN VERSIYA
             headers = [clean_pdf_text(h) for h in TRANSLATIONS[lang]['pdf_headers']]
             data = [headers]
             
-            # Hafta kunlari (Bazadagi kalitlar bilan solishtirish)
+            # Hafta kunlari (O'zbekcha kalitlar bilan solishtirish)
             uz_days = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
-            target_days = WEEKDAYS[lang]
             
             for i, d_uz in enumerate(uz_days):
                 if d_uz in s['days']:
-                    data.append([clean_pdf_text(target_days[i]), str(s['days'][d_uz])])
+                    # Foydalanuvchi tanlagan tildagi kun nomini olamiz
+                    day_name_in_lang = WEEKDAYS[lang][i]
+                    data.append([clean_pdf_text(day_name_in_lang), str(s['days'][d_uz])])
 
             if len(data) > 1:
                 # Jadval dizayni (Chiroyli och ko'k fon va zebra style)
@@ -1024,6 +1038,26 @@ async def create_schedule_pdf(user_id: int) -> io.BytesIO:
     doc.build(elements)
     pdf_buffer.seek(0)
     return pdf_buffer
+
+# --- O'QUVCHILAR DAVOMATI UCHUN YORDAMCHI FUNKSIYALAR ---
+async def get_student_attendance_kb(group_id, selected_indices):
+    """Guruh o'quvchilarini tanlash uchun klaviatura yaratish"""
+    builder = InlineKeyboardBuilder()
+    students = group_students.get(group_id, [])
+    lang = 'uz'  # Default til
+    
+    for i, std in enumerate(students):
+        status = "✅ " if i in selected_indices else "⬜ "
+        builder.row(InlineKeyboardButton(
+            text=f"{status}{std['name']}", 
+            callback_data=f"std_check_{i}"
+        ))
+    
+    builder.row(InlineKeyboardButton(
+        text=TRANSLATIONS[lang]['group_students_submit'], 
+        callback_data="std_submit"
+    ))
+    return builder.as_markup()
 
 async def handle(request):
     now_uzb = datetime.now(UZB_TZ)
@@ -1527,7 +1561,7 @@ async def weekly_top(message: types.Message):
 
 # --- BARQAROR LOKATSIYA HANDLERI (FAQAT OCHIQ FORWARD TEKSHIRILADI) ---
 @dp.message(F.location)
-async def handle_location(message: types.Message):
+async def handle_location(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     user_ids.add(user_id)
     
@@ -1537,7 +1571,6 @@ async def handle_location(message: types.Message):
         return
 
     # 2. FAQAT OCHIQ FORWARDNI TEKSHIRAMIZ
-    # (Yashirin forwardlarni tekshirish haqiqiy foydalanuvchilarga xalaqit beryapti)
     if message.forward_origin is not None:
         user_warning = (
             "⚠️ **DIQQAT: SOXTA DAVOMATGA URINISH!**\n\n"
@@ -1625,9 +1658,118 @@ async def handle_location(message: types.Message):
         weather_message = format_weather_message(weather_data, user_languages.get(user_id, 'uz'))
         
         await message.answer(f"{success_text}\n\n{weather_message}", parse_mode="Markdown")
+
+        # --- YANGI: O'QUVCHILAR DAVOMATI TIZIMI ---
+        # Shu o'qituvchining shu filialdagi guruhini qidiramiz
+        current_grp = None
+        for g_id, g_data in groups.items():
+            if g_data['teacher_id'] == user_id and g_data['branch'] == found_branch:
+                # Agar bugun dars kuni bo'lsa
+                if WEEKDAYS_UZ[now_uzb.weekday()] in g_data['days']:
+                    current_grp = g_id
+                    break
+        
+        if current_grp:
+            await state.update_data(current_group_id=current_grp, selected_stds=[])
+            keyboard = await get_student_attendance_kb(current_grp, [])
+            await message.answer(
+                f"🧑‍🎓 **{groups[current_grp]['group_name']}** guruhi o'quvchilari.\n"
+                f"Darsda qatnashayotganlarni belgilang:",
+                reply_markup=keyboard, parse_mode="Markdown"
+            )
+            await state.set_state(StudentAttendance.selecting_students)
     else:
         # FAQAT HUDUDDAN TASHQARIDA BO'LSA
         await message.answer(get_text(user_id, 'not_in_area'), parse_mode="Markdown")
+
+# --- O'QUVCHILAR DAVOMATI HANDLERLARI ---
+@dp.callback_query(StudentAttendance.selecting_students, F.data.startswith("std_check_"))
+async def std_check_callback(callback: types.CallbackQuery, state: FSMContext):
+    idx = int(callback.data.replace("std_check_", ""))
+    data = await state.get_data()
+    selected = data.get('selected_stds', [])
+    
+    if idx in selected:
+        selected.remove(idx)
+    else:
+        selected.append(idx)
+    
+    await state.update_data(selected_stds=selected)
+    await callback.message.edit_reply_markup(
+        reply_markup=await get_student_attendance_kb(data['current_group_id'], selected)
+    )
+    await callback.answer()
+
+@dp.callback_query(StudentAttendance.selecting_students, F.data == "std_submit")
+async def std_submit_callback(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    g_id = data['current_group_id']
+    selected = data.get('selected_stds', [])
+    students = group_students.get(g_id, [])
+    user_id = callback.from_user.id
+    
+    # Excel yaratish
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Guruh Davomati"
+    
+    # Sarlavhalar
+    ws.append(['№', 'O\'quvchi', 'Telefon', 'Holat'])
+    
+    # O'quvchilar ro'yxati
+    for i, s in enumerate(students):
+        status = "Kelgan" if i in selected else "Kelmagan"
+        ws.append([i+1, s['name'], s['phone'], status])
+    
+    # Ustun kengliklarini sozlash
+    ws.column_dimensions['A'].width = 5
+    ws.column_dimensions['B'].width = 30
+    ws.column_dimensions['C'].width = 15
+    ws.column_dimensions['D'].width = 10
+    
+    # Formatlash
+    for row in ws.iter_rows(min_row=2, max_row=len(students)+1):
+        for cell in row:
+            cell.border = Border(
+                left=Side(style='thin'), 
+                right=Side(style='thin'),
+                top=Side(style='thin'), 
+                bottom=Side(style='thin')
+            )
+    
+    # Sarlavha formatlash
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill(start_color="2E86AB", end_color="2E86AB", fill_type="solid")
+        cell.font = Font(color="FFFFFF", bold=True)
+        cell.alignment = Alignment(horizontal="center")
+    
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    
+    # Adminga yuborish
+    caption = (
+        f"🧑‍🎓 **Guruh Davomati**\n"
+        f"📦 Guruh: {groups[g_id]['group_name']}\n"
+        f"👤 O'qituvchi: {user_names.get(user_id, 'Noma\'lum')}\n"
+        f"📅 Sana: {datetime.now(UZB_TZ).strftime('%Y-%m-%d')}\n"
+        f"👥 Kelganlar: {len(selected)}/{len(students)}"
+    )
+    
+    await bot.send_document(
+        ADMIN_GROUP_ID, 
+        types.BufferedInputFile(buf.read(), filename=f"Guruh_Davomati_{groups[g_id]['group_name']}_{datetime.now(UZB_TZ).strftime('%Y%m%d')}.xlsx"),
+        caption=caption,
+        parse_mode="Markdown"
+    )
+    
+    # O'qituvchiga javob
+    await callback.message.edit_text(
+        f"✅ O'quvchilar davomati yuborildi!\n\n"
+        f"Kelganlar: {len(selected)}/{len(students)}"
+    )
+    await state.clear()
 
 async def get_weather_by_coords(lat: float, lon: float):
     params = {
