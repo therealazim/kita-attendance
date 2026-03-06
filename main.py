@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import asyncio
 import os
 import logging
@@ -8,7 +10,7 @@ import json
 import csv
 import calendar
 import re
-import requests
+import requests  # Shrift yuklash uchun
 from datetime import datetime, timedelta, date as d_date, time as d_time
 from collections import defaultdict
 from aiogram import Bot, Dispatcher, types, F
@@ -24,11 +26,10 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.workbook import Workbook
 import matplotlib
-matplotlib.use('Agg')
+matplotlib.use(‘Agg’)
 import matplotlib.pyplot as plt
 import numpy as np
 from reportlab.lib import colors
-
 from reportlab.lib.pagesizes import letter, landscape, A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak, KeepTogether
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -47,36 +48,24 @@ logging.basicConfig(level=logging.INFO, format=’%(asctime)s - %(name)s - %(lev
 # — SHRIFTNI AVTOMATIK YUKLASH (KOREYS VA RUS UCHUN) —
 
 FONT_PATH = “NanumGothic.ttf”
-
-async def download_font():
 if not os.path.exists(FONT_PATH):
 try:
+# Agar shrift fayli bo’lmasa, uni internetdan yuklab olamiz (faqat 1 marta)
 url = “https://github.com/google/fonts/raw/main/ofl/nanumgothic/NanumGothic-Regular.ttf”
-logging.info(“Shrift yuklanmoqda…”)
-async with aiohttp.ClientSession() as session:
-async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-if resp.status == 200:
-with open(FONT_PATH, “wb”) as f:
-f.write(await resp.read())
-logging.info(“Shrift yuklandi”)
-except Exception as e:
-logging.error(f”Shrift yuklashda xatolik: {e}”)
-
-if not os.path.exists(FONT_PATH):
-try:
-import requests as _req
-r = _req.get(“https://github.com/google/fonts/raw/main/ofl/nanumgothic/NanumGothic-Regular.ttf”, timeout=30)
+logging.info(“⬇️ NanumGothic shrifti yuklanmoqda…”)
+r = requests.get(url, timeout=30)
 with open(FONT_PATH, “wb”) as f:
 f.write(r.content)
+logging.info(“✅ NanumGothic shrifti yuklandi”)
 except Exception as e:
-logging.warning(f”Shrift yuklanmadi: {e}”)
+logging.error(f”❌ Shrift yuklashda xatolik: {e}”)
 
 try:
 pdfmetrics.registerFont(TTFont(‘Nanum’, FONT_PATH))
 FONT_NAME = ‘Nanum’
 FONT_NAME_BOLD = ‘Nanum’
 logging.info(“✅ Nanum shrifti ro’yxatdan o’tkazildi”)
-except Exception:
+except:
 # Agar shrift topilmasa standartga qaytadi
 try:
 pdfmetrics.registerFont(TTFont(‘DejaVu’, ‘/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf’))
@@ -247,7 +236,7 @@ async def init_tables(self):
                 user_id BIGINT REFERENCES users(user_id),
                 branch TEXT,
                 date DATE,
-                time TEXT,
+                time TIME,
                 UNIQUE(user_id, branch, date)
             )
         """)
@@ -326,15 +315,19 @@ async def get_user(self, user_id):
 async def save_attendance(self, user_id, branch, att_date, att_time):
     try:
         async with self.pool.acquire() as conn:
+            from datetime import datetime, time
             date_obj = datetime.strptime(att_date, "%Y-%m-%d").date()
+            time_parts = att_time.split(':')
+            time_obj = time(int(time_parts[0]), int(time_parts[1]), int(time_parts[2]))
+            
             await conn.execute("""
                 INSERT INTO attendance (user_id, branch, date, time)
                 VALUES ($1, $2, $3, $4)
                 ON CONFLICT (user_id, branch, date) DO NOTHING
-            """, user_id, branch, date_obj, att_time)
-            logging.info(f"Davomat saqlandi: user={user_id}, branch={branch}")
+            """, user_id, branch, date_obj, time_obj)
+            logging.info(f"✅ Davomat saqlandi: user={user_id}, branch={branch}")
     except Exception as e:
-        logging.error(f"Davomat saqlashda xato: {e}")
+        logging.error(f"❌ Davomat saqlashda xato: {e}")
 
 async def get_user_attendance(self, user_id):
     async with self.pool.acquire() as conn:
@@ -364,10 +357,6 @@ async def save_schedule(self, schedule_id, user_id, branch, lesson_type, days_di
         await conn.execute("""
             INSERT INTO schedules (schedule_id, user_id, branch, lesson_type, days_data)
             VALUES ($1, $2, $3, $4, $5::jsonb)
-            ON CONFLICT (schedule_id) DO UPDATE SET
-                branch = EXCLUDED.branch,
-                lesson_type = EXCLUDED.lesson_type,
-                days_data = EXCLUDED.days_data
         """, schedule_id, user_id, branch, lesson_type, json.dumps(days_dict))
 
 async def get_user_schedules(self, user_id):
@@ -424,12 +413,11 @@ async def load_to_ram(self):
     
     attendances = await self.get_all_attendance()
     for r in attendances:
-        time_val = r['time'] if isinstance(r['time'], str) else str(r['time'])
         daily_attendance_log.add((
             r['user_id'],
             r['branch'],
             r['date'].isoformat(),
-            time_val
+            r['time'].strftime("%H:%M:%S")
         ))
         month = r['date'].strftime("%Y-%m")
         key = (r['user_id'], r['branch'], month)
@@ -524,7 +512,7 @@ WEATHER_RECOMMENDATIONS = {
 “Clear”: {
 “uz”: “☀️ Bugun havo ochiq. Sayr qilish uchun ajoyib kun!”,
 “ru”: “☀️ Сегодня ясно. Отличный день для прогулки!”,
-“kr”: “☀️ 오늘은 맑은 날씨입니다. 산책하기 좋은 날이에요!”
+“kr”: “☀️ 오늘은 ‘은 날씨입니다. 산책하기 좋은 날이에요!”
 },
 “Clouds”: {
 “uz”: “☁️ Bugun havo bulutli. Salqin havo bilan ish kuningiz samarali o’tsin!”,
@@ -538,8 +526,8 @@ WEATHER_RECOMMENDATIONS = {
 },
 “Thunderstorm”: {
 “uz”: “⛈️ Momaqaldiroq bo’lmoqda. Ehtiyot bo’ling!”,
-“ru”: “⛈️ Гроза. Будьте осторожны!”,
-“kr”: “⛈️ 천둥번개가 칩니다. 조심하세요!”
+“ru”: “⛈️ Гроза. ‘удьте осторожны!”,
+“kr”: “⛈️ 천’번개가 칩니다. 조심하세요!”
 },
 “Snow”: {
 “uz”: “❄️ Qor yog’moqda. Issiq kiyining!”,
@@ -548,17 +536,17 @@ WEATHER_RECOMMENDATIONS = {
 },
 “Mist”: {
 “uz”: “🌫️ Tuman tushgan. Haydovchilar ehtiyot bo’ling!”,
-“ru”: “🌫️ Туман. Водители, будьте осторожны!”,
+“ru”: “🌫️ Туман. ‘одители, будьте осторожны!”,
 “kr”: “🌫️ 안개가 끼었습니다. 운전자분들 조심하세요!”
 },
 “Fog”: {
 “uz”: “🌫️ Tuman tushgan. Haydovchilar ehtiyot bo’ling!”,
-“ru”: “🌫️ Туман. Водители, будьте осторожны!”,
+“ru”: “🌫️ Туман. ‘одители, будьте осторожны!”,
 “kr”: “🌫️ 안개가 끼었습니다. 운전자분들 조심하세요!”
 },
 “Haze”: {
 “uz”: “🌫️ Havo tumanli. Ehtiyot bo’ling!”,
-“ru”: “🌫️ Дымка. Будьте осторожны!”,
+“ru”: “🌫️ Дымка. ’удьте осторожны!”,
 “kr”: “🌫️ 연무가 끼었습니다. 조심하세요!”
 }
 }
@@ -566,13 +554,13 @@ WEATHER_RECOMMENDATIONS = {
 TRANSLATIONS = {
 ‘uz’: {
 ‘welcome’: “🌟 HANCOM ACADEMYning o’qituvchilar uchun davomat botiga hush kelibsiz, {name}!”,
-‘ask_name’: “👤 Iltimos, ism va familiyangizni kiriting:\n\nMasalan: Ali Karimov”,
+‘ask_name’: “’ Iltimos, ism va familiyangizni kiriting:\n\nMasalan: Ali Karimov”,
 ‘ask_specialty’: “📚 Qaysi fan o’qituvchisisiz?”,
-‘specialty_it’: “💻 IT”,
+‘specialty_it’: “’ IT”,
 ‘specialty_korean’: “🇰🇷 Koreys tili”,
 ‘specialty_office’: “🏢 Ofis xodimi”,
 ‘stats’: “📊 Sizning statistikangiz:”,
-‘no_stats’: “💭 Hali davomat qilmagansiz”,
+‘no_stats’: “’ Hali davomat qilmagansiz”,
 ‘branches’: “🏢 Mavjud filiallar (lokatsiya):”,
 ‘help’: “🤖 Botdan foydalanish qo’llanmasi:\n\n📍 Davomat qilish uchun:\n• Pastdagi "📍 Kelganimni tasdiqlash" tugmasini bosing\n• Joylashuvingizni yuboring\n\n📊 Statistika:\n• "📊 Mening statistikam" - shaxsiy davomat tarixingiz\n• "🏢 Filiallar" - barcha mavjud filiallar ro’yxati\n\n⚠️ Eslatmalar:\n• Har bir filialda kuniga faqat 1 marta davomat qilish mumkin\n• Davomat faqat Toshkent vaqti bilan hisoblanadi”,
 ‘attendance_success’: “✅ Davomat tasdiqlandi!\n\n🏫 Filial: {branch}\n📅 Sana: {date}\n⏰ Vaqt: {time}\n📊 Bu oydagi tashriflar: {count} marta\n📍 Masofa: {distance:.1f} metr”,
@@ -591,7 +579,7 @@ TRANSLATIONS = {
 ‘reminder’: “⏰ Eslatma!\n\nBugun soat {time} da {branch} filialida darsingiz bor.\nDavomat qilishni unutmang!”,
 ‘lesson_started_attended’: “✅ Dars boshlandi va siz muvaffaqiyatli davomatni amalga oshirdingiz!\n\nE’tiboringizni darsga qaratishingiz mumkin.\nDarsga kelgan o’quvchilarni davomat qilishni yodingizdan chiqarmang.\n\nHayrli kun!”,
 ‘lesson_started_not_attended’: “⚠️ Sizning darsingiz boshlandi, lekin hali davomat qilmadingiz!\n\n📌 {branch} filialida soat {time} da darsingiz boshlangan.\n📍 Iltimos, darhol davomat qiling yoki sababini admin xabardor qiling.\n\nDavomat qilish uchun 📍 Kelganimni tasdiqlash tugmasini bosing.”,
-‘select_teacher’: “👤 O’qituvchini tanlang:”,
+‘select_teacher’: “’ O’qituvchini tanlang:”,
 ‘select_lesson_type’: “📚 Dars turini tanlang:”,
 ‘active_schedules’: “📋 Faol dars jadvallari”,
 ‘no_active_schedules’: “📭 Hali dars jadvallari mavjud emas.”,
@@ -599,7 +587,7 @@ TRANSLATIONS = {
 ‘enter_date’: “📅 Hisobot olish uchun sanani kiriting (format: YYYY-MM-DD)\nMasalan: 2026-03-01”,
 ‘invalid_date’: “❌ Noto’g’ri sana formati. Qaytadan urinib ko’ring:”,
 ‘select_broadcast_specialty’: “📢 Qaysi fan o’qituvchilariga xabar yubormoqchisiz?”,
-‘all_teachers’: “👥 Hammasi”,
+‘all_teachers’: “’ Hammasi”,
 ‘edit_schedule’: “✏️ Dars jadvalini tahrirlash”,
 ‘select_new_branch’: “🏢 Yangi filialni tanlang:”,
 ‘select_new_lesson_type’: “📚 Yangi dars turini tanlang:”,
@@ -607,8 +595,8 @@ TRANSLATIONS = {
 ‘enter_new_time’: “⏰ {weekday} kuni uchun yangi vaqtni kiriting:\n\nFormat: HH:MM (masalan: 09:00)”,
 ‘ontime’: “Vaqtida”,
 ‘late’: “Kechikkan”,
-‘my_profile’: “👤 Mening profilim”,
-‘profile_info’: “👤 Sizning profilingiz:\n\nIsm: {name}\nMutaxassislik: {specialty}\nTil: {lang}”,
+‘my_profile’: “’ Mening profilim”,
+‘profile_info’: “’ Sizning profilingiz:\n\nIsm: {name}\nMutaxassislik: {specialty}\nTil: {lang}”,
 ‘edit_name’: “✏️ Ismni o’zgartirish”,
 ‘edit_my_specialty’: “📚 Faoliyat turini o’zgartirish”,
 ‘enter_new_name’: “Yangi ism va familiyangizni kiriting:”,
@@ -635,55 +623,55 @@ TRANSLATIONS = {
 },
 ‘ru’: {
 ‘welcome’: “🌟 Добро пожаловать в бот для отметок HANCOM ACADEMY для учителей, {name}!”,
-‘ask_name’: “👤 Пожалуйста, введите ваше имя и фамилию:\n\nНапример: Ali Karimov”,
+‘ask_name’: “’ Пожалуйста, введите ваше имя и фамилию:\n\nНапример: Ali Karimov”,
 ‘ask_specialty’: “📚 Какой предмет вы преподаете?”,
-‘specialty_it’: “💻 IT”,
+‘specialty_it’: “’ IT”,
 ‘specialty_korean’: “🇰🇷 Корейский язык”,
 ‘specialty_office’: “🏢 Офисный сотрудник”,
-‘stats’: “📊 Ваша статистика:”,
-‘no_stats’: “💭 Вы еще не отмечались”,
+‘stats’: “📊 ‘аша статистика:”,
+‘no_stats’: “’ ’ы еще не отмечались”,
 ‘branches’: “🏢 Доступные филиалы (локация):”,
-‘help’: “🤖 Руководство по использования:\n\n📍 Для отметки:\n• Нажмите кнопку "📍 Подтвердить прибытие"\n• Отправьте свою геолокацию\n\n📊 Статистика:\n• "📊 Моя статистика" - история отметок\n• "🏢 Филиалы" - список всех филиалов\n\n⚠️ Примечания:\n• В каждом филиале можно отмечаться только 1 раз в день\n• Отметки записываются по ташкентскому времени”,
-‘attendance_success’: “✅ Отметка подтверждена!\n\n🏫 Филиал: {branch}\n📅 Дата: {date}\n⏰ Время: {time}\n📊 Посещений в этом месяце: {count}\n📍 Расстояние: {distance:.1f} м”,
-‘already_attended’: “⚠️ Вы уже отмечались сегодня в филиале {branch}!”,
-‘not_in_area’: “❌ Вы не находитесь в зоне учебных заведений!”,
-‘daily_reminder’: “⏰ Напоминание! Вы еще не отметились сегодня. Подтвердите свое прибытие для начала рабочего дня!”,
+‘help’: “🤖 Руководство по использования:\n\n📍 Для отметки:\n• Нажмите кнопку "📍 Подтвердить прибытие"\n• Отправьте свою геолокацию\n\n📊 Статистика:\n• "📊 Моя статистика" - история отметок\n• "🏢 Филиалы" - список всех филиалов\n\n⚠️ Примечания:\n• ’ каждом филиале можно отмечаться только 1 раз в день\n• Отметки записываются по ташкентскому времени”,
+‘attendance_success’: “✅ Отметка подтверждена!\n\n🏫 Филиал: {branch}\n📅 Дата: {date}\n⏰ ‘ремя: {time}\n📊 Посещений в этом месяце: {count}\n📍 Расстояние: {distance:.1f} м”,
+‘already_attended’: “⚠️ ‘ы уже отмечались сегодня в филиале {branch}!”,
+‘not_in_area’: “❌ ‘ы не находитесь в зоне учебных заведений!”,
+‘daily_reminder’: “⏰ Напоминание! ‘ы еще не отметились сегодня. Подтвердите свое прибытие для начала рабочего дня!”,
 ‘weekly_top’: “🏆 Самые активные учителя недели:\n\n{top_list}”,
 ‘monthly_report’: “📊 Отчет за {month}\n\n{report}”,
 ‘language_changed’: “✅ Язык изменен: Русский язык”,
 ‘language_prompt’: “Пожалуйста, выберите язык:”,
 ‘view_schedules’: “📋 Мое расписание (PDF)”,
-‘my_schedule’: “📅 Ваше расписание уроков готово в формате PDF!”,
-‘no_schedules’: “📭 Вам еще не назначено расписание.”,
-‘schedule_updated’: “📢 Ваше расписание обновлено!”,
-‘schedule_deleted_notify’: “📢 Ваше расписание удалено.”,
+‘my_schedule’: “📅 ‘аше расписание уроков готово в формате PDF!”,
+‘no_schedules’: “📭 ‘ам еще не назначено расписание.”,
+‘schedule_updated’: “📢 ‘аше расписание обновлено!”,
+‘schedule_deleted_notify’: “📢 ‘аше расписание удалено.”,
 ‘reminder’: “⏰ Напоминание!\n\nСегодня в {time} у вас урок в филиале {branch}.\nНе забудьте отметиться!”,
 ‘lesson_started_attended’: “✅ Урок начался и вы успешно отметились!\n\nМожете сосредоточиться на уроке.\nНе забудьте отметить присутствующих учеников.\n\nХорошего дня!”,
-‘lesson_started_not_attended’: “⚠️ Ваш урок начался, но вы еще не отметились!\n\n📌 В филиале {branch} в {time} начался ваш урок.\n📍 Пожалуйста, немедленно отметьтесь или сообщите причину администратору.\n\nДля отметки нажмите кнопку 📍 Подтвердить прибытие.”,
-‘select_teacher’: “👤 Выберите учителя:”,
-‘select_lesson_type’: “📚 Выберите тип урока:”,
+‘lesson_started_not_attended’: “⚠️ ‘аш урок начался, но вы еще не отметились!\n\n📌 ’ филиале {branch} в {time} начался ваш урок.\n📍 Пожалуйста, немедленно отметьтесь или сообщите причину администратору.\n\nДля отметки нажмите кнопку 📍 Подтвердить прибытие.”,
+‘select_teacher’: “’ ‘ыберите учителя:”,
+‘select_lesson_type’: “📚 ‘ыберите тип урока:”,
 ‘active_schedules’: “📋 Активные расписания”,
 ‘no_active_schedules’: “📭 Нет активных расписаний.”,
 ‘schedule_info’: “{teacher}[{specialty}]\n🏢 {branch}\n📚 {lesson_type}\n{days_times}”,
-‘enter_date’: “📅 Введите дату для отчета (формат: YYYY-MM-DD)\nНапример: 2026-03-01”,
+‘enter_date’: “📅 ‘ведите дату для отчета (формат: YYYY-MM-DD)\nНапример: 2026-03-01”,
 ‘invalid_date’: “❌ Неверный формат даты. Попробуйте снова:”,
 ‘select_broadcast_specialty’: “📢 Каким учителям отправить сообщение?”,
-‘all_teachers’: “👥 Всем”,
+‘all_teachers’: “’ ‘сем”,
 ‘edit_schedule’: “✏️ Редактирование расписания”,
-‘select_new_branch’: “🏢 Выберите новый филиал:”,
-‘select_new_lesson_type’: “📚 Выберите новый тип урока:”,
-‘select_new_weekdays’: “📅 Выберите новые дни:”,
-‘enter_new_time’: “⏰ Введите новое время для {weekday}:\n\nФормат: HH:MM (например: 09:00)”,
-‘ontime’: “Вовремя”,
+‘select_new_branch’: “🏢 ‘ыберите новый филиал:”,
+‘select_new_lesson_type’: “📚 ‘ыберите новый тип урока:”,
+‘select_new_weekdays’: “📅 ‘ыберите новые дни:”,
+‘enter_new_time’: “⏰ ‘ведите новое время для {weekday}:\n\nФормат: HH:MM (например: 09:00)”,
+‘ontime’: “‘овремя”,
 ‘late’: “Опоздал”,
-‘my_profile’: “👤 Мой профиль”,
-‘profile_info’: “👤 Ваш профиль:\n\nИмя: {name}\nСпециальность: {specialty}\nЯзык: {lang}”,
+‘my_profile’: “’ Мой профиль”,
+‘profile_info’: “’ ‘аш профиль:\n\nИмя: {name}\nСпециальность: {specialty}\nЯзык: {lang}”,
 ‘edit_name’: “✏️ Изменить имя”,
 ‘edit_my_specialty’: “📚 Изменить направление”,
-‘enter_new_name’: “Введите новое имя и фамилию:”,
-‘name_updated’: “✅ Ваше имя успешно обновлено!”,
-‘back_to_menu’: “🔙 Вернуться в меню”,
-‘select_new_spec’: “Выберите новое направление:”,
+‘enter_new_name’: “‘ведите новое имя и фамилию:”,
+‘name_updated’: “✅ ‘аше имя успешно обновлено!”,
+‘back_to_menu’: “🔙 ‘ернуться в меню”,
+‘select_new_spec’: “‘ыберите новое направление:”,
 ‘spec_updated’: “✅ Специальность обновлена!”,
 ‘back_btn’: “🔙 Назад”,
 ‘pdf_title’: “Расписание занятий”,
@@ -704,49 +692,49 @@ TRANSLATIONS = {
 },
 ‘kr’: {
 ‘welcome’: “🌟 HANCOM ACADEMY 교사용 출석 체크 봇에 오신 것을 환영합니다, {name}!”,
-‘ask_name’: “👤 이름과 성을 입력하세요:\n\n예: Ali Karimov”,
+‘ask_name’: “’ 이름과 성을 입력하세요:\n\n예: Ali Karimov”,
 ‘ask_specialty’: “📚 어떤 과목을 가르치시나요?”,
-‘specialty_it’: “💻 IT”,
+‘specialty_it’: “’ IT”,
 ‘specialty_korean’: “🇰🇷 한국어”,
 ‘specialty_office’: “🏢 사무원”,
 ‘stats’: “📊 내 통계:”,
-‘no_stats’: “💭 아직 출석 체크하지 않았습니다”,
+‘no_stats’: “’ 아직 출석 체크하지 않았습니다”,
 ‘branches’: “🏢 등록된 지점 (위치):”,
 ‘help’: “🤖 사용 설명서:\n\n📍 출석 체크 방법:\n• 하단의 "📍 출석 확인" 버튼을 누르세요\n• 위치를 전송하세요\n\n📊 통계:\n• "📊 내 통계" - 개인 출석 기록\n• "🏢 지점" - 모든 지점 목록\n\n⚠️ 참고사항:\n• 각 지점에서 하루에 한 번만 출석 체크 가능\n• 출석은 타슈켄트 시간 기준으로 기록됨”,
 ‘attendance_success’: “✅ 출석이 확인되었습니다!\n\n🏫 지점: {branch}\n📅 날짜: {date}\n⏰ 시간: {time}\n📊 이번 달 출석: {count}회\n📍 거리: {distance:.1f}미터”,
 ‘already_attended’: “⚠️ 오늘 이미 {branch} 지점에서 출석 체크하셨습니다!”,
 ‘not_in_area’: “❌ 지정된 교육 기관 구역 내에 있지 않습니다!”,
-‘daily_reminder’: “⏰ 알림! 오늘 아직 출석 체크하지 않으셨습니다. 업무 시작을 위해 출석을 확인하세요!”,
+‘daily_reminder’: “⏰ 알림! 오늘 아직 출석 체크하지 않으셨습니다. 업무 시’을 위해 출석을 확인하세요!”,
 ‘weekly_top’: “🏆 이번 주 가장 활발한 교사:\n\n{top_list}”,
 ‘monthly_report’: “📊 {month}월 보고서\n\n{report}”,
 ‘language_changed’: “✅ 언어가 변경되었습니다: 한국어”,
 ‘language_prompt’: “언어를 선택하세요:”,
-‘view_schedules’: “📋 내 시간표 (PDF)”,
-‘my_schedule’: “📅 내 수업 시간표가 PDF 형식으로 준비되었습니다!”,
-‘no_schedules’: “📭 아직 시간표가 배정되지 않았습니다.”,
-‘schedule_updated’: “📢 시간표가 업데이트되었습니다!”,
-‘schedule_deleted_notify’: “📢 시간표가 삭제되었습니다.”,
+‘view_schedules’: “📋 내 시간’ (PDF)”,
+‘my_schedule’: “📅 내 수업 시간’가 PDF 형식으로 준비되었습니다!”,
+‘no_schedules’: “📭 아직 시간’가 배정되지 않았습니다.”,
+‘schedule_updated’: “📢 시간’가 업데이트되었습니다!”,
+‘schedule_deleted_notify’: “📢 시간’가 삭제되었습니다.”,
 ‘reminder’: “⏰ 알림!\n\n오늘 {time}에 {branch} 지점에서 수업이 있습니다.\n출석 체크를 잊지 마세요!”,
-‘lesson_started_attended’: “✅ 수업이 시작되었고 출석이 확인되었습니다!\n\n수업에 집중하세요.\n학생들 출석 체크하는 것을 잊지 마세요.\n\n좋은 하루 되세요!”,
-‘lesson_started_not_attended’: “⚠️ 수업이 시작되었지만 아직 출석 체크하지 않으셨습니다!\n\n📌 {branch} 지점에서 {time}에 수업이 시작되었습니다.\n📍 즉시 출석 체크하거나 관리자에게 사유를 알려주세요.\n\n출석 체크를 위해 📍 출석 확인 버튼을 누르세요.”,
-‘select_teacher’: “👤 교사를 선택하세요:”,
+‘lesson_started_attended’: “✅ 수업이 시’되었고 출석이 확인되었습니다!\n\n수업에 ‘‘하세요.\n학생들 출석 체크하는 것을 잊지 마세요.\n\n좋은 하루 되세요!”,
+‘lesson_started_not_attended’: “⚠️ 수업이 시’되었지만 아직 출석 체크하지 않으셨습니다!\n\n📌 {branch} 지점에서 {time}에 수업이 시’되었습니다.\n📍 즉시 출석 체크하거나 관리자에게 사유를 알려주세요.\n\n출석 체크를 위해 📍 출석 확인 버튼을 누르세요.”,
+‘select_teacher’: “’ 교사를 선택하세요:”,
 ‘select_lesson_type’: “📚 수업 유형을 선택하세요:”,
-‘active_schedules’: “📋 활성 시간표”,
-‘no_active_schedules’: “📭 활성 시간표가 없습니다.”,
+‘active_schedules’: “📋 활성 시간’”,
+‘no_active_schedules’: “📭 활성 시간’가 없습니다.”,
 ‘schedule_info’: “{teacher} [{specialty}]\n🏢 {branch}\n📚 {lesson_type}\n{days_times}”,
 ‘enter_date’: “📅 보고서 날짜를 입력하세요 (형식: YYYY-MM-DD)\n예: 2026-03-01”,
 ‘invalid_date’: “❌ 잘못된 날짜 형식입니다. 다시 시도하세요:”,
 ‘select_broadcast_specialty’: “📢 어떤 선생님들에게 메시지를 보낼까요?”,
-‘all_teachers’: “👥 모두”,
-‘edit_schedule’: “✏️ 시간표 편집”,
+‘all_teachers’: “’ 모’”,
+‘edit_schedule’: “✏️ 시간’ 편’”,
 ‘select_new_branch’: “🏢 새 지점을 선택하세요:”,
 ‘select_new_lesson_type’: “📚 새 수업 유형을 선택하세요:”,
 ‘select_new_weekdays’: “📅 새 요일을 선택하세요:”,
 ‘enter_new_time’: “⏰ {weekday} 요일의 새 시간을 입력하세요:\n\n형식: HH:MM (예: 09:00)”,
 ‘ontime’: “정시”,
 ‘late’: “지각”,
-‘my_profile’: “👤 내 프로필”,
-‘profile_info’: “👤 내 프로필:\n\n이름: {name}\n전공: {specialty}\n언어: {lang}”,
+‘my_profile’: “’ 내 프로필”,
+‘profile_info’: “’ 내 프로필:\n\n이름: {name}\n전공: {specialty}\n언어: {lang}”,
 ‘edit_name’: “✏️ 이름 변경”,
 ‘edit_my_specialty’: “📚 전공 변경”,
 ‘enter_new_name’: “새 이름과 성을 입력하세요:”,
@@ -754,10 +742,10 @@ TRANSLATIONS = {
 ‘back_to_menu’: “🔙 메뉴로 돌아가기”,
 ‘select_new_spec’: “새 전공을 선택하세요:”,
 ‘spec_updated’: “✅ 전공이 업데이트되었습니다!”,
-‘back_btn’: “🔙 뒤로 가기”,
-‘pdf_title’: “수업 시간표”,
+‘back_btn’: “🔙 ‘로 가기”,
+‘pdf_title’: “수업 시간’”,
 ‘pdf_headers’: [“요일”, “시간”],
-‘pdf_created’: “작성일”,
+‘pdf_created’: “‘성일”,
 ‘group_students_title’: “학생 출석 체크”,
 ‘group_students_submit’: “출석 보내기”,
 ‘group_students_sent’: “✅ 학생 출석이 전송되었습니다!”,
@@ -766,7 +754,7 @@ TRANSLATIONS = {
 ‘my_stats’: “📊 내 통계”,
 ‘branches’: “🏢 지점”,
 ‘top_week’: “🏆 주간 TOP”,
-‘view_schedules’: “📋 내 시간표 (PDF)”,
+‘view_schedules’: “📋 내 시간’ (PDF)”,
 ‘help’: “❓ 도움말”,
 ‘language’: “🌐 언어”
 }
@@ -793,11 +781,11 @@ return chat_id == ADMIN_GROUP_ID
 def get_specialty_display(specialty: str, lang: str = ‘uz’) -> str:
 if specialty == ‘IT’:
 if lang == ‘uz’:
-return “💻 IT”
+return “’ IT”
 elif lang == ‘ru’:
-return “💻 IT”
+return “’ IT”
 else:
-return “💻 IT”
+return “’ IT”
 elif specialty == ‘Koreys tili’:
 if lang == ‘uz’:
 return “🇰🇷 Koreys tili”
@@ -1109,9 +1097,9 @@ return web.Response(
 text=f”Bot is running! ✅\n\n”
 f”📅 Sana: {now_uzb.strftime(’%Y-%m-%d’)}\n”
 f”⏰ Vaqt: {now_uzb.strftime(’%H:%M:%S’)}\n”
-f”👥 Foydalanuvchilar: {len(user_ids)} ta\n”
+f”’ Foydalanuvchilar: {len(user_ids)} ta\n”
 f”📊 Bugungi davomatlar: {len([k for k in daily_attendance_log if k[2] == now_uzb.strftime(’%Y-%m-%d’)])} ta\n”
-f”👥 Guruhlar: {len(groups)} ta”
+f”’ Guruhlar: {len(groups)} ta”
 )
 
 async def health_check(request):
@@ -1254,7 +1242,7 @@ InlineKeyboardButton(text=“🇺🇿 O’zbekcha”, callback_data=“change_la
 InlineKeyboardButton(text=“🇷🇺 Русский”, callback_data=“change_lang_ru”),
 InlineKeyboardButton(text=“🇰🇷 한국어”, callback_data=“change_lang_kr”)
 )
-await message.answer(“Tilni tanlang / Выберите язык / 언어를 선택하세요:”, reply_markup=builder.as_markup())
+await message.answer(“Tilni tanlang / ’ыберите язык / 언어를 선택하세요:”, reply_markup=builder.as_markup())
 
 @dp.callback_query(F.data.startswith(“change_lang_”))
 async def set_changed_language(callback: types.CallbackQuery):
@@ -1281,7 +1269,7 @@ except Exception as e:
     await callback.answer("Xatolik yuz berdi")
 ```
 
-PROFILE_BTNS = [“👤 Mening profilim”, “👤 Мой профиль”, “👤 내 프로필”]
+PROFILE_BTNS = [”’ Mening profilim”, “’ Мой профиль”, “’ 내 프로필”]
 
 @dp.message(F.text.in_(PROFILE_BTNS))
 async def show_profile(message: types.Message):
@@ -1319,7 +1307,7 @@ await message.answer(
 async def edit_my_specialty_start(callback: types.CallbackQuery):
 uid = callback.from_user.id
 builder = InlineKeyboardBuilder()
-builder.row(InlineKeyboardButton(text=“💻 IT”, callback_data=“save_spec_IT”))
+builder.row(InlineKeyboardButton(text=”’ IT”, callback_data=“save_spec_IT”))
 builder.row(InlineKeyboardButton(text=“🇰🇷 Koreys tili”, callback_data=“save_spec_Koreys tili”))
 builder.row(InlineKeyboardButton(text=“🏢 Ofis xodimi”, callback_data=“save_spec_Ofis xodimi”))
 builder.row(InlineKeyboardButton(text=get_text(uid, ‘back_btn’), callback_data=“back_to_profile_view”))
@@ -1424,7 +1412,7 @@ await callback.message.answer(
 )
 ```
 
-@dp.message(F.text.in_({’\U0001F4CB Dars jadvalim (PDF)’, ‘\U0001F4CB Мое расписание (PDF)’, ‘\U0001F4CB 내 시간표 (PDF)’}))
+@dp.message(F.text.in_({‘📋 Dars jadvalim (PDF)’, ‘📋 Мое расписание (PDF)’, ‘📋 내 시간표 (PDF)’}))
 async def view_my_schedule_pdf(message: types.Message):
 user_id = message.from_user.id
 
@@ -1498,7 +1486,7 @@ if lang == 'uz':
     current_month_text = "(joriy oy)"
 elif lang == 'ru':
     month_names = month_names_ru
-    weekdays =["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+    weekdays =["Понедельник", "'торник", "Среда", "Четверг", "Пятница", "Суббота", "'оскресенье"]
     current_month_text = "(текущий месяц)"
 else:
     month_names = month_names_kr
@@ -1606,11 +1594,11 @@ for (uid, branch, date, time) in daily_attendance_log:
 if not weekly_stats:
     lang = user_languages.get(user_id, 'uz')
     if lang == 'uz':
-        no_data_msg = "💭 Bu hafta hali davomat yo'q"
+        no_data_msg = "' Bu hafta hali davomat yo'q"
     elif lang == 'ru':
-        no_data_msg = "💭 На этой неделе еще нет отметок"
+        no_data_msg = "' На этой неделе еще нет отметок"
     else:
-        no_data_msg = "💭 이번 주에는 아직 출석 기록이 없습니다"
+        no_data_msg = "' 이번 주에는 아직 출석 기록이 없습니다"
     
     await message.answer(no_data_msg)
     return
@@ -1662,11 +1650,11 @@ if message.forward_origin is not None:
     t_spec = user_specialty.get(user_id, 'Noma\'lum')
     admin_alert = (
         f"🚨 **SOXTA DAVOMATGA URINISH!**\n\n"
-        f"👤 Xodim: {t_name}\n"
+        f"' Xodim: {t_name}\n"
         f"📚 Soha: {t_spec}\n"
         f"🆔 ID: `{user_id}`\n"
         f"📍 Holat: Forward qilingan lokatsiya yubordi.\n"
-        f"🕒 Vaqt: {datetime.now(UZB_TZ).strftime('%H:%M:%S')}"
+        f"' Vaqt: {datetime.now(UZB_TZ).strftime('%H:%M:%S')}"
     )
     await bot.send_message(ADMIN_GROUP_ID, admin_alert, parse_mode="Markdown")
     return
@@ -1711,7 +1699,7 @@ if found_branch:
     
     report = (
         f"✅ **Yangi Davomat**\n\n"
-        f"👤 O'qituvchi: {full_name}{specialty_display}\n"
+        f"' O'qituvchi: {full_name}{specialty_display}\n"
         f"📍 Manzil: {found_branch}\n"
         f"📅 Sana: {today_date}\n"
         f"⏰ Vaqt: {now_time}\n"
@@ -1751,7 +1739,7 @@ if found_branch:
         await state.update_data(current_group_id=current_grp, selected_stds=[])
         keyboard = await get_student_attendance_kb(current_grp, [])
         await message.answer(
-            f"🧑‍🎓 **{groups[current_grp]['group_name']}** guruhi o'quvchilari.\n"
+            f"'‍🎓 **{groups[current_grp]['group_name']}** guruhi o'quvchilari.\n"
             f"Darsda qatnashayotganlarni belgilang:",
             reply_markup=keyboard, parse_mode="Markdown"
         )
@@ -1836,11 +1824,11 @@ teacher_name = user_names.get(user_id, 'Noma\'lum')
 current_date = datetime.now(UZB_TZ).strftime('%Y-%m-%d')
 
 caption = (
-    f"🧑‍🎓 **Guruh Davomati**\n"
+    f"'‍🎓 **Guruh Davomati**\n"
     f"📦 Guruh: {group_name}\n"
-    f"👤 O'qituvchi: {teacher_name}\n"
+    f"' O'qituvchi: {teacher_name}\n"
     f"📅 Sana: {current_date}\n"
-    f"👥 Kelganlar: {len(selected)}/{len(students)}"
+    f"' Kelganlar: {len(selected)}/{len(students)}"
 )
 
 filename = f"Guruh_Davomati_{group_name}_{current_date}.xlsx"
@@ -1929,11 +1917,11 @@ pressure_mmhg = pressure * 0.750062
 
 temp_text = "Harorat" if lang == 'uz' else "Температура" if lang == 'ru' else "기온"
 feels_text = "his qilinadi" if lang == 'uz' else "ощущается" if lang == 'ru' else "체감"
-humidity_text = "Namlik" if lang == 'uz' else "Влажность" if lang == 'ru' else "습도"
-wind_text = "Shamol" if lang == 'uz' else "Ветер" if lang == 'ru' else "바람"
+humidity_text = "Namlik" if lang == 'uz' else "'лажность" if lang == 'ru' else "습도"
+wind_text = "Shamol" if lang == 'uz' else "'етер" if lang == 'ru' else "바람"
 pressure_text = "Bosim" if lang == 'uz' else "Давление" if lang == 'ru' else "기압"
 recommendation_title = "Tavsiya" if lang == 'uz' else "Рекомендация" if lang == 'ru' else "추천"
-time_text = "Vaqt" if lang == 'uz' else "Время" if lang == 'ru' else "시간"
+time_text = "Vaqt" if lang == 'uz' else "'ремя" if lang == 'ru' else "시간"
 
 message = f"""
 ```
@@ -1942,11 +1930,11 @@ message = f"""
 
 📍 Joy: {city}
 🌡️ {temp_text}: {temp:.1f}°C ({feels_text}: {feels_like:.1f}°C)
-💧 {humidity_text}: {humidity}%
-💨 {wind_text}: {wind_speed:.1f} m/s
+’ {humidity_text}: {humidity}%
+’ {wind_text}: {wind_speed:.1f} m/s
 📊 {pressure_text}: {pressure_mmhg:.1f} mmHg
 
-💡 {recommendation_title}:
+’ {recommendation_title}:
 {recommendation}
 
 ⏰ {time_text}: {datetime.now(UZB_TZ).strftime(’%H:%M’)}
@@ -1965,7 +1953,7 @@ month_names = {
 
 wd_names = {
     'uz': ["Du", "Se", "Ch", "Pa", "Ju", "Sha", "Ya"],
-    'ru': ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
+    'ru': ["Пн", "'т", "Ср", "Чт", "Пт", "Сб", "'с"],
     'kr': ["월", "화", "수", "목", "금", "토", "일"]
 }
 
@@ -2077,7 +2065,7 @@ return
 try:
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="💰 Oylik hisoblash", callback_data="admin_salary_calc")
+        InlineKeyboardButton(text="' Oylik hisoblash", callback_data="admin_salary_calc")
     )
     builder.row(
         InlineKeyboardButton(text="🖼 Vizual Jadval (Haftalik)", callback_data="admin_visual_schedule")
@@ -2086,7 +2074,7 @@ try:
         InlineKeyboardButton(text="➕ Guruh shakllantirish", callback_data="admin_create_group")
     )
     builder.row(
-        InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
+        InlineKeyboardButton(text="' Foydalanuvchilar", callback_data="admin_users_main"),
         InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast")
     )
     builder.row(
@@ -2099,7 +2087,7 @@ try:
     )
     
     await message.answer(
-        "👨‍💼 Admin Panel\n\nKerakli bo'limni tanlang:",
+        "'‍' Admin Panel\n\nKerakli bo'limni tanlang:",
         reply_markup=builder.as_markup()
     )
 except Exception as e:
@@ -2122,7 +2110,7 @@ await state.set_state(CreateGroup.selecting_branch)
 async def grp_branch_selected(callback: types.CallbackQuery, state: FSMContext):
 await state.update_data(branch=callback.data.replace(“grp_br_”, “”))
 builder = InlineKeyboardBuilder()
-builder.row(InlineKeyboardButton(text=“💻 IT”, callback_data=“grp_type_IT”),
+builder.row(InlineKeyboardButton(text=”’ IT”, callback_data=“grp_type_IT”),
 InlineKeyboardButton(text=“🇰🇷 Koreys tili”, callback_data=“grp_type_Koreys tili”))
 await callback.message.edit_text(“Dars turini tanlang:”, reply_markup=builder.as_markup())
 await state.set_state(CreateGroup.selecting_type)
@@ -2276,7 +2264,7 @@ try:
         f"📚 Fan: {data['type']}\n"
         f"⏰ Vaqt: {data['time']}\n"
         f"📅 Kunlar: {days_str}\n"
-        f"👥 O'quvchilar soni: {len(data['students'])} ta\n\n"
+        f"' O'quvchilar soni: {len(data['students'])} ta\n\n"
         f"Botda davomat qilganingizda ushbu o'quvchilar ro'yxati chiqadi."
     )
     try:
@@ -2288,8 +2276,8 @@ try:
         f"✅ Guruh '{data['group_name']}' muvaffaqiyatli yaratildi!\n\n"
         f"🏢 Filial: {data['branch']}\n"
         f"📚 Fan: {data['type']}\n"
-        f"👤 O'qituvchi: {user_names.get(data['teacher_id'])}\n"
-        f"👥 O'quvchilar: {len(data['students'])} ta"
+        f"' O'qituvchi: {user_names.get(data['teacher_id'])}\n"
+        f"' O'quvchilar: {len(data['students'])} ta"
     )
 except Exception as e:
     logging.error(f"Error saving group: {e}")
@@ -2425,7 +2413,7 @@ return
 ```
 builder = InlineKeyboardBuilder()
 builder.row(
-    InlineKeyboardButton(text="💻 IT", callback_data="sal_spec_IT"),
+    InlineKeyboardButton(text="' IT", callback_data="sal_spec_IT"),
     InlineKeyboardButton(text="🇰🇷 Koreys tili", callback_data="sal_spec_Koreys tili")
 )
 builder.row(
@@ -2645,8 +2633,8 @@ s_net = "{:,.0f}".format(net).replace(',', ' ')
 s_tax = "{:,.0f}".format(tax).replace(',', ' ')
 s_gross = "{:,.0f}".format(total_gross).replace(',', ' ')
 
-caption = (f"💰 Hisob-kitob yakunlandi\n\n"
-           f"👤 Xodim: {data['teacher_name']}\n"
+caption = (f"' Hisob-kitob yakunlandi\n\n"
+           f"' Xodim: {data['teacher_name']}\n"
            f"📚 Mutaxassislik: {data['specialty']}\n"
            f"🏢 Filiallar: {len(results)} ta\n"
            f"──────────────────\n"
@@ -2915,7 +2903,7 @@ for spec in specs:
         # 2. O'qituvchi nomi (Kulrang)
         ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=9)
         user_title = ws.cell(row=current_row, column=1)
-        user_title.value = f"👤 {user_names.get(uid, '').upper()} {months_uz[month]} OYLIK XISOBOT"
+        user_title.value = f"' {user_names.get(uid, '').upper()} {months_uz[month]} OYLIK XISOBOT"
         user_title.fill = user_header_fill
         user_title.font = bold_font
         user_title.alignment = Alignment(horizontal="center")
@@ -3072,7 +3060,7 @@ builder.row(
     InlineKeyboardButton(text="🏆 Filiallar reytingi", callback_data="pdf_branches")
 )
 builder.row(
-    InlineKeyboardButton(text="👥 O'qituvchilar reytingi", callback_data="pdf_teachers"),
+    InlineKeyboardButton(text="' O'qituvchilar reytingi", callback_data="pdf_teachers"),
     InlineKeyboardButton(text="📅 Oylik hisobot", callback_data="pdf_monthly")
 )
 builder.row(
@@ -3210,7 +3198,7 @@ title_style = ParagraphStyle(
     spaceAfter=30,
     fontName=FONT_NAME_BOLD
 )
-elements.append(Paragraph("👥 O'qituvchilar reytingi", title_style))
+elements.append(Paragraph("' O'qituvchilar reytingi", title_style))
 elements.append(Paragraph(f"Hisobot yaratilgan sana: {datetime.now(UZB_TZ).strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
 elements.append(Spacer(1, 20))
 
@@ -3334,7 +3322,7 @@ try:
     elif report_type == "teachers":
         pdf_buffer = await create_teachers_stats_pdf()
         filename = f"oqituvchilar_reytingi_{datetime.now(UZB_TZ).strftime('%Y%m%d_%H%M')}.pdf"
-        caption = "👥 Eng faol o'qituvchilar"
+        caption = "' Eng faol o'qituvchilar"
         
     elif report_type == "monthly":
         pdf_buffer = await create_monthly_stats_pdf()
@@ -3373,7 +3361,7 @@ try:
         InlineKeyboardButton(text="🏆 Filiallar reytingi", callback_data="admin_stats_branches")
     )
     builder.row(
-        InlineKeyboardButton(text="👥 O'qituvchilar reytingi", callback_data="admin_stats_teachers"),
+        InlineKeyboardButton(text="' O'qituvchilar reytingi", callback_data="admin_stats_teachers"),
         InlineKeyboardButton(text="📅 Oylik hisobot", callback_data="admin_monthly")
     )
     builder.row(
@@ -3431,11 +3419,11 @@ try:
 
 📊 Umumiy statistika
 
-👥 Foydalanuvchilar:
+’ Foydalanuvchilar:
 • Jami: {total_users}
 • Faol: {active_users}
 • Bloklangan: {blocked_users}
-• 💻 IT: {it_teachers}
+• ’ IT: {it_teachers}
 • 🇰🇷 Koreys tili: {korean_teachers}
 • 🏢 Ofis xodimlari: {office_workers}
 
@@ -3446,7 +3434,7 @@ try:
 
 🏆 Eng faol filial: {top_branch[0]} ({top_branch[1]} ta)
 
-👑 Eng faol o’qituvchi: {top_teacher_display} ({top_teacher_id[1]} ta)
+‘’ Eng faol o’qituvchi: {top_teacher_display} ({top_teacher_id[1]} ta)
 
 📅 Oxirgi yangilanish: {now_uzb.strftime(’%Y-%m-%d %H:%M’)}
 “””
@@ -3523,7 +3511,7 @@ try:
     
     sorted_teachers = sorted(teacher_stats.items(), key=lambda x: x[1], reverse=True)[:20]
     
-    text = "👥 Eng faol o'qituvchilar\n\n"
+    text = "' Eng faol o'qituvchilar\n\n"
     for i, (uid, count) in enumerate(sorted_teachers, 1):
         name = user_names.get(uid, f"ID: {uid}")
         specialty = user_specialty.get(uid, '')
@@ -3610,7 +3598,7 @@ try:
     )
     
     await callback.message.edit_text(
-        "👥 Foydalanuvchilarni boshqarish\n\nKerakli amalni tanlang:",
+        "' Foydalanuvchilarni boshqarish\n\nKerakli amalni tanlang:",
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -3654,7 +3642,7 @@ if user_logs:
 text = f"""
 ```
 
-👤 Foydalanuvchi ma’lumoti
+’ Foydalanuvchi ma’lumoti
 
 ID: `{uid}`
 Ism: {name}{specialty_display}
@@ -3675,7 +3663,7 @@ else:
     builder.row(InlineKeyboardButton(text="✅ Faollashtirish", callback_data=f"admin_user_unblock_{uid}"))
 builder.row(
     InlineKeyboardButton(text="📊 Statistika", callback_data=f"admin_user_stats_{uid}"),
-    InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"admin_user_delete_{uid}")
+    InlineKeyboardButton(text="' O'chirish", callback_data=f"admin_user_delete_{uid}")
 )
 builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_users_main"))
 
@@ -3807,7 +3795,7 @@ try:
                 
             builder.row(
                 InlineKeyboardButton(
-                    text=f"👤 {name}{spec_display}", 
+                    text=f"' {name}{spec_display}", 
                     callback_data=f"admin_user_info_{uid}"
                 )
             )
@@ -4299,7 +4287,7 @@ for spec in spec_order:
     for t_name in sorted_teachers:
         teacher_block = []
         
-        teacher_block.append(Paragraph(f"👤 O'qituvchi: {t_name}", teacher_name_style))
+        teacher_block.append(Paragraph(f"' O'qituvchi: {t_name}", teacher_name_style))
         
         teacher_scheds = grouped_data[spec][t_name]
         
@@ -4377,7 +4365,7 @@ try:
         builder = InlineKeyboardBuilder()
         builder.row(
             InlineKeyboardButton(text="✏️ O'zgartirish", callback_data=f"admin_edit_schedule_{schedule_id}"),
-            InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"admin_delete_schedule_{schedule_id}")
+            InlineKeyboardButton(text="' O'chirish", callback_data=f"admin_delete_schedule_{schedule_id}")
         )
         
         await callback.message.answer(
@@ -4701,7 +4689,7 @@ try:
             specialty = user_specialty.get(uid, '')
             specialty_display = f" [{specialty}]" if specialty else ""
             builder.row(
-                InlineKeyboardButton(text=f"👤 {name}{specialty_display}", callback_data=f"admin_teacher_{uid}")
+                InlineKeyboardButton(text=f"' {name}{specialty_display}", callback_data=f"admin_teacher_{uid}")
             )
     
     if not builder.buttons:
@@ -4711,7 +4699,7 @@ try:
     
     await state.set_state(AdminAddSchedule.selecting_teacher)
     await callback.message.edit_text(
-        "👤 O'qituvchini tanlang:",
+        "' O'qituvchini tanlang:",
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -5106,7 +5094,7 @@ return
 try:
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="💰 Oylik hisoblash", callback_data="admin_salary_calc")
+        InlineKeyboardButton(text="' Oylik hisoblash", callback_data="admin_salary_calc")
     )
     builder.row(
         InlineKeyboardButton(text="🖼 Vizual Jadval (Haftalik)", callback_data="admin_visual_schedule")
@@ -5115,7 +5103,7 @@ try:
         InlineKeyboardButton(text="➕ Guruh shakllantirish", callback_data="admin_create_group")
     )
     builder.row(
-        InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
+        InlineKeyboardButton(text="' Foydalanuvchilar", callback_data="admin_users_main"),
         InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast")
     )
     builder.row(
@@ -5128,7 +5116,7 @@ try:
     )
     
     await callback.message.edit_text(
-        "👨‍💼 Admin Panel\n\nKerakli bo'limni tanlang:",
+        "'‍' Admin Panel\n\nKerakli bo'limni tanlang:",
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -5139,25 +5127,27 @@ except Exception as e:
 ```
 
 async def auto_daily_report_task():
-last_sent_date = None
 while True:
 now = datetime.now(UZB_TZ)
 if now.hour == 10 and now.minute == 10:
-today = now.date()
-if last_sent_date != today:
-last_sent_date = today
-yesterday = today - timedelta(days=1)
+yesterday = now.date() - timedelta(days=1)
 logging.info(f”Avtomatik hisobot yuborilmoqda: {yesterday}”)
-try:
-pdf_buf = await get_combined_report_pdf(yesterday)
-await bot.send_document(
-chat_id=ADMIN_GROUP_ID,
-document=types.BufferedInputFile(pdf_buf.read(), filename=f”hisobot_{yesterday}.pdf”),
-caption=f”Kechagi kun ({yesterday}) uchun avtomatik davomat hisoboti.”
-)
-except Exception as e:
-logging.error(f”Auto report xatosi: {e}”)
-await asyncio.sleep(30)
+
+```
+        try:
+            pdf_buf = await get_combined_report_pdf(yesterday)
+            await bot.send_document(
+                chat_id=ADMIN_GROUP_ID,
+                document=types.BufferedInputFile(pdf_buf.read(), filename=f"hisobot_{yesterday}.pdf"),
+                caption=f"📅 Kechagi kun ({yesterday}) uchun avtomatik davomat hisoboti."
+            )
+        except Exception as e:
+            logging.error(f"Auto report xatosi: {e}")
+        
+        await asyncio.sleep(61)
+    
+    await asyncio.sleep(30)
+```
 
 async def check_schedule_reminders():
 while True:
@@ -5212,7 +5202,6 @@ current_day_name = WEEKDAYS_UZ[now_uzb.weekday()]
 ```
 
 async def main():
-await download_font()
 await db.create_pool()
 await db.init_tables()
 await db.load_to_ram()
