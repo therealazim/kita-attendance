@@ -5234,4 +5234,4 @@ await dp.start_polling(bot, skip_updates=True)
 ```
 
 if **name** == “**main**”:
-asyncio.run(main())
+asyncio.run(main()) 
