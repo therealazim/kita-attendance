@@ -114,6 +114,10 @@ schedules = {}
 user_schedules = defaultdict(list)
 broadcast_history = []
 
+# RAM da guruhlar va o'quvchilar (tezroq ishlash uchun, lekin asosiy PostgreSQL'da)
+groups = {}  # group_id -> group ma'lumotlari
+group_students = defaultdict(list)  # group_id -> o'quvchilar ro'yxati
+
 # BARCHA LOKATSIYALAR RO'YXATI
 LOCATIONS =[
     {"name": "Kimyo Xalqaro Universiteti", "lat": 41.257490, "lon": 69.220109},
@@ -160,6 +164,18 @@ class SalaryCalc(StatesGroup):
 # --- VIZUAL JADVAL UCHUN STATE ---
 class VisualSchedule(StatesGroup):
     selecting_branch = State()
+
+# --- GURUH YARATISH UCHUN STATE (YANGI) ---
+class CreateGroup(StatesGroup):
+    selecting_branch = State()
+    selecting_type = State()
+    selecting_teacher = State()
+    selecting_days = State()
+    entering_time = State()
+    entering_group_name = State()
+    adding_student_name = State()
+    adding_student_phone = State()
+    confirm_student = State()
 
 # --- POSTGRESQL DATABASE CLASS ---
 class Database:
@@ -219,6 +235,29 @@ class Database:
                     failed_count INT,
                     specialty TEXT,
                     created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            
+            # Guruhlar va o'quvchilar uchun yangi jadvallar
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS groups (
+                    id SERIAL PRIMARY KEY,
+                    group_name TEXT,
+                    branch TEXT,
+                    lesson_type TEXT,
+                    teacher_id BIGINT REFERENCES users(user_id),
+                    days_data JSONB,
+                    time_text TEXT,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS group_students (
+                    id SERIAL PRIMARY KEY,
+                    group_id INT REFERENCES groups(id) ON DELETE CASCADE,
+                    student_name TEXT,
+                    student_phone TEXT
                 )
             """)
             
@@ -337,6 +376,7 @@ class Database:
     async def load_to_ram(self):
         global user_names, user_specialty, user_status, user_languages, user_ids
         global daily_attendance_log, attendance_counter, schedules, user_schedules
+        global groups, group_students
         
         users = await self.get_all_users()
         for u in users:
@@ -368,7 +408,23 @@ class Database:
             }
             user_schedules[r['user_id']].append(r['schedule_id'])
         
-        logging.info(f"✅ RAM ga yuklandi: {len(user_ids)} foydalanuvchi, {len(daily_attendance_log)} davomat")
+        # Guruh va o'quvchilarni yuklash
+        async with self.pool.acquire() as conn:
+            all_groups = await conn.fetch("SELECT * FROM groups")
+            for g in all_groups:
+                groups[g['id']] = {
+                    'group_name': g['group_name'],
+                    'branch': g['branch'],
+                    'lesson_type': g['lesson_type'],
+                    'teacher_id': g['teacher_id'],
+                    'days': json.loads(g['days_data']),
+                    'time': g['time_text']
+                }
+                
+                students = await conn.fetch("SELECT * FROM group_students WHERE group_id = $1", g['id'])
+                group_students[g['id']] = [{'name': s['student_name'], 'phone': s['student_phone']} for s in students]
+        
+        logging.info(f"✅ RAM ga yuklandi: {len(user_ids)} foydalanuvchi, {len(daily_attendance_log)} davomat, {len(groups)} guruh")
 
 db = Database(DATABASE_URL)
 
@@ -976,7 +1032,8 @@ async def handle(request):
              f"📅 Sana: {now_uzb.strftime('%Y-%m-%d')}\n"
              f"⏰ Vaqt: {now_uzb.strftime('%H:%M:%S')}\n"
              f"👥 Foydalanuvchilar: {len(user_ids)} ta\n"
-             f"📊 Bugungi davomatlar: {len([k for k in daily_attendance_log if k[2] == now_uzb.strftime('%Y-%m-%d')])} ta"
+             f"📊 Bugungi davomatlar: {len([k for k in daily_attendance_log if k[2] == now_uzb.strftime('%Y-%m-%d')])} ta\n"
+             f"👥 Guruhlar: {len(groups)} ta"
     )
 
 async def health_check(request):
@@ -1781,6 +1838,9 @@ async def admin_panel(message: types.Message):
             InlineKeyboardButton(text="🖼 Vizual Jadval (Haftalik)", callback_data="admin_visual_schedule")
         )
         builder.row(
+            InlineKeyboardButton(text="➕ Guruh shakllantirish", callback_data="admin_create_group")
+        )
+        builder.row(
             InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
             InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast")
         )
@@ -1800,6 +1860,189 @@ async def admin_panel(message: types.Message):
     except Exception as e:
         logging.error(f"admin_panel error: {e}")
         await message.answer("❌ Admin panelni ochishda xatolik yuz berdi")
+
+# --- GURUH YARATISH HANDLERLARI (YANGI) ---
+@dp.callback_query(F.data == "admin_create_group")
+async def start_group_creation(callback: types.CallbackQuery, state: FSMContext):
+    builder = InlineKeyboardBuilder()
+    for loc in LOCATIONS:
+        builder.row(InlineKeyboardButton(text=loc['name'], callback_data=f"grp_br_{loc['name']}"))
+    builder.row(InlineKeyboardButton(text="🔙 Bekor qilish", callback_data="admin_back"))
+    await callback.message.edit_text("Qaysi filialga guruh qo'shmoqchisiz?", reply_markup=builder.as_markup())
+    await state.set_state(CreateGroup.selecting_branch)
+
+@dp.callback_query(CreateGroup.selecting_branch, F.data.startswith("grp_br_"))
+async def grp_branch_selected(callback: types.CallbackQuery, state: FSMContext):
+    await state.update_data(branch=callback.data.replace("grp_br_", ""))
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="💻 IT", callback_data="grp_type_IT"),
+                InlineKeyboardButton(text="🇰🇷 Koreys tili", callback_data="grp_type_Koreys tili"))
+    await callback.message.edit_text("Dars turini tanlang:", reply_markup=builder.as_markup())
+    await state.set_state(CreateGroup.selecting_type)
+
+@dp.callback_query(CreateGroup.selecting_type, F.data.startswith("grp_type_"))
+async def grp_type_selected(callback: types.CallbackQuery, state: FSMContext):
+    await state.update_data(type=callback.data.replace("grp_type_", ""))
+    builder = InlineKeyboardBuilder()
+    # Ofis xodimlari bundan mustasno (faqat o'qituvchilar)
+    for uid, name in user_names.items():
+        if user_specialty.get(uid) != 'Ofis xodimi' and user_specialty.get(uid) is not None:
+            builder.row(InlineKeyboardButton(text=name, callback_data=f"grp_tchr_{uid}"))
+    await callback.message.edit_text("O'qituvchini tanlang:", reply_markup=builder.as_markup())
+    await state.set_state(CreateGroup.selecting_teacher)
+
+@dp.callback_query(CreateGroup.selecting_teacher, F.data.startswith("grp_tchr_"))
+async def grp_teacher_selected(callback: types.CallbackQuery, state: FSMContext):
+    teacher_id = int(callback.data.replace("grp_tchr_", ""))
+    await state.update_data(teacher_id=teacher_id, selected_days=[])
+    await grp_show_days(callback.message, [])
+    await callback.answer()
+
+async def grp_show_days(message: types.Message, selected):
+    builder = InlineKeyboardBuilder()
+    for day in WEEKDAYS_UZ:
+        text = f"✅ {day}" if day in selected else f"⬜ {day}"
+        builder.row(InlineKeyboardButton(text=text, callback_data=f"grp_day_{day}"))
+    builder.row(InlineKeyboardButton(text="➡️ Keyingisi", callback_data="grp_days_next"))
+    await message.edit_text("Dars kunlarini tanlang (bir nechta tanlashingiz mumkin):", reply_markup=builder.as_markup())
+
+@dp.callback_query(CreateGroup.selecting_days, F.data.startswith("grp_day_"))
+async def grp_toggle_day(callback: types.CallbackQuery, state: FSMContext):
+    day = callback.data.replace("grp_day_", "")
+    data = await state.get_data()
+    selected = data.get('selected_days', [])
+    if day in selected:
+        selected.remove(day)
+    else:
+        selected.append(day)
+    await state.update_data(selected_days=selected)
+    await grp_show_days(callback.message, selected)
+    await callback.answer()
+
+@dp.callback_query(CreateGroup.selecting_days, F.data == "grp_days_next")
+async def grp_days_next(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    if not data.get('selected_days'):
+        await callback.answer("Hech bo'lmaganda 1 kun tanlang!", show_alert=True)
+        return
+    await callback.message.edit_text("Dars soatini kiriting (masalan, 14:00):")
+    await state.set_state(CreateGroup.entering_time)
+
+@dp.message(CreateGroup.entering_time)
+async def grp_time_entered(message: types.Message, state: FSMContext):
+    # Vaqt formatini tekshirish
+    time_pattern = re.compile(r'^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$')
+    if not time_pattern.match(message.text.strip()):
+        await message.answer("❌ Noto'g'ri format! Iltimos, HH:MM formatida kiriting (masalan, 14:00):")
+        return
+    await state.update_data(time=message.text.strip())
+    await message.answer("Guruh uchun nom kiriting (masalan, Koreys-1 yoki IT-A):")
+    await state.set_state(CreateGroup.entering_group_name)
+
+@dp.message(CreateGroup.entering_group_name)
+async def grp_name_entered(message: types.Message, state: FSMContext):
+    await state.update_data(group_name=message.text.strip(), students=[])
+    await message.answer(
+        "Endi o'quvchilarni qo'shishni boshlaymiz.\n\n"
+        "1-o'quvchining ismi va familiyasini kiriting:"
+    )
+    await state.set_state(CreateGroup.adding_student_name)
+
+@dp.message(CreateGroup.adding_student_name)
+async def grp_student_name(message: types.Message, state: FSMContext):
+    if len(message.text.strip()) < 2:
+        await message.answer("❌ Ism juda qisqa. Qaytadan kiriting:")
+        return
+    await state.update_data(current_std_name=message.text.strip())
+    await message.answer(f"'{message.text.strip()}' ning telefon raqamini kiriting:")
+    await state.set_state(CreateGroup.adding_student_phone)
+
+@dp.message(CreateGroup.adding_student_phone)
+async def grp_student_phone(message: types.Message, state: FSMContext):
+    phone = message.text.strip()
+    data = await state.get_data()
+    students = data.get('students', [])
+    students.append({"name": data['current_std_name'], "phone": phone})
+    await state.update_data(students=students)
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="➕ Yana o'quvchi qo'shish", callback_data="grp_add_more"),
+        InlineKeyboardButton(text="✅ Guruhni yakunlash", callback_data="grp_finish")
+    )
+    await message.answer(
+        f"✅ O'quvchi qo'shildi! Jami: {len(students)} ta.\n\n"
+        f"Davom etamizmi?",
+        reply_markup=builder.as_markup()
+    )
+    await state.set_state(CreateGroup.confirm_student)
+
+@dp.callback_query(CreateGroup.confirm_student, F.data == "grp_add_more")
+async def grp_more_students(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    await callback.message.edit_text(
+        f"{len(data['students'])+1}-o'quvchi ismini kiriting:"
+    )
+    await state.set_state(CreateGroup.adding_student_name)
+
+@dp.callback_query(CreateGroup.confirm_student, F.data == "grp_finish")
+async def grp_final_save(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    
+    # 1. Bazaga saqlash
+    try:
+        async with db.pool.acquire() as conn:
+            group_id = await conn.fetchval("""
+                INSERT INTO groups (group_name, branch, lesson_type, teacher_id, days_data, time_text)
+                VALUES ($1, $2, $3, $4, $5::jsonb, $6) RETURNING id
+            """, data['group_name'], data['branch'], data['type'], data['teacher_id'], 
+               json.dumps(data['selected_days']), data['time'])
+            
+            for std in data['students']:
+                await conn.execute("""
+                    INSERT INTO group_students (group_id, student_name, student_phone) 
+                    VALUES ($1, $2, $3)
+                """, group_id, std['name'], std['phone'])
+        
+        # RAM ga qo'shish
+        groups[group_id] = {
+            'group_name': data['group_name'],
+            'branch': data['branch'],
+            'lesson_type': data['type'],
+            'teacher_id': data['teacher_id'],
+            'days': data['selected_days'],
+            'time': data['time']
+        }
+        group_students[group_id] = data['students']
+
+        # 2. O'qituvchiga xabar
+        teacher_msg = (
+            f"🆕 **Yangi guruh biriktirildi!**\n\n"
+            f"📦 Guruh: {data['group_name']}\n"
+            f"🏢 Filial: {data['branch']}\n"
+            f"📚 Fan: {data['type']}\n"
+            f"⏰ Vaqt: {data['time']}\n"
+            f"📅 Kunlar: {', '.join(data['selected_days'])}\n"
+            f"👥 O'quvchilar soni: {len(data['students'])} ta\n\n"
+            f"Botda davomat qilganingizda ushbu o'quvchilar ro'yxati chiqadi."
+        )
+        try:
+            await bot.send_message(data['teacher_id'], teacher_msg, parse_mode="Markdown")
+        except Exception as e:
+            logging.error(f"Failed to notify teacher: {e}")
+
+        await callback.message.edit_text(
+            f"✅ Guruh '{data['group_name']}' muvaffaqiyatli yaratildi!\n\n"
+            f"🏢 Filial: {data['branch']}\n"
+            f"📚 Fan: {data['type']}\n"
+            f"👤 O'qituvchi: {user_names.get(data['teacher_id'])}\n"
+            f"👥 O'quvchilar: {len(data['students'])} ta"
+        )
+    except Exception as e:
+        logging.error(f"Error saving group: {e}")
+        await callback.message.edit_text(f"❌ Xatolik yuz berdi: {e}")
+    
+    await state.clear()
 
 async def create_visual_timetable_img(branch_name: str):
     days = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba']
@@ -4460,6 +4703,9 @@ async def admin_back(callback: types.CallbackQuery):
         )
         builder.row(
             InlineKeyboardButton(text="🖼 Vizual Jadval (Haftalik)", callback_data="admin_visual_schedule")
+        )
+        builder.row(
+            InlineKeyboardButton(text="➕ Guruh shakllantirish", callback_data="admin_create_group")
         )
         builder.row(
             InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
