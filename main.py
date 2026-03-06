@@ -87,6 +87,8 @@ TOKEN = os.environ.get("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("BOT_TOKEN topilmadi! Render.com da environment variable qo'shing")
 DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL topilmadi! Render.com da environment variable qo'shing")
 ADMIN_GROUP_ID = -1003885800610 
 UZB_TZ = pytz.timezone('Asia/Tashkent') 
 
@@ -1728,38 +1730,43 @@ async def std_submit_callback(callback: types.CallbackQuery, state: FSMContext):
     ws.column_dimensions['D'].width = 10
     
     # Formatlash
+    thin = Side(border_style="thin", color="000000")
+    border = Border(top=thin, left=thin, right=thin, bottom=thin)
+    
     for row in ws.iter_rows(min_row=2, max_row=len(students)+1):
         for cell in row:
-            cell.border = Border(
-                left=Side(style='thin'), 
-                right=Side(style='thin'),
-                top=Side(style='thin'), 
-                bottom=Side(style='thin')
-            )
+            cell.border = border
     
     # Sarlavha formatlash
+    header_fill = PatternFill(start_color="2E86AB", end_color="2E86AB", fill_type="solid")
     for cell in ws[1]:
-        cell.font = Font(bold=True)
-        cell.fill = PatternFill(start_color="2E86AB", end_color="2E86AB", fill_type="solid")
-        cell.font = Font(color="FFFFFF", bold=True)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
         cell.alignment = Alignment(horizontal="center")
+        cell.border = border
     
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
     
     # Adminga yuborish
+    group_name = groups[g_id]['group_name']
+    teacher_name = user_names.get(user_id, 'Noma\'lum')
+    current_date = datetime.now(UZB_TZ).strftime('%Y-%m-%d')
+    
     caption = (
         f"🧑‍🎓 **Guruh Davomati**\n"
-        f"📦 Guruh: {groups[g_id]['group_name']}\n"
-        f"👤 O'qituvchi: {user_names.get(user_id, 'Noma\'lum')}\n"
-        f"📅 Sana: {datetime.now(UZB_TZ).strftime('%Y-%m-%d')}\n"
+        f"📦 Guruh: {group_name}\n"
+        f"👤 O'qituvchi: {teacher_name}\n"
+        f"📅 Sana: {current_date}\n"
         f"👥 Kelganlar: {len(selected)}/{len(students)}"
     )
     
+    filename = f"Guruh_Davomati_{group_name}_{current_date}.xlsx"
+    
     await bot.send_document(
         ADMIN_GROUP_ID, 
-        types.BufferedInputFile(buf.read(), filename=f"Guruh_Davomati_{groups[g_id]['group_name']}_{datetime.now(UZB_TZ).strftime('%Y%m%d')}.xlsx"),
+        types.BufferedInputFile(buf.read(), filename=filename),
         caption=caption,
         parse_mode="Markdown"
     )
@@ -2003,7 +2010,7 @@ async def admin_panel(message: types.Message):
         logging.error(f"admin_panel error: {e}")
         await message.answer("❌ Admin panelni ochishda xatolik yuz berdi")
 
-# --- GURUH YARATISH HANDLERLARI (YANGI) ---
+# --- GURUH YARATISH HANDLERLARI (YANGI) - TUZATILGAN VERSIYA---
 @dp.callback_query(F.data == "admin_create_group")
 async def start_group_creation(callback: types.CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
@@ -2127,6 +2134,7 @@ async def grp_more_students(callback: types.CallbackQuery, state: FSMContext):
     )
     await state.set_state(CreateGroup.adding_student_name)
 
+# --- TUZATILGAN GURUH YARATISH FUNKSIYASI (f-string xatosi tuzatildi) ---
 @dp.callback_query(CreateGroup.confirm_student, F.data == "grp_finish")
 async def grp_final_save(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -2157,14 +2165,15 @@ async def grp_final_save(callback: types.CallbackQuery, state: FSMContext):
         }
         group_students[group_id] = data['students']
 
-        # 2. O'qituvchiga xabar
+        # 2. O'qituvchiga xabar - f-string ichida murakkab amal yo'q
+        days_str = ", ".join(data['selected_days'])  # JOIN AMALI ALOHIDA BAJARILDI
         teacher_msg = (
             f"🆕 **Yangi guruh biriktirildi!**\n\n"
             f"📦 Guruh: {data['group_name']}\n"
             f"🏢 Filial: {data['branch']}\n"
             f"📚 Fan: {data['type']}\n"
             f"⏰ Vaqt: {data['time']}\n"
-            f"📅 Kunlar: {', '.join(data['selected_days'])}\n"
+            f"📅 Kunlar: {days_str}\n"
             f"👥 O'quvchilar soni: {len(data['students'])} ta\n\n"
             f"Botda davomat qilganingizda ushbu o'quvchilar ro'yxati chiqadi."
         )
@@ -2296,7 +2305,7 @@ async def visual_schedule_process(callback: types.CallbackQuery, state: FSMConte
     await state.clear()
     await callback.answer()
 
-# --- OYLIK KALKULYATOR HANDLERS ---
+# --- OYLIK KALKULYATOR HANDLERS (TUZATILGAN VERSIYA)---
 @dp.callback_query(F.data == "admin_salary_calc")
 async def salary_calc_start(callback: types.CallbackQuery, state: FSMContext):
     if not check_admin(callback.message.chat.id):
@@ -2473,7 +2482,9 @@ async def process_branch_calculation(message: types.Message, state: FSMContext):
             gross = mid_total
         
         gross -= data['temp_penalty_val']
-        penalty_disp = f"{data['temp_penalty_val']:,} so'm"
+        # Formatlashni alohida bajaramiz
+        penalty_val = data['temp_penalty_val']
+        penalty_disp = f"{penalty_val:,} so'm".replace(',', ' ')
 
     res = {
         'branch': branch_name,
@@ -2504,6 +2515,7 @@ async def finalize_multi_branch_salary(message: types.Message, state: FSMContext
     
     excel_file = await create_multi_branch_excel(data['teacher_name'], data['specialty'], results, total_gross, tax, net)
     
+    # Formatlashni alohida bajaramiz - f-string ichida replace ishlatilmadi
     s_net = "{:,.0f}".format(net).replace(',', ' ')
     s_tax = "{:,.0f}".format(tax).replace(',', ' ')
     s_gross = "{:,.0f}".format(total_gross).replace(',', ' ')
@@ -2572,10 +2584,15 @@ async def create_multi_branch_excel(teacher_name, specialty, results, total_gros
 
     ws.append([])
     
+    # Formatlashni alohida bajaramiz
+    total_gross_fmt = f"{total_gross:,.0f}".replace(',', ' ')
+    tax_fmt = f"{tax:,.0f}".replace(',', ' ')
+    net_fmt = f"{net:,.0f}".replace(',', ' ')
+    
     summary_rows = [
-        ['', '', '', '', '', 'JAMI (soliqsiz):', f"{total_gross:,.0f}"],
-        ['', '', '', '', '', 'Soliq (7.5%):', f"{tax:,.0f}"],
-        ['', '', '', '', '', 'QO\'LGA TEGADI:', f"{net:,.0f}"]
+        ['', '', '', '', '', 'JAMI (soliqsiz):', total_gross_fmt],
+        ['', '', '', '', '', 'Soliq (7.5%):', tax_fmt],
+        ['', '', '', '', '', 'QO\'LGA TEGADI:', net_fmt]
     ]
     
     for s_row in summary_rows:
