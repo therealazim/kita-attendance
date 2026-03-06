@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: hancom-attendance-bot
+    runtime: python
+    region: frankfurt
+    plan: free
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: python -c "f=open('main.py','rb');d=f.read();f.close();d=d.replace(b'\xe2\x80\x98',b\"'\").replace(b'\xe2\x80\x99',b\"'\").replace(b'\xe2\x80\x9c',b'\"').replace(b'\xe2\x80\x9d',b'\"').replace(b'\x92',b\"'\").replace(b'\x91',b\"'\");f=open('main.py','wb');f.write(d);f.close()" && python main.py
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: attendance-db
+          property: connectionString
+      - key: BOT_TOKEN
+        sync: false
+      - key: PORT
+        value: 10000
+      - key: PYTHON_VERSION
+        value: 3.11.11
+
+databases:
+  - name: attendance-db
+    plan: free
+    region: frankfurt
