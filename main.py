@@ -1988,6 +1988,9 @@ async def admin_panel(message: types.Message):
             InlineKeyboardButton(text="👥 Faol guruhlar", callback_data="admin_active_groups")
         )
         builder.row(
+            InlineKeyboardButton(text="📊 Excel guruh qo'shish", callback_data="admin_excel_create_group")
+        )
+        builder.row(
             InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
             InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast")
         )
@@ -2042,7 +2045,6 @@ async def grp_type_selected(callback: types.CallbackQuery, state: FSMContext):
 async def grp_teacher_selected(callback: types.CallbackQuery, state: FSMContext):
     teacher_id = int(callback.data.replace("grp_tchr_", ""))
     await state.update_data(teacher_id=teacher_id, selected_days=[])
-    await state.set_state(CreateGroup.selecting_days)
     await grp_show_days(callback.message, [])
     await callback.answer()
 
@@ -2194,8 +2196,77 @@ async def grp_final_save(callback: types.CallbackQuery, state: FSMContext):
     
     await state.clear()
 
+async def create_visual_timetable_img(branch_name: str):
+    days = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba']
+    time_slots = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00']
+    
+    plt.figure(figsize=(14, 8))
+    ax = plt.gca()
+    
+    colors_map = {
+        'IT': '#E3F2FD',
+        'Koreys tili': '#E8F5E9',
+        'Ofis xodimi': '#FFF3E0'
+    }
+    border_map = {
+        'IT': '#1565C0', 
+        'Koreys tili': '#2E7D32', 
+        'Ofis xodimi': '#EF6C00'
+    }
 
+    for i in range(len(days) + 1):
+        plt.axvline(i, color='gray', linestyle='--', alpha=0.3)
+    for i in range(len(time_slots) + 1):
+        plt.axhline(i, color='gray', linestyle='--', alpha=0.3)
 
+    found_any = False
+    for sid, data in schedules.items():
+        if data['branch'] == branch_name:
+            found_any = True
+            uid = data['user_id']
+            spec = user_specialty.get(uid, 'IT')
+            t_name = user_names.get(uid, "Noma'lum")
+            
+            for day, t_val in data['days'].items():
+                if day in days:
+                    day_idx = days.index(day)
+                    try:
+                        h, m = map(int, t_val.split(':'))
+                        start_y = h + (m/60)
+                        y_pos = len(time_slots) - (start_y - 8)
+                        
+                        rect = plt.Rectangle((day_idx + 0.05, y_pos - 0.9), 0.9, 0.8, 
+                                            facecolor=colors_map.get(spec, '#F5F5F5'),
+                                            edgecolor=border_map.get(spec, 'gray'),
+                                            linewidth=1.5, alpha=0.9, zorder=3)
+                        ax.add_patch(rect)
+                        
+                        plt.text(day_idx + 0.5, y_pos - 0.5, f"{t_name}\n({t_val})\n{spec}", 
+                                 ha='center', va='center', fontsize=8, fontweight='bold', zorder=4)
+                    except: continue
+
+    plt.xticks(np.arange(0.5, len(days), 1), days, fontweight='bold')
+    plt.yticks(np.arange(0.5, len(time_slots), 1), time_slots[::-1], fontweight='bold')
+    
+    plt.title(f"🏢 {branch_name} - Haftalik Bandlik Jadvali", fontsize=16, pad=20, fontweight='bold', color='#1A237E')
+    plt.xlim(0, len(days))
+    plt.ylim(0, len(time_slots))
+    
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], marker='s', color='w', label='IT Bo\'limi', markerfacecolor='#E3F2FD', markersize=15, markeredgecolor='#1565C0'),
+        Line2D([0], [0], marker='s', color='w', label='Koreys tili', markerfacecolor='#E8F5E9', markersize=15, markeredgecolor='#2E7D32'),
+        Line2D([0], [0], marker='s', color='w', label='Ofis xodimi', markerfacecolor='#FFF3E0', markersize=15, markeredgecolor='#EF6C00')
+    ]
+    ax.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=3)
+
+    img_buf = io.BytesIO()
+    plt.savefig(img_buf, format='png', bbox_inches='tight', dpi=150)
+    img_buf.seek(0)
+    plt.close()
+    return img_buf, found_any
+
+@dp.callback_query(F.data == "admin_visual_schedule")
 async def visual_schedule_start(callback: types.CallbackQuery, state: FSMContext):
     if not check_admin(callback.message.chat.id):
         await callback.answer("Ruxsat yo'q!")
@@ -4795,6 +4866,9 @@ async def admin_back(callback: types.CallbackQuery):
             InlineKeyboardButton(text="👥 Faol guruhlar", callback_data="admin_active_groups")
         )
         builder.row(
+            InlineKeyboardButton(text="📊 Excel guruh qo'shish", callback_data="admin_excel_create_group")
+        )
+        builder.row(
             InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
             InlineKeyboardButton(text="📢 Xabar yuborish", callback_data="admin_broadcast")
         )
@@ -4819,7 +4893,7 @@ async def admin_back(callback: types.CallbackQuery):
 
 
 # ============================================================
-# FAOL GURUHLAR + EXCEL HANDLERS
+# FAOL GURUHLAR HANDLERS
 # ============================================================
 
 class EditGroupStudents(StatesGroup):
@@ -4827,6 +4901,9 @@ class EditGroupStudents(StatesGroup):
     entering_new_phone = State()
 
 class ExcelUploadGroup(StatesGroup):
+    waiting_file = State()
+
+class ExcelCreateGroup(StatesGroup):
     waiting_file = State()
 
 @dp.callback_query(F.data == "admin_active_groups")
@@ -4883,22 +4960,22 @@ async def grp_view_detail(callback: types.CallbackQuery, state: FSMContext):
             f"Guruh: {grp['group_name']}\n"
             f"Filial: {grp['branch']}\n"
             f"Fan: {grp['lesson_type']}\n"
-            f"Oqituvchi: {tname}\n"
+            f"O'qituvchi: {tname}\n"
             f"Vaqt: {grp['time_text']}\n"
             f"Kunlar: {days_str}\n\n"
-            f"Oquvchilar ({len(students)} ta):\n"
+            f"O'quvchilar ({len(students)} ta):\n"
         )
         for idx, std in enumerate(students, 1):
             text += f"{idx}. {std['student_name']} - {std['student_phone']}\n"
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="Oquvchilarni tahrirlash", callback_data=f"grp_edit_{group_id}"))
+        builder.row(InlineKeyboardButton(text="O'quvchilarni tahrirlash", callback_data=f"grp_edit_{group_id}"))
         builder.row(
             InlineKeyboardButton(text="📥 Excel yuklab olish", callback_data=f"grp_excel_download_{group_id}"),
             InlineKeyboardButton(text="📤 Excel yuklash", callback_data=f"grp_excel_upload_{group_id}")
         )
-        builder.row(InlineKeyboardButton(text="Oquvchi qoshish", callback_data=f"grp_add_std_{group_id}"))
-        builder.row(InlineKeyboardButton(text="Guruhni ochirish", callback_data=f"grp_delete_{group_id}"))
-        builder.row(InlineKeyboardButton(text="Guruhlar royxati", callback_data="admin_active_groups"))
+        builder.row(InlineKeyboardButton(text="O'quvchi qo'shish", callback_data=f"grp_add_std_{group_id}"))
+        builder.row(InlineKeyboardButton(text="Guruhni o'chirish", callback_data=f"grp_delete_{group_id}"))
+        builder.row(InlineKeyboardButton(text="Guruhlar ro'yxati", callback_data="admin_active_groups"))
         await callback.message.edit_text(text, reply_markup=builder.as_markup())
         await callback.answer()
     except Exception as e:
@@ -4915,7 +4992,7 @@ async def grp_edit_students(callback: types.CallbackQuery, state: FSMContext):
         async with db.pool.acquire() as conn:
             students = await conn.fetch("SELECT * FROM group_students WHERE group_id = $1 ORDER BY id", group_id)
         if not students:
-            await callback.answer("Bu guruhda oquvchilar yoq!", show_alert=True)
+            await callback.answer("Bu guruhda o'quvchilar yo'q!", show_alert=True)
             return
         builder = InlineKeyboardBuilder()
         for std in students:
@@ -4924,7 +5001,7 @@ async def grp_edit_students(callback: types.CallbackQuery, state: FSMContext):
                 callback_data=f"grp_std_edit_{std['id']}_{group_id}"
             ))
         builder.row(InlineKeyboardButton(text="Ortga", callback_data=f"grp_view_{group_id}"))
-        await callback.message.edit_text("Tahrirlash uchun oquvchini tanlang:", reply_markup=builder.as_markup())
+        await callback.message.edit_text("Tahrirlash uchun o'quvchini tanlang:", reply_markup=builder.as_markup())
         await callback.answer()
     except Exception as e:
         logging.error(f"grp_edit_students error: {e}")
@@ -4941,12 +5018,12 @@ async def grp_std_edit_options(callback: types.CallbackQuery, state: FSMContext)
         async with db.pool.acquire() as conn:
             std = await conn.fetchrow("SELECT * FROM group_students WHERE id = $1", std_id)
         if not std:
-            await callback.answer("Oquvchi topilmadi!", show_alert=True)
+            await callback.answer("O'quvchi topilmadi!", show_alert=True)
             return
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="Ismini ozgartirish", callback_data=f"grp_std_rename_{std_id}_{group_id}"))
-        builder.row(InlineKeyboardButton(text="Raqamini ozgartirish", callback_data=f"grp_std_rephone_{std_id}_{group_id}"))
-        builder.row(InlineKeyboardButton(text="Ochirish", callback_data=f"grp_std_del_{std_id}_{group_id}"))
+        builder.row(InlineKeyboardButton(text="Ismini o'zgartirish", callback_data=f"grp_std_rename_{std_id}_{group_id}"))
+        builder.row(InlineKeyboardButton(text="Raqamini o'zgartirish", callback_data=f"grp_std_rephone_{std_id}_{group_id}"))
+        builder.row(InlineKeyboardButton(text="O'chirish", callback_data=f"grp_std_del_{std_id}_{group_id}"))
         builder.row(InlineKeyboardButton(text="Ortga", callback_data=f"grp_edit_{group_id}"))
         await callback.message.edit_text(
             f"{std['student_name']}\n{std['student_phone']}\n\nNima qilmoqchisiz?",
@@ -5009,7 +5086,7 @@ async def grp_std_save_phone(message: types.Message, state: FSMContext):
                     "INSERT INTO group_students (group_id, student_name, student_phone) VALUES ($1,$2,$3)",
                     group_id, new_name, new_val
                 )
-            await message.answer(f"{new_name} qoshildi!")
+            await message.answer(f"{new_name} qo'shildi!")
         except Exception as e:
             await message.answer(f"Xatolik: {e}")
         await state.clear()
@@ -5037,7 +5114,7 @@ async def grp_std_delete(callback: types.CallbackQuery, state: FSMContext):
         async with db.pool.acquire() as conn:
             std = await conn.fetchrow("SELECT * FROM group_students WHERE id=$1", std_id)
             await conn.execute("DELETE FROM group_students WHERE id=$1", std_id)
-        await callback.answer(f"{std['student_name']} ochirildi!", show_alert=True)
+        await callback.answer(f"{std['student_name']} o'chirildi!", show_alert=True)
     except Exception as e:
         await callback.answer(f"Xatolik: {e}", show_alert=True)
         return
@@ -5045,7 +5122,7 @@ async def grp_std_delete(callback: types.CallbackQuery, state: FSMContext):
         grp = await conn.fetchrow("SELECT * FROM groups WHERE id=$1", group_id)
         students = await conn.fetch("SELECT * FROM group_students WHERE group_id=$1 ORDER BY id", group_id)
     tname = user_names.get(grp["teacher_id"], "Noma'lum")
-    text = f"Guruh: {grp['group_name']}\nOqituvchi: {tname}\n\nOquvchilar ({len(students)} ta):\n"
+    text = f"Guruh: {grp['group_name']}\nO'qituvchi: {tname}\n\nO'quvchilar ({len(students)} ta):\n"
     for idx, std in enumerate(students, 1):
         text += f"{idx}. {std['student_name']} - {std['student_phone']}\n"
     builder = InlineKeyboardBuilder()
@@ -5054,9 +5131,9 @@ async def grp_std_delete(callback: types.CallbackQuery, state: FSMContext):
         InlineKeyboardButton(text="📥 Excel yuklab olish", callback_data=f"grp_excel_download_{group_id}"),
         InlineKeyboardButton(text="📤 Excel yuklash", callback_data=f"grp_excel_upload_{group_id}")
     )
-    builder.row(InlineKeyboardButton(text="Oquvchi qoshish", callback_data=f"grp_add_std_{group_id}"))
-    builder.row(InlineKeyboardButton(text="Guruhni ochirish", callback_data=f"grp_delete_{group_id}"))
-    builder.row(InlineKeyboardButton(text="Guruhlar royxati", callback_data="admin_active_groups"))
+    builder.row(InlineKeyboardButton(text="O'quvchi qo'shish", callback_data=f"grp_add_std_{group_id}"))
+    builder.row(InlineKeyboardButton(text="Guruhni o'chirish", callback_data=f"grp_delete_{group_id}"))
+    builder.row(InlineKeyboardButton(text="Guruhlar ro'yxati", callback_data="admin_active_groups"))
     await callback.message.edit_text(text, reply_markup=builder.as_markup())
 
 @dp.callback_query(F.data.startswith("grp_add_std_"))
@@ -5064,7 +5141,7 @@ async def grp_add_student_start(callback: types.CallbackQuery, state: FSMContext
     group_id = int(callback.data.replace("grp_add_std_", ""))
     await state.update_data(add_std_group_id=group_id, add_std_step="name")
     await state.set_state(EditGroupStudents.entering_new_name)
-    await callback.message.edit_text("Yangi oquvchining ismini kiriting:")
+    await callback.message.edit_text("Yangi o'quvchining ismini kiriting:")
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("grp_delete_confirm_"))
@@ -5077,8 +5154,8 @@ async def grp_delete_execute(callback: types.CallbackQuery, state: FSMContext):
         groups.pop(group_id, None)
         group_students.pop(group_id, None)
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="Guruhlar royxati", callback_data="admin_active_groups"))
-        await callback.message.edit_text(f"{grp_name} guruhi ochirildi!", reply_markup=builder.as_markup())
+        builder.row(InlineKeyboardButton(text="Guruhlar ro'yxati", callback_data="admin_active_groups"))
+        await callback.message.edit_text(f"{grp_name} guruhi o'chirildi!", reply_markup=builder.as_markup())
     except Exception as e:
         await callback.answer(f"Xatolik: {e}", show_alert=True)
     await callback.answer()
@@ -5090,11 +5167,11 @@ async def grp_delete_confirm(callback: types.CallbackQuery, state: FSMContext):
         grp = await conn.fetchrow("SELECT group_name FROM groups WHERE id=$1", group_id)
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="Ha, ochirish", callback_data=f"grp_delete_confirm_{group_id}"),
-        InlineKeyboardButton(text="Yoq", callback_data=f"grp_view_{group_id}")
+        InlineKeyboardButton(text="Ha, o'chirish", callback_data=f"grp_delete_confirm_{group_id}"),
+        InlineKeyboardButton(text="Yo'q", callback_data=f"grp_view_{group_id}")
     )
     await callback.message.edit_text(
-        f"{grp['group_name']} guruhini ochirishni tasdiqlaysizmi? Barcha oquvchilar ham ochib ketadi!",
+        f"{grp['group_name']} guruhini o'chirishni tasdiqlaysizmi? Barcha o'quvchilar ham o'chib ketadi!",
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -5111,7 +5188,7 @@ async def grp_excel_download(callback: types.CallbackQuery, state: FSMContext):
             students = await conn.fetch("SELECT * FROM group_students WHERE group_id=$1 ORDER BY id", group_id)
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.title = "Oquvchilar"
+        ws.title = "O'quvchilar"
         ws["A1"] = f"Guruh: {grp['group_name']}"
         ws["A1"].font = Font(bold=True, size=13)
         ws.merge_cells("A1:C1")
@@ -5134,7 +5211,7 @@ async def grp_excel_download(callback: types.CallbackQuery, state: FSMContext):
         ws.column_dimensions["C"].width = 20
         note_row = 4 + len(students) + 2
         ws.cell(row=note_row, column=1,
-            value="ESLATMA: Yangi oquvchi - yangi qator qoshing. Ochirish - qatorni turing. Tahrirlang. Keyin faylni qaytarib yuboring.")
+            value="ESLATMA: Yangi o'quvchi - yangi qator qo'shing. O'chirish - qatorni turing. Tahrirlang. Keyin faylni qaytarib yuboring.")
         ws.merge_cells(f"A{note_row}:C{note_row}")
         ws.cell(row=note_row, column=1).fill = PatternFill("solid", fgColor="FFF2CC")
         ws.cell(row=note_row, column=1).font = Font(italic=True, size=9)
@@ -5145,12 +5222,8 @@ async def grp_excel_download(callback: types.CallbackQuery, state: FSMContext):
         await callback.message.answer_document(
             types.BufferedInputFile(buf.read(), filename=filename),
             caption=(
-                f"Guruh: {grp['group_name']} - oquvchilar royxati\n\n"
-                f"Faylni tahrirlang:\n"
-                f"- Yangi qator = yangi oquvchi\n"
-                f"- Qatorni oching = oquvchi ochiladi\n"
-                f"- Togrilang = yangilanadi\n\n"
-                f"Keyin 'Excel yuklash' tugmasini bosib faylni yuboring."
+                f"Guruh: {grp['group_name']} - o'quvchilar ro'yxati\n\n"
+                f"Faylni tahrirlang va 'Excel yuklash' tugmasini bosib qaytarib yuboring."
             )
         )
         await callback.answer()
@@ -5169,8 +5242,7 @@ async def grp_excel_upload_start(callback: types.CallbackQuery, state: FSMContex
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="Bekor qilish", callback_data=f"grp_view_{group_id}"))
     await callback.message.answer(
-        "Tahrirlangan Excel faylni yuboring.\n\n"
-        "Diqqat: Yuborilgan fayl to'liq royxat sifatida qabul qilinadi.",
+        "Tahrirlangan Excel faylni yuboring.\n\nDiqqat: Yuborilgan fayl to'liq ro'yxat sifatida qabul qilinadi.",
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -5190,7 +5262,7 @@ async def grp_excel_process(message: types.Message, state: FSMContext):
         await message.answer("Faqat .xlsx yoki .xls fayl yuboring!")
         return
     try:
-        await message.answer("Fayl oqilmoqda...")
+        await message.answer("Fayl o'qilmoqda...")
         file = await message.bot.get_file(doc.file_id)
         file_buf = io.BytesIO()
         await message.bot.download_file(file.file_path, file_buf)
@@ -5207,7 +5279,7 @@ async def grp_excel_process(message: types.Message, state: FSMContext):
                     "phone": str(phone).strip() if phone else "-"
                 })
         if not new_students:
-            await message.answer("Faylda oquvchilar topilmadi! 5-qatordan boshlab toldiring.")
+            await message.answer("Faylda o'quvchilar topilmadi! 5-qatordan boshlab to'ldiring.")
             return
         async with db.pool.acquire() as conn:
             grp = await conn.fetchrow("SELECT group_name FROM groups WHERE id=$1", group_id)
@@ -5219,7 +5291,7 @@ async def grp_excel_process(message: types.Message, state: FSMContext):
                 )
         group_students[group_id] = new_students
         await state.clear()
-        result = f"Guruh yangilandi: {grp['group_name']}\n\nJami {len(new_students)} ta oquvchi saqlandi:\n"
+        result = f"Guruh yangilandi: {grp['group_name']}\n\nJami {len(new_students)} ta o'quvchi saqlandi:\n"
         for idx, std in enumerate(new_students, 1):
             result += f"{idx}. {std['name']} - {std['phone']}\n"
         builder = InlineKeyboardBuilder()
@@ -5227,12 +5299,174 @@ async def grp_excel_process(message: types.Message, state: FSMContext):
         await message.answer(result, reply_markup=builder.as_markup())
     except Exception as e:
         logging.error(f"grp_excel_process error: {e}")
-        await message.answer(f"Faylni oqishda xatolik: {e}")
+        await message.answer(f"Faylni o'qishda xatolik: {e}")
         await state.clear()
 
 @dp.message(ExcelUploadGroup.waiting_file)
 async def grp_excel_wrong_file(message: types.Message, state: FSMContext):
     await message.answer("Iltimos, .xlsx formatidagi Excel fayl yuboring!")
+
+
+# ============================================================
+# EXCEL ORQALI YANGI GURUH YARATISH
+# ============================================================
+
+@dp.callback_query(F.data == "admin_excel_create_group")
+async def excel_create_group_start(callback: types.CallbackQuery, state: FSMContext):
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Guruh Ma'lumotlari"
+    ws["A1"] = "GURUH MA'LUMOTLARI - SHABLON"
+    ws["A1"].font = Font(bold=True, size=14, color="FFFFFF")
+    ws["A1"].fill = PatternFill("solid", fgColor="2E86AB")
+    ws.merge_cells("A1:D1")
+    fields = [
+        ("A3", "Guruh nomi:", "B3", "Masalan: IT-1 yoki Koreys-A"),
+        ("A4", "Filial:", "B4", "Masalan: 78-Maktab"),
+        ("A5", "Fan:", "B5", "IT yoki Koreys tili"),
+        ("A6", "O'qituvchi Telegram ID:", "B6", "Masalan: 123456789"),
+        ("A7", "Dars vaqti:", "B7", "Masalan: 14:00"),
+        ("A8", "Dars kunlari:", "B8", "Masalan: Dushanba,Chorshanba,Juma"),
+    ]
+    for label_cell, label_val, val_cell, hint in fields:
+        ws[label_cell] = label_val
+        ws[label_cell].font = Font(bold=True)
+        ws[val_cell] = hint
+        ws[val_cell].fill = PatternFill("solid", fgColor="FFF2CC")
+    ws["A10"] = "O'QUVCHILAR RO'YXATI"
+    ws["A10"].font = Font(bold=True, size=12, color="FFFFFF")
+    ws["A10"].fill = PatternFill("solid", fgColor="4472C4")
+    ws.merge_cells("A10:C10")
+    for col, h in enumerate(["No", "Ism Familiya", "Telefon raqami"], 1):
+        cell = ws.cell(row=11, column=col, value=h)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="4472C4")
+        cell.alignment = Alignment(horizontal="center")
+    for i, (name, phone) in enumerate([("Ali Karimov", "+998901234567"), ("Barno Qosimova", "+998911234567")], 1):
+        ws.cell(row=11+i, column=1, value=i)
+        ws.cell(row=11+i, column=2, value=name)
+        ws.cell(row=11+i, column=3, value=phone)
+    ws.column_dimensions["A"].width = 6
+    ws.column_dimensions["B"].width = 32
+    ws.column_dimensions["C"].width = 20
+    ws.column_dimensions["D"].width = 35
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    await callback.message.answer_document(
+        types.BufferedInputFile(buf.read(), filename="yangi_guruh_shablon.xlsx"),
+        caption=(
+            "📋 Yangi guruh yaratish uchun shablon\n\n"
+            "1. Faylni yuklab oling\n"
+            "2. Ma'lumotlarni to'ldiring:\n"
+            "   - Guruh nomi, filial, fan, vaqt, kunlar\n"
+            "   - O'qituvchi Telegram ID\n"
+            "   - 12-qatordan o'quvchilarni kiriting\n"
+            "3. To'ldirilgan faylni yuboring"
+        )
+    )
+    await state.set_state(ExcelCreateGroup.waiting_file)
+    await callback.answer()
+
+@dp.message(ExcelCreateGroup.waiting_file, F.document)
+async def excel_create_group_process(message: types.Message, state: FSMContext):
+    if not check_admin(message.chat.id):
+        return
+    doc = message.document
+    if not doc.file_name.lower().endswith((".xlsx", ".xls")):
+        await message.answer("Faqat .xlsx yoki .xls fayl yuboring!")
+        return
+    try:
+        await message.answer("Fayl o'qilmoqda...")
+        file = await message.bot.get_file(doc.file_id)
+        file_buf = io.BytesIO()
+        await message.bot.download_file(file.file_path, file_buf)
+        file_buf.seek(0)
+        wb = openpyxl.load_workbook(file_buf)
+        ws = wb.active
+        group_name = str(ws["B3"].value or "").strip()
+        branch = str(ws["B4"].value or "").strip()
+        lesson_type = str(ws["B5"].value or "").strip()
+        teacher_id_raw = ws["B6"].value
+        time_text = str(ws["B7"].value or "").strip()
+        days_raw = str(ws["B8"].value or "").strip()
+        errors = []
+        if not group_name:
+            errors.append("Guruh nomi bo'sh!")
+        if not branch:
+            errors.append("Filial bo'sh!")
+        if lesson_type not in ("IT", "Koreys tili"):
+            errors.append("Fan: faqat 'IT' yoki 'Koreys tili' bo'lishi kerak!")
+        try:
+            teacher_id = int(teacher_id_raw)
+            if teacher_id not in user_names:
+                errors.append(f"O'qituvchi ID {teacher_id} topilmadi!")
+        except (TypeError, ValueError):
+            errors.append("O'qituvchi Telegram ID noto'g'ri!")
+            teacher_id = None
+        if not time_text:
+            errors.append("Dars vaqti bo'sh!")
+        days_list = [d.strip() for d in days_raw.split(",") if d.strip()]
+        invalid_days = [d for d in days_list if d not in set(WEEKDAYS_UZ)]
+        if not days_list:
+            errors.append("Dars kunlari bo'sh!")
+        if invalid_days:
+            errors.append(f"Noto'g'ri kun nomlari: {', '.join(invalid_days)}")
+        if errors:
+            await message.answer("Xatoliklar:\n\n" + "\n".join(f"  {e}" for e in errors))
+            return
+        students = []
+        for row in ws.iter_rows(min_row=12, values_only=True):
+            vals = (list(row) + [None, None, None])[:3]
+            num, name, phone = vals
+            if name and str(name).strip():
+                students.append({"name": str(name).strip(), "phone": str(phone).strip() if phone else "-"})
+        if not students:
+            await message.answer("O'quvchilar topilmadi! 12-qatordan boshlab kiriting.")
+            return
+        async with db.pool.acquire() as conn:
+            group_id = await conn.fetchval("""
+                INSERT INTO groups (group_name, branch, lesson_type, teacher_id, days_data, time_text)
+                VALUES ($1, $2, $3, $4, $5::jsonb, $6) RETURNING id
+            """, group_name, branch, lesson_type, teacher_id, json.dumps(days_list), time_text)
+            for std in students:
+                await conn.execute(
+                    "INSERT INTO group_students (group_id, student_name, student_phone) VALUES ($1,$2,$3)",
+                    group_id, std["name"], std["phone"]
+                )
+        groups[group_id] = {
+            "group_name": group_name, "branch": branch, "lesson_type": lesson_type,
+            "teacher_id": teacher_id, "days": days_list, "time": time_text
+        }
+        group_students[group_id] = students
+        days_str = ", ".join(days_list)
+        try:
+            await bot.send_message(
+                teacher_id,
+                f"Yangi guruh biriktirildi!\n\nGuruh: {group_name}\nFilial: {branch}\nFan: {lesson_type}\nVaqt: {time_text}\nKunlar: {days_str}\nOquvchilar: {len(students)} ta"
+            )
+        except Exception as e:
+            logging.error(f"Teacher notify error: {e}")
+        await state.clear()
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="Guruhni ko'rish", callback_data=f"grp_view_{group_id}"))
+        builder.row(InlineKeyboardButton(text="Admin Panel", callback_data="admin_back"))
+        await message.answer(
+            f"Guruh yaratildi!\n\n{group_name}\n{branch} | {lesson_type}\n{time_text} | {days_str}\nOquvchilar: {len(students)} ta",
+            reply_markup=builder.as_markup()
+        )
+    except Exception as e:
+        logging.error(f"excel_create_group_process error: {e}")
+        await message.answer(f"Faylni oqishda xatolik: {e}")
+        await state.clear()
+
+@dp.message(ExcelCreateGroup.waiting_file)
+async def excel_create_group_wrong_file(message: types.Message, state: FSMContext):
+    await message.answer("Iltimos, .xlsx formatidagi Excel fayl yuboring!")
+
 
 async def auto_daily_report_task():
     while True:
