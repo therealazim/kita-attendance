@@ -266,6 +266,17 @@ class Database:
                     student_phone TEXT
                 )
             """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS student_attendance (
+                    id SERIAL PRIMARY KEY,
+                    group_id INT REFERENCES groups(id) ON DELETE CASCADE,
+                    student_name TEXT,
+                    student_phone TEXT,
+                    lesson_date DATE NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'Kelmagan',
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
             
             logging.info("✅ Jadvallar yaratildi!")
     
@@ -1754,6 +1765,24 @@ async def std_submit_callback(callback: types.CallbackQuery, state: FSMContext):
     file_bytes = buf_out.read()
     group_attendance_files[g_id] = file_bytes
 
+    # DB ga saqlash
+    lesson_date = now_uzb.date()
+    try:
+        async with db.pool.acquire() as conn:
+            # Avval bugungi yozuvlarni o'chirib yangilaymiz
+            await conn.execute(
+                "DELETE FROM student_attendance WHERE group_id=$1 AND lesson_date=$2",
+                g_id, lesson_date
+            )
+            for i, s in enumerate(students):
+                status = "Kelgan" if i in selected else "Kelmagan"
+                await conn.execute(
+                    "INSERT INTO student_attendance (group_id, student_name, student_phone, lesson_date, status) VALUES ($1,$2,$3,$4,$5)",
+                    g_id, s['name'], s['phone'], lesson_date, status
+                )
+    except Exception as e:
+        logging.error(f"student_attendance DB saqlash xatosi: {e}")
+
     # Adminga yuborish
     filename = f"Davomat_{group_name}.xlsx"
     caption = (
@@ -1999,6 +2028,9 @@ async def admin_panel(message: types.Message):
             InlineKeyboardButton(text="📊 Oylik hisobot (Excel)", callback_data="admin_excel_menu"),
             InlineKeyboardButton(text="📊 Kunlik PDF", callback_data="admin_pdf_report")
         )
+        builder.row(
+            InlineKeyboardButton(text="🧑‍🎓 O'quvchilar davomati", callback_data="admin_student_att_branches")
+        )
         
         await message.answer(
             "👨‍💼 Admin Panel\n\nKerakli bo'limni tanlang:",
@@ -2007,6 +2039,208 @@ async def admin_panel(message: types.Message):
     except Exception as e:
         logging.error(f"admin_panel error: {e}")
         await message.answer("❌ Admin panelni ochishda xatolik yuz berdi")
+
+# --- O'QUVCHILAR DAVOMATI (ADMIN) ---
+@dp.callback_query(F.data == "admin_student_att_branches")
+async def admin_student_att_branches(callback: types.CallbackQuery):
+    builder = InlineKeyboardBuilder()
+    for loc in LOCATIONS:
+        builder.row(InlineKeyboardButton(
+            text=f"🏢 {loc['name']}",
+            callback_data=f"stdatt_br_{loc['name'][:40]}"
+        ))
+    builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_back"))
+    await callback.message.edit_text(
+        "🧑‍🎓 O'quvchilar davomati\n\nFilial tanlang:",
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("stdatt_br_"))
+async def admin_student_att_months(callback: types.CallbackQuery):
+    branch = callback.data.replace("stdatt_br_", "")
+    try:
+        async with db.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT DISTINCT TO_CHAR(sa.lesson_date, 'YYYY-MM') as ym,
+                       TO_CHAR(sa.lesson_date, 'MM') as month_num,
+                       TO_CHAR(sa.lesson_date, 'YYYY') as year
+                FROM student_attendance sa
+                JOIN groups g ON sa.group_id = g.id
+                WHERE g.branch = $1
+                ORDER BY ym DESC
+                LIMIT 12
+            """, branch)
+    except Exception as e:
+        logging.error(f"stdatt months error: {e}")
+        await callback.answer("❌ Xatolik yuz berdi", show_alert=True)
+        return
+
+    MONTHS_UZ = {
+        '01': 'Yanvar', '02': 'Fevral', '03': 'Mart', '04': 'Aprel',
+        '05': 'May', '06': 'Iyun', '07': 'Iyul', '08': 'Avgust',
+        '09': 'Sentabr', '10': 'Oktabr', '11': 'Noyabr', '12': 'Dekabr'
+    }
+
+    if not rows:
+        await callback.message.edit_text(
+            f"🏢 {branch}\n\n📭 Hozircha davomat ma'lumoti yo'q.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_student_att_branches")
+            ]])
+        )
+        await callback.answer()
+        return
+
+    builder = InlineKeyboardBuilder()
+    for row in rows:
+        label = f"{MONTHS_UZ.get(row['month_num'], row['month_num'])} {row['year']}"
+        builder.row(InlineKeyboardButton(
+            text=f"📅 {label}",
+            callback_data=f"stdatt_month_{row['ym']}_{branch[:35]}"
+        ))
+    builder.row(InlineKeyboardButton(text="🔙 Ortga", callback_data="admin_student_att_branches"))
+    await callback.message.edit_text(
+        f"🏢 {branch}\n\nOy tanlang:",
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("stdatt_month_"))
+async def admin_student_att_excel(callback: types.CallbackQuery):
+    parts = callback.data.replace("stdatt_month_", "").split("_", 1)
+    ym = parts[0]   # "2025-03"
+    branch = parts[1] if len(parts) > 1 else ""
+    year, month = ym.split("-")
+
+    MONTHS_UZ = {
+        '01': 'Yanvar', '02': 'Fevral', '03': 'Mart', '04': 'Aprel',
+        '05': 'May', '06': 'Iyun', '07': 'Iyul', '08': 'Avgust',
+        '09': 'Sentabr', '10': 'Oktabr', '11': 'Noyabr', '12': 'Dekabr'
+    }
+    month_name = MONTHS_UZ.get(month, month)
+
+    try:
+        async with db.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT sa.student_name, sa.student_phone,
+                       sa.lesson_date, sa.status,
+                       g.group_name
+                FROM student_attendance sa
+                JOIN groups g ON sa.group_id = g.id
+                WHERE g.branch = $1
+                  AND TO_CHAR(sa.lesson_date, 'YYYY-MM') = $2
+                ORDER BY g.group_name, sa.student_name, sa.lesson_date
+            """, branch, ym)
+    except Exception as e:
+        logging.error(f"stdatt excel error: {e}")
+        await callback.answer("❌ Xatolik yuz berdi", show_alert=True)
+        return
+
+    if not rows:
+        await callback.answer("📭 Bu oy uchun davomat yo'q", show_alert=True)
+        return
+
+    await callback.answer("⏳ Excel tayyorlanmoqda...")
+
+    # Guruh bo'yicha ma'lumotlarni tartiblaymiz
+    from collections import defaultdict as _dd
+    # {group_name: {student: {date: status}}}
+    groups_data = _dd(lambda: _dd(lambda: _dd(str)))
+    groups_students = _dd(set)  # guruh -> (name, phone) set
+    all_dates = set()
+
+    for r in rows:
+        gn = r['group_name']
+        key = (r['student_name'], r['student_phone'])
+        groups_students[gn].add(key)
+        groups_data[gn][key][r['lesson_date']] = r['status']
+        all_dates.add(r['lesson_date'])
+
+    all_dates = sorted(all_dates)
+    WEEKDAYS_SHORT = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya']
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    thin = Side(border_style="thin", color="000000")
+    border = Border(top=thin, left=thin, right=thin, bottom=thin)
+    header_fill = PatternFill(start_color="2E86AB", end_color="2E86AB", fill_type="solid")
+    green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+    red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+    group_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+
+    for gn, students_dict in groups_data.items():
+        ws = wb.create_sheet(title=gn[:30])
+
+        # 1-qator: Guruh nomi va oy
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=3 + len(all_dates))
+        title_cell = ws.cell(row=1, column=1, value=f"{gn} — {month_name} {year}")
+        title_cell.font = Font(bold=True, size=12)
+        title_cell.fill = group_fill
+        title_cell.alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[1].height = 22
+
+        # 2-qator: sarlavhalar
+        headers = ['№', "O'quvchi", 'Telefon']
+        for ci, h in enumerate(headers, 1):
+            c = ws.cell(row=2, column=ci, value=h)
+            c.font = Font(bold=True, color="FFFFFF")
+            c.fill = header_fill
+            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            c.border = border
+
+        for di, d in enumerate(all_dates):
+            day_label = f"{d.strftime('%d.%m')}\n{WEEKDAYS_SHORT[d.weekday()]}"
+            c = ws.cell(row=2, column=4 + di, value=day_label)
+            c.font = Font(bold=True, color="FFFFFF")
+            c.fill = header_fill
+            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            c.border = border
+            ws.column_dimensions[get_column_letter(4 + di)].width = 8
+
+        ws.row_dimensions[2].height = 28
+        ws.column_dimensions['A'].width = 5
+        ws.column_dimensions['B'].width = 25
+        ws.column_dimensions['C'].width = 16
+
+        # O'quvchilar
+        for ri, (key, dates_dict) in enumerate(sorted(students_dict.items()), 1):
+            name, phone = key
+            ws.cell(row=ri+2, column=1, value=ri).border = border
+            nc = ws.cell(row=ri+2, column=2, value=name)
+            nc.border = border
+            pc = ws.cell(row=ri+2, column=3, value=phone)
+            pc.border = border
+
+            kelgan = 0
+            for di, d in enumerate(all_dates):
+                status = dates_dict.get(d, "—")
+                sc = ws.cell(row=ri+2, column=4+di, value=status)
+                sc.alignment = Alignment(horizontal="center")
+                sc.border = border
+                if status == "Kelgan":
+                    sc.fill = green_fill
+                    kelgan += 1
+                elif status == "Kelmagan":
+                    sc.fill = red_fill
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    filename = f"Oquvchilar_Davomat_{branch}_{month_name}_{year}.xlsx"
+    caption = (
+        f"🧑‍🎓 O'quvchilar davomati\n"
+        f"🏢 Filial: {branch}\n"
+        f"📅 {month_name} {year}\n"
+        f"📊 Jami darslar: {len(all_dates)} ta"
+    )
+    await bot.send_document(
+        callback.from_user.id,
+        types.BufferedInputFile(buf.read(), filename=filename),
+        caption=caption
+    )
 
 # --- GURUH YARATISH HANDLERLARI (YANGI) - TUZATILGAN VERSIYA---
 @dp.callback_query(F.data == "admin_create_group")
