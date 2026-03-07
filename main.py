@@ -182,6 +182,7 @@ class CreateGroup(StatesGroup):
 # --- O'QUVCHILAR DAVOMATI UCHUN STATE (YANGI) ---
 class StudentAttendance(StatesGroup):
     selecting_students = State()
+    late_students = State()
 
 # --- POSTGRESQL DATABASE CLASS ---
 class Database:
@@ -1799,11 +1800,159 @@ async def std_submit_callback(callback: types.CallbackQuery, state: FSMContext):
         parse_mode="Markdown"
     )
 
-    # O'qituvchiga javob
+    # O'qituvchiga javob — "Kech qolgan o'quvchilar" tugmasi bilan
+    late_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="🕐 Kech qolgan o'quvchilarni belgilash",
+            callback_data=f"std_late_{g_id}"
+        )
+    ]])
     await callback.message.edit_text(
         f"✅ Davomat yuborildi!\n\n"
         f"📅 {current_date} — {current_day}\n"
-        f"👥 Kelganlar: {len(selected)}/{len(students)}"
+        f"👥 Kelganlar: {len(selected)}/{len(students)}\n\n"
+        f"Kech qolgan o'quvchilar bo'lsa, quyidagi tugmani bosing:",
+        reply_markup=late_kb
+    )
+    await state.clear()
+
+@dp.callback_query(F.data.startswith("std_late_"))
+async def std_late_start(callback: types.CallbackQuery, state: FSMContext):
+    g_id = int(callback.data.replace("std_late_", ""))
+    students = group_students.get(g_id, [])
+    if not students:
+        await callback.answer("O'quvchilar topilmadi!", show_alert=True)
+        return
+
+    # Bugungi davomatni DB dan o'qiymiz
+    lesson_date = datetime.now(UZB_TZ).date()
+    try:
+        async with db.pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT student_name, status FROM student_attendance WHERE group_id=$1 AND lesson_date=$2",
+                g_id, lesson_date
+            )
+        status_map = {r['student_name']: r['status'] for r in rows}
+    except Exception as e:
+        logging.error(f"std_late DB read error: {e}")
+        status_map = {}
+
+    # Allaqachon "Kelgan" bo'lganlarni selected qilamiz
+    pre_selected = [
+        i for i, s in enumerate(students)
+        if status_map.get(s['name'], 'Kelmagan') == 'Kelgan'
+    ]
+
+    await state.update_data(late_group_id=g_id, late_selected=pre_selected)
+    await state.set_state(StudentAttendance.late_students)
+
+    kb = await get_student_attendance_kb(g_id, pre_selected)
+    await callback.message.edit_text(
+        f"🕐 Kech qolgan o'quvchilarni ham belgilang\n\n"
+        f"Allaqachon belgilangan o'quvchilar — avval kelganlar.\n"
+        f"Kech qolganlarni ham belgilab, *Davomatni yakunlash* tugmasini bosing:",
+        reply_markup=kb,
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@dp.callback_query(StudentAttendance.late_students, F.data.startswith("std_check_"))
+async def std_late_check(callback: types.CallbackQuery, state: FSMContext):
+    idx = int(callback.data.replace("std_check_", ""))
+    data = await state.get_data()
+    g_id = data['late_group_id']
+    selected = data.get('late_selected', [])
+    if idx in selected:
+        selected.remove(idx)
+    else:
+        selected.append(idx)
+    await state.update_data(late_selected=selected)
+    await callback.message.edit_reply_markup(
+        reply_markup=await get_student_attendance_kb(g_id, selected)
+    )
+    await callback.answer()
+
+@dp.callback_query(StudentAttendance.late_students, F.data == "std_submit")
+async def std_late_submit(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    g_id = data['late_group_id']
+    selected = data.get('late_selected', [])
+    students = group_students.get(g_id, [])
+    user_id = callback.from_user.id
+
+    now_uzb = datetime.now(UZB_TZ)
+    group_name = groups[g_id]['group_name']
+    teacher_name = user_names.get(user_id, "Noma'lum")
+    current_date = now_uzb.strftime('%d.%m.%Y')
+    current_day = WEEKDAYS_UZ[now_uzb.weekday()]
+    lesson_date = now_uzb.date()
+
+    # DB yangilash
+    try:
+        async with db.pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM student_attendance WHERE group_id=$1 AND lesson_date=$2",
+                g_id, lesson_date
+            )
+            for i, s in enumerate(students):
+                status = "Kelgan" if i in selected else "Kelmagan"
+                await conn.execute(
+                    "INSERT INTO student_attendance (group_id, student_name, student_phone, lesson_date, status) VALUES ($1,$2,$3,$4,$5)",
+                    g_id, s['name'], s['phone'], lesson_date, status
+                )
+    except Exception as e:
+        logging.error(f"std_late DB update error: {e}")
+
+    # Excel yangilash
+    thin = Side(border_style="thin", color="000000")
+    border = Border(top=thin, left=thin, right=thin, bottom=thin)
+    green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+    red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+
+    if g_id in group_attendance_files:
+        buf_in = io.BytesIO(group_attendance_files[g_id])
+        wb = load_workbook(buf_in)
+        ws = wb.active
+        last_col = ws.max_column
+        # O'sha kunda yaratilgan oxirgi ustunni yangilaymiz
+        for i, s in enumerate(students):
+            status = "Kelgan" if i in selected else "Kelmagan"
+            dcell = ws.cell(row=i+2, column=last_col, value=status)
+            dcell.alignment = Alignment(horizontal="center")
+            dcell.border = border
+            dcell.fill = green_fill if i in selected else red_fill
+        buf_out = io.BytesIO()
+        wb.save(buf_out)
+        buf_out.seek(0)
+        file_bytes = buf_out.read()
+        group_attendance_files[g_id] = file_bytes
+    else:
+        file_bytes = None
+
+    # Adminga yangilangan fayl yuborish
+    late_count = len(selected) - sum(
+        1 for i, s in enumerate(students)
+        if i in selected
+    )
+    caption = (
+        f"🕐 *Davomat yangilandi (kech qolganlar)*\n"
+        f"📦 Guruh: {group_name}\n"
+        f"👤 O'qituvchi: {teacher_name}\n"
+        f"📅 {current_date} — {current_day}\n"
+        f"👥 Jami kelganlar: {len(selected)}/{len(students)}"
+    )
+    if file_bytes:
+        await bot.send_document(
+            ADMIN_GROUP_ID,
+            types.BufferedInputFile(file_bytes, filename=f"Davomat_{group_name}.xlsx"),
+            caption=caption,
+            parse_mode="Markdown"
+        )
+
+    await callback.message.edit_text(
+        f"✅ Davomat yangilandi!\n\n"
+        f"📅 {current_date} — {current_day}\n"
+        f"👥 Jami kelganlar: {len(selected)}/{len(students)}"
     )
     await state.clear()
 
@@ -4636,9 +4785,15 @@ class EditGroupStudents(StatesGroup):
     entering_new_name = State()
     entering_new_phone = State()
 
+class EditGroupSchedule(StatesGroup):
+    selecting_days = State()
+    entering_time = State()
+
+class EditGroupTeacher(StatesGroup):
+    selecting_teacher = State()
+
 class ExcelUploadGroup(StatesGroup):
     waiting_file = State()
-
 class ExcelCreateGroup(StatesGroup):
     waiting_file = State()
 
@@ -4705,6 +4860,10 @@ async def grp_view_detail(callback: types.CallbackQuery, state: FSMContext):
             text += f"{idx}. {std['student_name']} - {std['student_phone']}\n"
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="🔄 O'quvchilar ro'yxatini yangilash", callback_data=f"grp_update_students_{group_id}"))
+        builder.row(
+            InlineKeyboardButton(text="📅 Vaqt/Kunlarni o'zgartirish", callback_data=f"grp_edit_schedule_{group_id}"),
+            InlineKeyboardButton(text="👤 O'qituvchini almashtirish", callback_data=f"grp_edit_teacher_{group_id}")
+        )
         builder.row(InlineKeyboardButton(text="🗑 Guruhni o'chirish", callback_data=f"grp_delete_{group_id}"))
         builder.row(InlineKeyboardButton(text="⬅️ Guruhlar ro'yxati", callback_data="admin_active_groups"))
         await callback.message.edit_text(text, reply_markup=builder.as_markup())
@@ -4961,6 +5120,212 @@ async def grp_excel_download(callback: types.CallbackQuery, state: FSMContext):
     except Exception as e:
         logging.error(f"grp_excel_download error: {e}")
         await callback.answer(f"Xatolik: {e}", show_alert=True)
+
+        await callback.answer(f"Xatolik: {e}", show_alert=True)
+
+# --- GURUH DARS VAQTI/KUNLARI O'ZGARTIRISH ---
+@dp.callback_query(F.data.startswith("grp_edit_schedule_"))
+async def grp_edit_schedule_start(callback: types.CallbackQuery, state: FSMContext):
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    group_id = int(callback.data.replace("grp_edit_schedule_", ""))
+    grp = groups.get(group_id)
+    if not grp:
+        await callback.answer("Guruh topilmadi!", show_alert=True)
+        return
+    current_days = grp.get('days', [])
+    await state.update_data(edit_grp_id=group_id, edit_days=list(current_days))
+    await state.set_state(EditGroupSchedule.selecting_days)
+
+    builder = InlineKeyboardBuilder()
+    for day in WEEKDAYS_UZ:
+        check = "✅" if day in current_days else "⬜"
+        builder.row(InlineKeyboardButton(text=f"{check} {day}", callback_data=f"egrp_day_{day}"))
+    builder.row(InlineKeyboardButton(text="✔️ Kunlarni tasdiqlash", callback_data="egrp_days_done"))
+    builder.row(InlineKeyboardButton(text="❌ Bekor qilish", callback_data=f"grp_view_detail_{group_id}"))
+    await callback.message.edit_text(
+        f"📅 *{grp['group_name']}* guruhining dars kunlarini tanlang:\n\n"
+        f"Joriy kunlar: {', '.join(current_days)}",
+        reply_markup=builder.as_markup(),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@dp.callback_query(EditGroupSchedule.selecting_days, F.data.startswith("egrp_day_"))
+async def egrp_day_toggle(callback: types.CallbackQuery, state: FSMContext):
+    day = callback.data.replace("egrp_day_", "")
+    data = await state.get_data()
+    days = data.get('edit_days', [])
+    if day in days:
+        days.remove(day)
+    else:
+        days.append(day)
+    await state.update_data(edit_days=days)
+    group_id = data['edit_grp_id']
+    grp = groups.get(group_id, {})
+
+    builder = InlineKeyboardBuilder()
+    for d in WEEKDAYS_UZ:
+        check = "✅" if d in days else "⬜"
+        builder.row(InlineKeyboardButton(text=f"{check} {d}", callback_data=f"egrp_day_{d}"))
+    builder.row(InlineKeyboardButton(text="✔️ Kunlarni tasdiqlash", callback_data="egrp_days_done"))
+    builder.row(InlineKeyboardButton(text="❌ Bekor qilish", callback_data=f"grp_view_detail_{group_id}"))
+    await callback.message.edit_reply_markup(reply_markup=builder.as_markup())
+    await callback.answer()
+
+@dp.callback_query(EditGroupSchedule.selecting_days, F.data == "egrp_days_done")
+async def egrp_days_done(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    days = data.get('edit_days', [])
+    if not days:
+        await callback.answer("Kamida 1 kun tanlang!", show_alert=True)
+        return
+    await state.set_state(EditGroupSchedule.entering_time)
+    group_id = data['edit_grp_id']
+    grp = groups.get(group_id, {})
+    await callback.message.edit_text(
+        f"⏰ Yangi dars vaqtini kiriting (HH:MM formatda)\n\n"
+        f"Joriy vaqt: {grp.get('time_text', '—')}\n"
+        f"Tanlangan kunlar: {', '.join(days)}",
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@dp.message(EditGroupSchedule.entering_time)
+async def egrp_time_entered(message: types.Message, state: FSMContext):
+    if not check_admin(message.chat.id):
+        return
+    time_text = message.text.strip()
+    import re
+    if not re.match(r'^\d{2}:\d{2}$', time_text):
+        await message.answer("❌ Noto'g'ri format! HH:MM shaklida kiriting (masalan: 14:30)")
+        return
+    data = await state.get_data()
+    group_id = data['edit_grp_id']
+    days = data['edit_days']
+    try:
+        async with db.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE groups SET days_data=$1, time_text=$2 WHERE id=$3",
+                json.dumps(days), time_text, group_id
+            )
+        if group_id in groups:
+            groups[group_id]['days'] = days
+            groups[group_id]['time_text'] = time_text
+        grp = groups.get(group_id, {})
+        teacher_id = grp.get('teacher_id')
+        if teacher_id:
+            try:
+                await bot.send_message(
+                    teacher_id,
+                    f"📅 *{grp['group_name']}* guruhingizning dars jadvali yangilandi!\n\n"
+                    f"📆 Yangi kunlar: {', '.join(days)}\n"
+                    f"⏰ Yangi vaqt: {time_text}",
+                    parse_mode="Markdown"
+                )
+            except:
+                pass
+        await message.answer(
+            f"✅ Dars jadvali yangilandi!\n\n"
+            f"📆 Kunlar: {', '.join(days)}\n"
+            f"⏰ Vaqt: {time_text}"
+        )
+    except Exception as e:
+        logging.error(f"egrp_time_entered error: {e}")
+        await message.answer(f"❌ Xatolik: {e}")
+    await state.clear()
+
+# --- GURUH O'QITUVCHISINI ALMASHTIRISH ---
+@dp.callback_query(F.data.startswith("grp_edit_teacher_"))
+async def grp_edit_teacher_start(callback: types.CallbackQuery, state: FSMContext):
+    if not check_admin(callback.message.chat.id):
+        await callback.answer("Ruxsat yo'q!")
+        return
+    group_id = int(callback.data.replace("grp_edit_teacher_", ""))
+    grp = groups.get(group_id)
+    if not grp:
+        await callback.answer("Guruh topilmadi!", show_alert=True)
+        return
+
+    branch = grp.get('branch', '')
+    lesson_type = grp.get('lesson_type', '')
+
+    # Filialdagi o'qituvchilarni topamiz
+    teachers = [
+        (uid, user_names.get(uid, f"ID:{uid}"))
+        for uid, spec in user_specialty.items()
+        if spec and (
+            (lesson_type == 'IT' and 'IT' in spec) or
+            (lesson_type == 'Koreys tili' and 'Koreys' in spec) or
+            True
+        )
+    ]
+
+    if not teachers:
+        await callback.answer("O'qituvchilar topilmadi!", show_alert=True)
+        return
+
+    await state.update_data(edit_grp_id=group_id)
+    await state.set_state(EditGroupTeacher.selecting_teacher)
+
+    builder = InlineKeyboardBuilder()
+    for uid, name in teachers[:20]:
+        builder.row(InlineKeyboardButton(text=f"👤 {name}", callback_data=f"egrp_teacher_{uid}"))
+    builder.row(InlineKeyboardButton(text="❌ Bekor qilish", callback_data=f"grp_view_detail_{group_id}"))
+    current_teacher = user_names.get(grp.get('teacher_id'), "—")
+    await callback.message.edit_text(
+        f"👤 *{grp['group_name']}* guruhining o'qituvchisini tanlang:\n\n"
+        f"Joriy o'qituvchi: {current_teacher}",
+        reply_markup=builder.as_markup(),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@dp.callback_query(EditGroupTeacher.selecting_teacher, F.data.startswith("egrp_teacher_"))
+async def egrp_teacher_selected(callback: types.CallbackQuery, state: FSMContext):
+    new_teacher_id = int(callback.data.replace("egrp_teacher_", ""))
+    data = await state.get_data()
+    group_id = data['edit_grp_id']
+    grp = groups.get(group_id, {})
+    old_teacher_id = grp.get('teacher_id')
+    new_teacher_name = user_names.get(new_teacher_id, f"ID:{new_teacher_id}")
+    try:
+        async with db.pool.acquire() as conn:
+            await conn.execute("UPDATE groups SET teacher_id=$1 WHERE id=$2", new_teacher_id, group_id)
+        if group_id in groups:
+            groups[group_id]['teacher_id'] = new_teacher_id
+        # Eski o'qituvchiga xabar
+        if old_teacher_id and old_teacher_id != new_teacher_id:
+            try:
+                await bot.send_message(
+                    old_teacher_id,
+                    f"ℹ️ *{grp['group_name']}* guruhi sizdan boshqa o'qituvchiga o'tkazildi."
+                    , parse_mode="Markdown"
+                )
+            except:
+                pass
+        # Yangi o'qituvchiga xabar
+        try:
+            await bot.send_message(
+                new_teacher_id,
+                f"🎉 Siz *{grp['group_name']}* guruhining yangi o'qituvchisi sifatida tayinlandingiz!\n\n"
+                f"🏢 Filial: {grp.get('branch', '—')}\n"
+                f"📆 Kunlar: {', '.join(grp.get('days', []))}\n"
+                f"⏰ Vaqt: {grp.get('time_text', '—')}",
+                parse_mode="Markdown"
+            )
+        except:
+            pass
+        await callback.message.edit_text(
+            f"✅ O'qituvchi muvaffaqiyatli almashtirildi!\n\n"
+            f"Guruh: {grp['group_name']}\n"
+            f"Yangi o'qituvchi: {new_teacher_name}"
+        )
+    except Exception as e:
+        logging.error(f"egrp_teacher_selected error: {e}")
+        await callback.answer(f"❌ Xatolik: {e}", show_alert=True)
+    await state.clear()
 
 @dp.callback_query(F.data.startswith("grp_update_students_"))
 async def grp_update_students_start(callback: types.CallbackQuery, state: FSMContext):
@@ -5300,32 +5665,12 @@ async def check_schedule_reminders():
                 except ValueError:
                     continue
 
-                # 1 daqiqa oldin eslatma
-                remind_time = (lesson_dt - timedelta(minutes=1)).strftime("%H:%M")
-                # Dars boshlanishida (+ 0 min) notification
+                # Dars boshlanishi vaqti
                 lesson_time_str = lesson_dt.strftime("%H:%M")
                 # 5 daqiqa o'tganda tekshiruv
                 check_time = (lesson_dt + timedelta(minutes=5)).strftime("%H:%M")
 
-                # 1 daqiqa oldingi eslatma
-                remind_key = (group_id, today_date, "remind")
-                if current_time == remind_time and remind_key not in sent_reminders:
-                    try:
-                        await bot.send_message(
-                            teacher_id,
-                            f"🔔 *Eslatma!*\n\n"
-                            f"📦 Guruh: {group_name}\n"
-                            f"🏢 Filial: {branch}\n"
-                            f"⏰ Soat {time_text} da darsingiz boshlanmoqda.\n\n"
-                            f"📍 Davomatni tasdiqlaganingizga ishonch hosil qiling!",
-                            parse_mode="Markdown"
-                        )
-                        sent_reminders.add(remind_key)
-                        logging.info(f"Remind sent: teacher={teacher_id}, group={group_name}")
-                    except Exception as e:
-                        logging.error(f"Remind send error: {e}")
-
-                # Dars boshlanishi — faqat davomat qilinmagan bo'lsa notification
+                # Dars boshlanishida notification
                 start_key = (group_id, today_date, "start")
                 if current_time == lesson_time_str and start_key not in sent_reminders:
                     attended = any(
@@ -5333,22 +5678,35 @@ async def check_schedule_reminders():
                         for k in daily_attendance_log
                     )
                     sent_reminders.add(start_key)
-                    if not attended:
-                        # Kelmagan — davomat qilishga undash
-                        try:
+                    try:
+                        if attended:
+                            # Avval kelganini tasdiqlagan — o'quvchilar ro'yxatini yuboramiz
+                            students_list = group_students.get(group_id, [])
+                            if students_list:
+                                kb = await get_student_attendance_kb(group_id, [])
+                                await bot.send_message(
+                                    teacher_id,
+                                    f"🔔 *Darsingiz boshlandi!*\n\n"
+                                    f"📦 {group_name} | 🏢 {branch}\n"
+                                    f"⏰ Vaqt: {time_text}\n\n"
+                                    f"🧑‍🎓 Darsga kelgan o'quvchilarni belgilang, so'ng *Davomatni yakunlash* tugmasini bosing:",
+                                    reply_markup=kb,
+                                    parse_mode="Markdown"
+                                )
+                                logging.info(f"Lesson start (attended, kb sent): teacher={teacher_id}, group={group_name}")
+                        else:
+                            # Kelmagan — kelganini tasdiqlashga undash
                             await bot.send_message(
                                 teacher_id,
-                                f"⚠️ *Dars boshlandi, lekin kelganingizni tasdiqlamadingiz!*\n\n"
+                                f"⚠️ *Darsingiz boshlandi!*\n\n"
                                 f"📦 {group_name} | 🏢 {branch}\n"
                                 f"⏰ Vaqt: {time_text}\n\n"
-                                f"📍 Iltimos, darhol *Kelganimni tasdiqlash* tugmasini bosib, lokatsiyangizni yuboring!",
+                                f"📍 Kelganingizni tasdiqlamadingiz! Iltimos, darhol *Kelganimni tasdiqlash* tugmasini bosib, o'quvchilar davomatini qiling!",
                                 parse_mode="Markdown"
                             )
-                            logging.info(f"Lesson start (not attended) sent: teacher={teacher_id}, group={group_name}")
-                        except Exception as e:
-                            logging.error(f"Lesson start notify error: {e}")
-                    # Agar davomat qilingan bo'lsa — hech narsa yubormaymiz
-                    # O'quvchilar ro'yxati handle_location da davomat tasdiqlanganida yuboriladi
+                            logging.info(f"Lesson start (not attended): teacher={teacher_id}, group={group_name}")
+                    except Exception as e:
+                        logging.error(f"Lesson start notify error: {e}")
 
                 # 5 daqiqa o'tdi, hali kelmagan bo'lsa qayta eslatma
                 check_key = (group_id, today_date, "check")
