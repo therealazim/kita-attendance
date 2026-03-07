@@ -20,6 +20,7 @@ from aiogram.fsm.context import FSMContext
 from geopy.distance import geodesic
 from aiohttp import web
 import openpyxl
+from openpyxl import load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.workbook import Workbook
@@ -119,6 +120,7 @@ broadcast_history = []
 # RAM da guruhlar va o'quvchilar (tezroq ishlash uchun, lekin asosiy PostgreSQL'da)
 groups = {}  # group_id -> group ma'lumotlari
 group_students = defaultdict(list)  # group_id -> o'quvchilar ro'yxati
+group_attendance_files = {}  # group_id -> kumulativ Excel (bytes) — har dars uchun yangi ustun
 
 # BARCHA LOKATSIYALAR RO'YXATI
 LOCATIONS =[
@@ -1527,7 +1529,7 @@ async def weekly_top(message: types.Message):
             specialty_display = ""
         
         medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-        top_list += f"{medal} {name}{specialty_display}: **{count}** marta\n"
+        top_list += f"{medal} {name}{specialty_display}: {count} marta\n"
     
     await message.answer(
         get_text(user_id, 'weekly_top', top_list=top_list)
@@ -1547,9 +1549,9 @@ async def handle_location(message: types.Message, state: FSMContext):
     # 2. FAQAT OCHIQ FORWARDNI TEKSHIRAMIZ
     if message.forward_origin is not None:
         user_warning = (
-            "⚠️ **DIQQAT: SOXTA DAVOMATGA URINISH!**\n\n"
+            "⚠️ DIQQAT: SOXTA DAVOMATGA URINISH!\n\n"
             "Siz boshqa foydalanuvchidan uzatilgan (forward) lokatsiyani yuborish orqali "
-            "**yolg'on davomat** qilishga urundingiz.\n\n"
+            "yolg'on davomat qilishga urundingiz.\n\n"
             "🚫 Ushbu harakatingiz soxtakorlik sifatida qayd etildi va adminlarga yuborildi!"
         )
         await message.answer(user_warning, parse_mode="Markdown")
@@ -1557,7 +1559,7 @@ async def handle_location(message: types.Message, state: FSMContext):
         t_name = user_names.get(user_id, message.from_user.full_name)
         t_spec = user_specialty.get(user_id, 'Noma\'lum')
         admin_alert = (
-            f"🚨 **SOXTA DAVOMATGA URINISH!**\n\n"
+            f"🚨 SOXTA DAVOMATGA URINISH!\n\n"
             f"👤 Xodim: {t_name}\n"
             f"📚 Soha: {t_spec}\n"
             f"🆔 ID: `{user_id}`\n"
@@ -1606,7 +1608,7 @@ async def handle_location(message: types.Message, state: FSMContext):
         specialty_display = f" [{specialty}]" if specialty else ""
         
         report = (
-            f"✅ **Yangi Davomat**\n\n"
+            f"✅ Yangi Davomat\n\n"
             f"👤 O'qituvchi: {full_name}{specialty_display}\n"
             f"📍 Manzil: {found_branch}\n"
             f"📅 Sana: {today_date}\n"
@@ -1647,8 +1649,8 @@ async def handle_location(message: types.Message, state: FSMContext):
             await state.update_data(current_group_id=current_grp, selected_stds=[])
             keyboard = await get_student_attendance_kb(current_grp, [])
             await message.answer(
-                f"🧑‍🎓 **{groups[current_grp]['group_name']}** guruhi o'quvchilari.\n"
-                f"Darsda qatnashayotganlarni belgilang:",
+                f"🧑‍🎓 *{groups[current_grp]['group_name']}* guruhi o'quvchilari\n\n"
+                f"Darsga kelgan o'quvchilarni belgilang, so'ng *Davomatni yakunlash* tugmasini bosing:",
                 reply_markup=keyboard, parse_mode="Markdown"
             )
             await state.set_state(StudentAttendance.selecting_students)
@@ -1681,72 +1683,98 @@ async def std_submit_callback(callback: types.CallbackQuery, state: FSMContext):
     selected = data.get('selected_stds', [])
     students = group_students.get(g_id, [])
     user_id = callback.from_user.id
-    
-    # Excel yaratish
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Guruh Davomati"
-    
-    # Sarlavhalar
-    ws.append(['№', 'O\'quvchi', 'Telefon', 'Holat'])
-    
-    # O'quvchilar ro'yxati
-    for i, s in enumerate(students):
-        status = "Kelgan" if i in selected else "Kelmagan"
-        ws.append([i+1, s['name'], s['phone'], status])
-    
-    # Ustun kengliklarini sozlash
-    ws.column_dimensions['A'].width = 5
-    ws.column_dimensions['B'].width = 30
-    ws.column_dimensions['C'].width = 15
-    ws.column_dimensions['D'].width = 10
-    
-    # Formatlash
+
+    now_uzb = datetime.now(UZB_TZ)
+    group_name = groups[g_id]['group_name']
+    teacher_name = user_names.get(user_id, "Noma'lum")
+    current_date = now_uzb.strftime('%d.%m.%Y')
+    current_day = WEEKDAYS_UZ[now_uzb.weekday()]
+    col_header = f"{current_date}\n{current_day}"  # Yangi ustun sarlavhasi
+
     thin = Side(border_style="thin", color="000000")
     border = Border(top=thin, left=thin, right=thin, bottom=thin)
-    
-    for row in ws.iter_rows(min_row=2, max_row=len(students)+1):
-        for cell in row:
-            cell.border = border
-    
-    # Sarlavha formatlash
     header_fill = PatternFill(start_color="2E86AB", end_color="2E86AB", fill_type="solid")
-    for cell in ws[1]:
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
-        cell.border = border
-    
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    
+    green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+    red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+
+    # Mavjud fayl bormi — ustiga yangi ustun qo'shamiz
+    if g_id in group_attendance_files:
+        buf_in = io.BytesIO(group_attendance_files[g_id])
+        wb = load_workbook(buf_in)
+        ws = wb.active
+        # Yangi ustun indeksi (A=1, B=2, C=3 — D dan keyin)
+        new_col = ws.max_column + 1
+    else:
+        # Birinchi marta — yangi fayl yaratamiz
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Guruh Davomati"
+        # Asosiy sarlavhalar
+        headers = ['№', "O'quvchi", 'Telefon']
+        for ci, h in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=ci, value=h)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = border
+        # O'quvchilarni qo'shamiz
+        for i, s in enumerate(students):
+            ws.cell(row=i+2, column=1, value=i+1).border = border
+            ws.cell(row=i+2, column=2, value=s['name']).border = border
+            ws.cell(row=i+2, column=3, value=s['phone']).border = border
+        ws.column_dimensions['A'].width = 5
+        ws.column_dimensions['B'].width = 28
+        ws.column_dimensions['C'].width = 16
+        new_col = 4  # Birinchi dars ustuni D
+
+    # Yangi dars ustunini qo'shamiz
+    col_letter = get_column_letter(new_col)
+
+    # Sarlavha
+    hcell = ws.cell(row=1, column=new_col, value=col_header)
+    hcell.font = Font(bold=True, color="FFFFFF")
+    hcell.fill = header_fill
+    hcell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    hcell.border = border
+    ws.row_dimensions[1].height = 30
+    ws.column_dimensions[col_letter].width = 14
+
+    # O'quvchilar holati
+    for i, s in enumerate(students):
+        status = "Kelgan" if i in selected else "Kelmagan"
+        dcell = ws.cell(row=i+2, column=new_col, value=status)
+        dcell.alignment = Alignment(horizontal="center")
+        dcell.border = border
+        dcell.fill = green_fill if i in selected else red_fill
+
+    # Saqlaymiz
+    buf_out = io.BytesIO()
+    wb.save(buf_out)
+    buf_out.seek(0)
+    file_bytes = buf_out.read()
+    group_attendance_files[g_id] = file_bytes
+
     # Adminga yuborish
-    group_name = groups[g_id]['group_name']
-    teacher_name = user_names.get(user_id, 'Noma\'lum')
-    current_date = datetime.now(UZB_TZ).strftime('%Y-%m-%d')
-    
+    filename = f"Davomat_{group_name}.xlsx"
     caption = (
-        f"🧑‍🎓 **Guruh Davomati**\n"
+        f"📋 *Guruh Davomati*\n"
         f"📦 Guruh: {group_name}\n"
         f"👤 O'qituvchi: {teacher_name}\n"
-        f"📅 Sana: {current_date}\n"
+        f"📅 {current_date} — {current_day}\n"
         f"👥 Kelganlar: {len(selected)}/{len(students)}"
     )
-    
-    filename = f"Guruh_Davomati_{group_name}_{current_date}.xlsx"
-    
     await bot.send_document(
-        ADMIN_GROUP_ID, 
-        types.BufferedInputFile(buf.read(), filename=filename),
+        ADMIN_GROUP_ID,
+        types.BufferedInputFile(file_bytes, filename=filename),
         caption=caption,
         parse_mode="Markdown"
     )
-    
+
     # O'qituvchiga javob
     await callback.message.edit_text(
-        f"✅ O'quvchilar davomati yuborildi!\n\n"
-        f"Kelganlar: {len(selected)}/{len(students)}"
+        f"✅ Davomat yuborildi!\n\n"
+        f"📅 {current_date} — {current_day}\n"
+        f"👥 Kelganlar: {len(selected)}/{len(students)}"
     )
     await state.clear()
 
@@ -5063,40 +5091,30 @@ async def check_schedule_reminders():
                     except Exception as e:
                         logging.error(f"Remind send error: {e}")
 
-                # Dars boshlanishi — o'quvchilar davomati
+                # Dars boshlanishi — faqat davomat qilinmagan bo'lsa notification
                 start_key = (group_id, today_date, "start")
                 if current_time == lesson_time_str and start_key not in sent_reminders:
                     attended = any(
                         k[0] == teacher_id and k[1] == branch and k[2] == today_date
                         for k in daily_attendance_log
                     )
-                    students = group_students.get(group_id, [])
-                    try:
-                        if attended and students:
-                            # Kelgan — o'quvchilar ro'yxatini ko'rsat
-                            kb = await get_student_attendance_kb(group_id, [])
+                    sent_reminders.add(start_key)
+                    if not attended:
+                        # Kelmagan — davomat qilishga undash
+                        try:
                             await bot.send_message(
                                 teacher_id,
-                                f"✅ *Dars boshlandi!*\n\n"
-                                f"📦 {group_name} | 🏢 {branch}\n\n"
-                                f"🧑‍🎓 Darsga kelgan o'quvchilarni belgilang, so'ng *Davomatni yakunlash* tugmasini bosing:",
-                                reply_markup=kb,
-                                parse_mode="Markdown"
-                            )
-                        elif not attended:
-                            # Kelmagan — davomat qilishga undash
-                            await bot.send_message(
-                                teacher_id,
-                                f"⚠️ *Dars boshlandi, lekin davomat qilinmadi!*\n\n"
+                                f"⚠️ *Dars boshlandi, lekin kelganingizni tasdiqlamadingiz!*\n\n"
                                 f"📦 {group_name} | 🏢 {branch}\n"
                                 f"⏰ Vaqt: {time_text}\n\n"
                                 f"📍 Iltimos, darhol *Kelganimni tasdiqlash* tugmasini bosib, lokatsiyangizni yuboring!",
                                 parse_mode="Markdown"
                             )
-                        sent_reminders.add(start_key)
-                        logging.info(f"Lesson start sent: teacher={teacher_id}, group={group_name}, attended={attended}")
-                    except Exception as e:
-                        logging.error(f"Lesson start notify error: {e}")
+                            logging.info(f"Lesson start (not attended) sent: teacher={teacher_id}, group={group_name}")
+                        except Exception as e:
+                            logging.error(f"Lesson start notify error: {e}")
+                    # Agar davomat qilingan bo'lsa — hech narsa yubormaymiz
+                    # O'quvchilar ro'yxati handle_location da davomat tasdiqlanganida yuboriladi
 
                 # 5 daqiqa o'tdi, hali kelmagan bo'lsa qayta eslatma
                 check_key = (group_id, today_date, "check")
