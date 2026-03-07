@@ -1984,10 +1984,8 @@ async def admin_panel(message: types.Message):
             InlineKeyboardButton(text="💰 Oylik hisoblash", callback_data="admin_salary_calc")
         )
         builder.row(
-            InlineKeyboardButton(text="🖼 Vizual Jadval (Haftalik)", callback_data="admin_visual_schedule")
-        )
-        builder.row(
-            InlineKeyboardButton(text="➕ Guruh shakllantirish", callback_data="admin_create_group")
+            InlineKeyboardButton(text="➕ Guruh shakllantirish", callback_data="admin_create_group"),
+            InlineKeyboardButton(text="👥 Faol guruhlar", callback_data="admin_active_groups")
         )
         builder.row(
             InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
@@ -2196,77 +2194,8 @@ async def grp_final_save(callback: types.CallbackQuery, state: FSMContext):
     
     await state.clear()
 
-async def create_visual_timetable_img(branch_name: str):
-    days = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba']
-    time_slots = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00']
-    
-    plt.figure(figsize=(14, 8))
-    ax = plt.gca()
-    
-    colors_map = {
-        'IT': '#E3F2FD',
-        'Koreys tili': '#E8F5E9',
-        'Ofis xodimi': '#FFF3E0'
-    }
-    border_map = {
-        'IT': '#1565C0', 
-        'Koreys tili': '#2E7D32', 
-        'Ofis xodimi': '#EF6C00'
-    }
 
-    for i in range(len(days) + 1):
-        plt.axvline(i, color='gray', linestyle='--', alpha=0.3)
-    for i in range(len(time_slots) + 1):
-        plt.axhline(i, color='gray', linestyle='--', alpha=0.3)
 
-    found_any = False
-    for sid, data in schedules.items():
-        if data['branch'] == branch_name:
-            found_any = True
-            uid = data['user_id']
-            spec = user_specialty.get(uid, 'IT')
-            t_name = user_names.get(uid, "Noma'lum")
-            
-            for day, t_val in data['days'].items():
-                if day in days:
-                    day_idx = days.index(day)
-                    try:
-                        h, m = map(int, t_val.split(':'))
-                        start_y = h + (m/60)
-                        y_pos = len(time_slots) - (start_y - 8)
-                        
-                        rect = plt.Rectangle((day_idx + 0.05, y_pos - 0.9), 0.9, 0.8, 
-                                            facecolor=colors_map.get(spec, '#F5F5F5'),
-                                            edgecolor=border_map.get(spec, 'gray'),
-                                            linewidth=1.5, alpha=0.9, zorder=3)
-                        ax.add_patch(rect)
-                        
-                        plt.text(day_idx + 0.5, y_pos - 0.5, f"{t_name}\n({t_val})\n{spec}", 
-                                 ha='center', va='center', fontsize=8, fontweight='bold', zorder=4)
-                    except: continue
-
-    plt.xticks(np.arange(0.5, len(days), 1), days, fontweight='bold')
-    plt.yticks(np.arange(0.5, len(time_slots), 1), time_slots[::-1], fontweight='bold')
-    
-    plt.title(f"🏢 {branch_name} - Haftalik Bandlik Jadvali", fontsize=16, pad=20, fontweight='bold', color='#1A237E')
-    plt.xlim(0, len(days))
-    plt.ylim(0, len(time_slots))
-    
-    from matplotlib.lines import Line2D
-    legend_elements = [
-        Line2D([0], [0], marker='s', color='w', label='IT Bo\'limi', markerfacecolor='#E3F2FD', markersize=15, markeredgecolor='#1565C0'),
-        Line2D([0], [0], marker='s', color='w', label='Koreys tili', markerfacecolor='#E8F5E9', markersize=15, markeredgecolor='#2E7D32'),
-        Line2D([0], [0], marker='s', color='w', label='Ofis xodimi', markerfacecolor='#FFF3E0', markersize=15, markeredgecolor='#EF6C00')
-    ]
-    ax.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=3)
-
-    img_buf = io.BytesIO()
-    plt.savefig(img_buf, format='png', bbox_inches='tight', dpi=150)
-    img_buf.seek(0)
-    plt.close()
-    return img_buf, found_any
-
-@dp.callback_query(F.data == "admin_visual_schedule")
 async def visual_schedule_start(callback: types.CallbackQuery, state: FSMContext):
     if not check_admin(callback.message.chat.id):
         await callback.answer("Ruxsat yo'q!")
@@ -4862,10 +4791,8 @@ async def admin_back(callback: types.CallbackQuery):
             InlineKeyboardButton(text="💰 Oylik hisoblash", callback_data="admin_salary_calc")
         )
         builder.row(
-            InlineKeyboardButton(text="🖼 Vizual Jadval (Haftalik)", callback_data="admin_visual_schedule")
-        )
-        builder.row(
-            InlineKeyboardButton(text="➕ Guruh shakllantirish", callback_data="admin_create_group")
+            InlineKeyboardButton(text="➕ Guruh shakllantirish", callback_data="admin_create_group"),
+            InlineKeyboardButton(text="👥 Faol guruhlar", callback_data="admin_active_groups")
         )
         builder.row(
             InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users_main"),
@@ -4901,74 +4828,6 @@ class EditGroupStudents(StatesGroup):
 
 class ExcelUploadGroup(StatesGroup):
     waiting_file = State()
-
-class StudentAttendance(StatesGroup):
-    selecting_students = State()
-
-async def get_student_attendance_kb(group_id, selected_indices):
-    builder = InlineKeyboardBuilder()
-    students = group_students.get(group_id, [])
-    for i, std in enumerate(students):
-        status = "✅ " if i in selected_indices else "⬜ "
-        builder.row(InlineKeyboardButton(text=f"{status}{std['name']}", callback_data=f"std_check_{i}"))
-    builder.row(InlineKeyboardButton(text="✅ Davomatni yuborish", callback_data="std_submit"))
-    return builder.as_markup()
-
-@dp.callback_query(StudentAttendance.selecting_students, F.data.startswith("std_check_"))
-async def std_check_callback(callback: types.CallbackQuery, state: FSMContext):
-    idx = int(callback.data.replace("std_check_", ""))
-    data = await state.get_data()
-    selected = list(data.get("selected_stds", []))
-    if idx in selected:
-        selected.remove(idx)
-    else:
-        selected.append(idx)
-    await state.update_data(selected_stds=selected)
-    await callback.message.edit_reply_markup(
-        reply_markup=await get_student_attendance_kb(data["current_group_id"], selected)
-    )
-    await callback.answer()
-
-@dp.callback_query(StudentAttendance.selecting_students, F.data == "std_submit")
-async def std_submit_callback(callback: types.CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    g_id = data["current_group_id"]
-    selected = data.get("selected_stds", [])
-    students = group_students.get(g_id, [])
-    user_id = callback.from_user.id
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Davomat"
-    ws.append(["No", "Oquvchi", "Telefon", "Holat"])
-    thin = Side(border_style="thin", color="000000")
-    border = Border(top=thin, left=thin, right=thin, bottom=thin)
-    hfill = PatternFill(start_color="2E86AB", end_color="2E86AB", fill_type="solid")
-    for cell in ws[1]:
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = hfill
-        cell.alignment = Alignment(horizontal="center")
-        cell.border = border
-    for i, s in enumerate(students):
-        ws.append([i+1, s["name"], s["phone"], "Kelgan" if i in selected else "Kelmagan"])
-        for cell in ws[ws.max_row]:
-            cell.border = border
-    ws.column_dimensions["A"].width = 5
-    ws.column_dimensions["B"].width = 30
-    ws.column_dimensions["C"].width = 15
-    ws.column_dimensions["D"].width = 10
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    group_name = groups.get(g_id, {}).get("group_name", "Guruh")
-    teacher_name = user_names.get(user_id, "Noma'lum")
-    cur_date = datetime.now(UZB_TZ).strftime("%Y-%m-%d")
-    await bot.send_document(
-        ADMIN_GROUP_ID,
-        types.BufferedInputFile(buf.read(), filename=f"Davomat_{group_name}_{cur_date}.xlsx"),
-        caption=f"Guruh: {group_name}\nOqituvchi: {teacher_name}\nSana: {cur_date}\nKelganlar: {len(selected)}/{len(students)}"
-    )
-    await callback.message.edit_text(f"Davomat yuborildi! Kelganlar: {len(selected)}/{len(students)}")
-    await state.clear()
 
 @dp.callback_query(F.data == "admin_active_groups")
 async def admin_active_groups(callback: types.CallbackQuery, state: FSMContext):
