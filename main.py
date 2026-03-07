@@ -3569,6 +3569,13 @@ async def admin_user_delete_confirm(callback: types.CallbackQuery):
         async with db.pool.acquire() as conn:
             await conn.execute("DELETE FROM attendance WHERE user_id = $1", uid)
             await conn.execute("DELETE FROM schedules WHERE user_id = $1", uid)
+            # Guruhlar va o'quvchilarni o'chirish (ON DELETE CASCADE ishlamasa)
+            teacher_group_ids = await conn.fetch("SELECT id FROM groups WHERE teacher_id = $1", uid)
+            for grp_row in teacher_group_ids:
+                await conn.execute("DELETE FROM group_students WHERE group_id = $1", grp_row['id'])
+                await conn.execute("DELETE FROM groups WHERE id = $1", grp_row['id'])
+                groups.pop(grp_row['id'], None)
+                group_students.pop(grp_row['id'], None)
             await conn.execute("DELETE FROM users WHERE user_id = $1", uid)
         
         if uid in user_ids:
